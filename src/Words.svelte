@@ -1,8 +1,10 @@
 <script>
   import { status, brief, isWord, KNOWN_DAYS } from './lib/logic.js'
   import { say } from './lib/sound.js'
+  import Verbs from './Verbs.svelte'
 
-  let { words, cards, now } = $props()
+  let { words, cards, now, conj } = $props()
+  let tab = $state('words')
 
   let q = $state('')
   let only = $state('all')
@@ -25,7 +27,17 @@
   }
 </script>
 
-<h2>Words</h2>
+<div class="top">
+  <h2>{tab === 'words' ? 'Words' : 'Verbs'}</h2>
+  <div class="seg" role="tablist">
+    <button role="tab" aria-selected={tab === 'words'} class:on={tab === 'words'} onclick={() => (tab = 'words')}>📚 Words</button>
+    <button role="tab" aria-selected={tab === 'verbs'} class:on={tab === 'verbs'} onclick={() => (tab = 'verbs')}>📐 Verbs</button>
+  </div>
+</div>
+{#if tab === 'verbs'}
+  <p class="muted">All {Object.keys(conj ?? {}).length} verbs in every tense, whatever your stage. Tap a form to hear it.</p>
+  <Verbs {conj} {cards} {words} />
+{:else}
 <p class="muted">{rows.length} in your deck · {tally.known ?? 0} known · {tally.learning ?? 0} learning · {tally.queued ?? 0} queued</p>
 
 <div class="filters">
@@ -49,9 +61,13 @@
 {:else}
   <p class="muted">{rows.length ? 'No match.' : 'Words you meet in runs and the library collect here.'}</p>
 {/each}
+{/if}
 
 <style>
   h2 { margin-bottom: 4px; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .top .seg { margin: 0; }
+  .top .seg button { flex: none; padding: 6px 12px; }
   .filters { position: sticky; top: 0; background: var(--bg); padding: 8px 0; z-index: 1; }
   .field { width: 100%; padding: 12px 14px; border-radius: 14px; border: 2px solid var(--line); background: var(--panel); }
   .field:focus { outline: none; border-color: var(--blue); }

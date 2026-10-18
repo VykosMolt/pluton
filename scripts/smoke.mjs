@@ -68,7 +68,7 @@ const MODES = { Listen: 'dictation', 'Say it': 'produce', 'Fill the gap': 'cloze
 
 /** Plays a whole run; answers the first card wrong if asked (then overrides it if asked), everything else right. */
 async function playRun(page, { wrongFirst, override = false, prefix }) {
-  await page.getByRole('button', { name: /Start run/ }).click()
+  await page.getByRole('button', { name: /Start your run|Another run/ }).click()
   const modes = {}
   let answered = 0, wrongDone = !wrongFirst
   while (answered < 80) {
@@ -108,8 +108,26 @@ await page.screenshot({ path: `${OUT}/0-home.png` })
 const run1 = await playRun(page, { wrongFirst: true, prefix: '1' })
 const recap = await page.locator('.recap .chip').count()
 
+// The path: stage 1's reading goal opens chapter 1, which reads aloud sentence by sentence and can be marked read.
+const stageTag = await page.locator('.stage .tag').textContent()
+await page.locator('.task').click()
+await page.getByRole('heading', { name: 'Le Mur' }).waitFor()
+await page.getByRole('button', { name: '▶ Listen' }).click()
+await page.locator('.text .w.hl').first().waitFor()
+await page.screenshot({ path: `${OUT}/2-chapter.png` })
+await page.waitForTimeout(1500)
+await page.getByRole('button', { name: '⏸ Pause' }).click()
+await page.getByRole('button', { name: '✓ I read it' }).click()
+await page.getByText('✓ You read this one').waitFor()
+// Nothing is locked: the C1 chapter opens and reads at stage 1.
+await page.getByRole('button', { name: '← Library' }).click()
+await page.locator('.item.chapter').last().click()
+await page.getByRole('heading', { name: "L'Opéra" }).waitFor()
+const lastChapterWords = await page.locator('.text .w').count()
+await page.getByRole('button', { name: '← Library' }).click()
+
 // Library: open the starter text, tap an unknown word, add it, then queue the rest of the unlock.
-await page.getByRole('button', { name: /Library/ }).click()
+await page.locator('nav').getByRole('button', { name: /Library/ }).click()
 await page.getByText('Un matin à Paris').click()
 const newWord = page.locator('.text .w.new').first()
 const word = await newWord.textContent()
@@ -117,11 +135,11 @@ await newWord.click()
 await page.getByRole('button', { name: '+ Add to deck' }).click()
 await page.getByText(/In your deck|Queued for your next runs/).waitFor()
 await page.getByRole('button', { name: 'Close' }).click()
-const unlockBefore = await page.getByText(/learn \d+ words to unlock/).textContent()
+const unlockBefore = await page.getByText(/learn \d+ more words/).textContent()
 await page.getByRole('button', { name: /Queue the \d+ words/ }).click()
 await page.getByRole('button', { name: /Queue the \d+ words/ }).waitFor({ state: 'detached' })
 await page.screenshot({ path: `${OUT}/2-library-queued.png` })
-const unlockAfter = await page.getByText(/learn \d+ words to unlock/).textContent()
+const unlockAfter = await page.getByText(/learn \d+ more words/).textContent()
 await page.getByRole('button', { name: '← Library' }).click()
 const shelfItems = await page.locator('.item.classic').count()
 await page.screenshot({ path: `${OUT}/2-shelf.png`, fullPage: true })
@@ -139,6 +157,19 @@ await page.locator('.cog[title="beast"]').first().click()
 const beastNote = await page.locator('.sheet .note').textContent()
 await page.getByRole('button', { name: 'Close' }).click()
 await page.getByRole('button', { name: '← Library' }).click()
+
+// The whole path, and every verb table open whatever the stage (practise the subjonctif on day one).
+await page.locator('nav').getByRole('button', { name: /Home/ }).click()
+await page.getByRole('button', { name: 'The whole path →' }).click()
+const steps = await page.locator('.step').count()
+await page.screenshot({ path: `${OUT}/2-path.png`, fullPage: true })
+await page.locator('nav').getByRole('button', { name: /Words/ }).click()
+await page.getByRole('tab', { name: /Verbs/ }).click()
+await page.getByRole('button', { name: 'être', exact: true }).click()
+const subj = page.locator('.tense', { hasText: 'subjonctif' })
+await subj.getByRole('button', { name: 'Practice' }).click()
+await subj.getByText('queued for your runs').waitFor()
+await page.screenshot({ path: `${OUT}/2-verbs.png` })
 
 // Persistence: progress survives a reload.
 const counts = () => page.evaluate(() => new Promise((ok) => {
@@ -160,13 +191,13 @@ const sw = await page.evaluate(() => navigator.serviceWorker.ready.then((r) => !
 
 // Three days later: graduated cards are due, some as English -> French recall.
 await page.clock.setSystemTime(new Date(Date.now() + 3 * 864e5))
-await page.getByRole('button', { name: /Home/ }).click()
+await page.locator('nav').getByRole('button', { name: /Home/ }).click()
 const due = await page.locator('.tile .due').textContent()
 const streakLater = await page.locator('.streak').textContent()
 await page.screenshot({ path: `${OUT}/3-home-later.png` })
 const run2 = await playRun(page, { wrongFirst: true, override: true, prefix: '4' })
 const end = await counts()
-await page.getByRole('button', { name: /Words/ }).click()
+await page.locator('nav').getByRole('button', { name: /Words/ }).click()
 await page.locator('.row').first().waitFor()
 const wordRows = await page.locator('.row').count()
 await page.screenshot({ path: `${OUT}/6-words.png` })
@@ -190,7 +221,7 @@ await dark.page.evaluate(() => new Promise((ok) => {
   }
 }))
 await dark.page.reload()
-await dark.page.getByRole('button', { name: /Start run/ }).click()
+await dark.page.getByRole('button', { name: /Start your run|Another run/ }).click()
 await dark.page.getByRole('button', { name: 'Got it →' }).click() // a run opens with a new word when one is available
 await dark.page.getByText('Dictée').waitFor()
 await dark.page.screenshot({ path: `${OUT}/5-dictee.png` })
@@ -216,7 +247,7 @@ execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...clips.flatMap((c) => ['-i
 writeFileSync(`${OUT}/listen.srt`, srt)
 
 const ear = await open('dark')
-await ear.page.getByRole('button', { name: /Listen/ }).click()
+await ear.page.locator('nav').getByRole('button', { name: /Listen/ }).click()
 await ear.page.locator('input[accept="audio/*,video/*"]').setInputFiles(`${OUT}/listen.mp3`)
 await ear.page.locator('input[accept=".srt,.vtt"]').setInputFiles(`${OUT}/listen.srt`)
 await ear.page.locator('video').evaluate((v) => v.play())
@@ -232,6 +263,34 @@ const listenedSec = await ear.page.evaluate(() => new Promise((ok) => {
   r.onsuccess = () => { const g = r.result.transaction('meta').objectStore('meta').get('stats'); g.onsuccess = () => ok(g.result?.listened ?? 0) }
 }))
 await ear.ctx.close()
+
+// Finishing a stage: a learner with stage 1's words and listening done reads chapter 1 and is celebrated.
+const stageCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, reducedMotion: 'reduce' })
+const sp = await stageCtx.newPage()
+sp.on('pageerror', (e) => errors.push(`page: ${e.message}`))
+await sp.goto(URL)
+await sp.getByRole('button', { name: "I'm new to French" }).click()
+await sp.locator('.tiles').waitFor()
+await sp.evaluate((lemmas) => new Promise((ok) => {
+  const r = indexedDB.open('pluton-fr')
+  r.onsuccess = () => {
+    const now = Date.now(), t = r.result.transaction(['cards', 'meta'], 'readwrite')
+    for (const lemma of lemmas) t.objectStore('cards').put({ lemma, added: now, fsrs: { due: new Date(now + 864e6), stability: 10,
+      difficulty: 5, elapsed_days: 0, scheduled_days: 10, reps: 2, lapses: 0, learning_steps: 0, state: 2, last_review: new Date(now) } })
+    t.objectStore('meta').put({ streak: 0, lastDay: null, points: 0, bestCombo: 0, newDay: null, newCount: 0, listened: 300 }, 'stats')
+    t.oncomplete = ok
+  }
+}), deck.slice(0, 80).map((w) => w.lemma))
+await sp.reload()
+await sp.locator('.task').click()
+await sp.getByRole('button', { name: '✓ I read it' }).click()
+await sp.locator('.celebrate').waitFor()
+const celebration = await sp.locator('.celebrate').textContent()
+await sp.screenshot({ path: `${OUT}/2-celebrate.png` })
+await sp.getByRole('button', { name: 'Continuer' }).click()
+await sp.locator('nav').getByRole('button', { name: /Home/ }).click()
+const stageAfter = await sp.locator('.stage .tag').textContent()
+await stageCtx.close()
 
 // Placement: someone who knows the 300 most common words skips them.
 const placeCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, reducedMotion: 'reduce' })
@@ -302,7 +361,7 @@ server.kill()
 
 const claudeSent = { model: claude?.body.model, fallbacks: claude?.body.fallbacks, effort: claude?.body.output_config?.effort,
   beta: claude?.headers['anthropic-beta'], browser: claude?.headers['anthropic-dangerous-direct-browser-access'] }
-const report = { placement, placedKnown, bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
+const report = { stageTag, lastChapterWords, steps, celebration, stageAfter, placement, placedKnown, bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
 console.log(JSON.stringify(report, null, 2))
 const checks = {
   'no errors': !errors.length,
@@ -324,6 +383,10 @@ const checks = {
   'words search by English': searchHits.length === 1 && searchHits[0].includes('avoir'),
   'classics shelf lists 7 texts': shelfItems === 7,
   'shelf text shows author': byline.includes('Maupassant'),
+  'home shows stage 1 of the path': /Étape 1 \/ 10/.test(stageTag),
+  'every chapter is open at stage 1 (C1 chapter readable)': lastChapterWords > 150,
+  'the path map lists 10 stages': steps === 10,
+  'finishing a stage is celebrated and moves you on': celebration.includes('Le Mur ✓') && /Étape 2 \/ 10/.test(stageAfter),
   'placement estimates ~300 words and marks them known': /~300 words/.test(placement) && placedKnown.trim() === '300',
   'bridge counts the French in Poe': /\d+ words here \(\d+%\) came that way/.test(bridgeIntro),
   'bridge weaves French into the English': woven > 100,

@@ -4,3 +4,4 @@ smoke-out/
 .venv/
 data/*/raw/
 public/data/
+__pycache__/

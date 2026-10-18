@@ -29,16 +29,30 @@ const WORD = /\p{L}+(?:['-]\p{L}+)*'?/gu
 const PART = /[^'-]+'?/g
 const key = (s) => LANG.fold(s.toLowerCase())
 
-/** Words in `text` with offsets. Compounds Lexique knows stay whole ("aujourd'hui"), others split on ' and -. */
+const SENTENCE_START = /(?:[.!?…:«»"“—\n]\s*|^\s*)$/ // what may come right before a sentence's first word
+const upper = (s) => /^\p{Lu}/u.test(s)
+
+/**
+ * Words in `text` with offsets. Compounds Lexique knows stay whole ("aujourd'hui"), others split on ' and -.
+ * French capitalises little mid-sentence, so a capital there marks a name ("à Paris" is not the plural of "pari").
+ */
 export function tokenize(text, forms) {
   const out = []
-  const tok = (start, word, lemma) =>
-    out.push({ start, end: start + word.length, text: word, lemma: lemma ?? key(word), name: !lemma && /^\p{Lu}/u.test(word) })
-  for (const m of text.replace(/’/g, "'").matchAll(WORD)) { // same length, so offsets match `text` (store texts NFC)
+  const tok = (start, word, lemma, name = !lemma && upper(word)) =>
+    out.push({ start, end: start + word.length, text: word, lemma: lemma ?? key(word), name })
+  const plain = text.replace(/’/g, "'") // same length, so offsets match `text` (store texts NFC)
+  for (const m of plain.matchAll(WORD)) {
+    if (upper(m[0]) && !SENTENCE_START.test(plain.slice(Math.max(0, m.index - 3), m.index))) {
+      tok(m.index, m[0], null, true)
+      continue
+    }
     const whole = forms.get(key(m[0]))
     if (whole && !m[0].endsWith("'")) { tok(m.index, m[0], whole); continue }
-    for (const p of m[0].matchAll(PART))
-      tok(m.index + p.index, p[0], p[0].endsWith("'") ? LANG.elision[key(p[0].slice(0, -1))] : forms.get(key(p[0])))
+    for (const p of m[0].matchAll(PART)) {
+      if (p.index > 0 && upper(p[0])) tok(m.index + p.index, p[0], null, true) // L'Italie
+      else if (p.index > 0 && key(p[0]) === 't') continue // the euphonic -t- in a-t-il
+      else tok(m.index + p.index, p[0], p[0].endsWith("'") ? LANG.elision[key(p[0].slice(0, -1))] : forms.get(key(p[0])))
+    }
   }
   return out
 }

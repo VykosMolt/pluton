@@ -7,13 +7,20 @@ Android (Chrome → Install app) and Linux (Chromium → Install). Progress stay
 
 Aimed at C1: see the Road to C1 in [PLAN.md](PLAN.md) for what's covered and what isn't yet.
 
+- **Le Chemin (the path)**: ten stages from A1 to C1, framed as Pluton's journey from Poe's wall to the Paris Opéra.
+  Each stage has goals across skills: words learned, verb tables, its chapter of Pluton's story (written for that
+  stage's French) plus a classic from B2 on, and listening time; talking and writing are bonus ★. Home shows the
+  current stage and today's next step. **The path guides; it never locks**: every text, chapter, verb table and
+  feature is open from day one.
+
 - **Runs**: ~10-minute sessions over an 8,000-word deck (spoken + written frequency). New words are introduced in
   a real sentence, then you *type* them back: fill the gap, listen and type, recall from English (nouns with the
   right gender), and full-sentence dictées once a word is solid. Conjugation tables for 59 verbs unlock tense by
   tense. FSRS schedules every review. Combos, points, levels, a streak, and a cat with opinions.
-- **Library**: paste lyrics, an article, or subtitles, or pick from a shelf of public-domain classics (La Fontaine,
-  Perrault, Daudet, Maupassant, Verne). Every word is coloured by whether you know it. A text unlocks at 95%
-  understood, and one tap queues exactly the words that get you there.
+- **Library**: Pluton's story (10 chapters, A1 to C1), your own texts (lyrics, articles, subtitles), and a shelf of
+  public-domain classics (La Fontaine, Perrault, Daudet, Maupassant, Verne). Every word is coloured by whether you know
+  it; the story and classics read themselves aloud with the sentence highlighted. A text gets comfortable at 95% of
+  words known, and one tap queues exactly the words that get you there.
 - **Norman Bridge**: nearly a third of English came from French. Read Poe and Lovecraft in English with those words
   highlighted, then woven back into French as you learn them. Tap a word for its French twin and the sound change
   that hides it (forêt → forest: the circumflex is a lost s). Classic false friends are flagged.
@@ -21,7 +28,8 @@ Aimed at C1: see the Road to C1 in [PLAN.md](PLAN.md) for what's covered and wha
   lines, pause after each line. Hours listened count toward the Road to C1.
 - **Talk** (optional, your own AI key): converse with Pluton, who answers at your level and corrects you as you go
   (typing or speaking), and get your writing marked with every error explained.
-- **Words**: the whole deck as a collection, with memory strength and next review.
+- **Words / Verbs**: the whole deck as a collection with memory strength and next review, and every conjugation
+  table of 59 verbs, with audio and a Practice button whatever your stage.
 - First launch offers a placement check, so people who know some French skip what they know.
 
 ## AI: bring your own key
@@ -80,6 +88,8 @@ data/fr/shelf.py      fetches the French classics and the English Norman Bridge 
 src/lib/logic.js      pure logic (tested): tokenizer, grading, FSRS run queue, coverage, cues, cognate lookup
 src/lib/lang.js       everything French-specific on the app side (accents, tenses, clue texts)
 src/lib/tutor.js      what Pluton asks the AI (levels, prompts)
+src/lib/path.js       the ten stages, their goals, and today's next step (tested)
+data/fr/story.json    Pluton's story, hand-written, one chapter per stage
 src/lib/ai.js         bring-your-own-key client (Anthropic SDK + OpenAI-compatible)
 src/lib/db.js         IndexedDB: cards, append-only review log, texts, meta
 src/lib/sound.js      clips + sound effects through one AudioContext

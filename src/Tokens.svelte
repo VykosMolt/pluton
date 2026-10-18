@@ -1,6 +1,8 @@
 <script>
-  /** `text` with each token from `toks` tappable and coloured by status (global .w.* classes). */
-  let { text, toks, statusOf, sel = null, onpick } = $props()
+  /** `text` with each token from `toks` tappable and coloured by status (global .w.* classes); `hl` = [start, end)
+   *  marks the sentence being read aloud. */
+  let { text, toks, statusOf, sel = null, onpick, hl = null } = $props()
+  const lit = (t) => hl && t.start >= hl[0] && t.end <= hl[1]
 
   const segs = $derived.by(() => {
     const out = []
@@ -18,5 +20,5 @@
 </script>
 
 {#each segs as s}{#if s.i === undefined}{nbsp(s.text)}{:else if toks[s.i].name}{s.text}{:else}<span role="button" tabindex="0"
-      class="w {statusOf(toks[s.i].lemma)}" class:sel={sel === toks[s.i]} onclick={() => onpick(toks[s.i])}
+      class="w {statusOf(toks[s.i].lemma)}" class:sel={sel === toks[s.i]} class:hl={lit(toks[s.i])} onclick={() => onpick(toks[s.i])}
       onkeydown={(e) => e.key === 'Enter' && onpick(toks[s.i])}>{s.text}</span>{/if}{/each}

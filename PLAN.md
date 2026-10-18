@@ -7,6 +7,13 @@ content unlocks, short runs). One local-first PWA for Linux, Android, iOS.
 **Target (user, 2026-10-18): a learner can reach C1 with this app.** That makes the app the hub for all of
 C1's skills, not a vocab drill. See "Road to C1" below.
 
+**Progression (user, 2026-10-18): a real path, not a pile of options, and every feature and reading stays open
+regardless of it.** Le Chemin = 10 stages (A1→C1), goals per stage (words learned, verb tables of the stage's tense,
+its story chapter (+ a classic from B2), listening minutes; talk/write = bonus ★). Targets come from measurement:
+the classics only reach 95% coverage at 3.2k–7k words, so A1–B1 reading is Pluton's story, written per stage and
+checked against the stage's vocabulary. The stage reached is stored (forgetting never demotes); any stage can be made
+current from the map. Nothing is gated: chapters, classics, verbs (Verbs tab: Practice any tense), all tabs.
+
 ## Decisions
 - **PWA, not native** — one codebase; iOS installs via Safari "Add to Home Screen", no Mac/Xcode/$99.
   Wrap with Tauri 2 later only if store distribution is wanted.
@@ -82,3 +89,6 @@ Tauri wrap, settings (new words/day).
 - 2026-10-18: commit emails rewritten to noreply (needs one force-push by the user: hook blocks it for Claude).
   AI tutor (talk + writing, 5 providers + custom), Settings, pace, Norman Bridge (5 Poe/Lovecraft texts, 7.4k
   cognates), welcome + placement, deploy script. Checks: 25 unit tests, 30 smoke checks.
+- 2026-10-18: Le Chemin (path.js, Path.svelte), Pluton's story (10 chapters), read-along audio for the story and
+  classics (1019 sentence clips), "I read it", stage celebration, Verbs browser, tokenizer: mid-sentence capitals
+  are names ("Paris" ≠ pari), euphonic -t- skipped. Checks: 29 unit tests, 34 smoke checks.

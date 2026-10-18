@@ -13,6 +13,11 @@ test('tokenize: elision, known compounds, hyphen split, names, offsets', () => {
   assert.deepEqual(toks.map((t) => t.lemma), ['le', 'homme', 'que', 'il', 'voir', "aujourd'hui", 'dire', 'il', 'à', 'paul', 'mon', 'coeur'])
   assert.deepEqual(toks.filter((t) => t.name).map((t) => t.text), ['Paul'])
   for (const t of toks) assert.equal(text.slice(t.start, t.end).replace('’', "'"), t.text)
+  const f = new Map([...forms, ['paris', 'pari'], ['va', 'aller'], ['va-t-il', undefined], ['à', 'à']])
+  const names = (s) => tokenize(s, f).filter((t) => t.name).map((t) => t.text)
+  assert.deepEqual(names('Il va à Paris. « Le chat dort. »'), ['Paris']) // not the plural of "pari"
+  assert.deepEqual(names("Il dit : « Le chat ! » L'Italie, Marie et Paul."), ['Italie', 'Marie', 'Paul'])
+  assert.deepEqual(tokenize('Où va-t-il ?', f).map((t) => t.lemma), ['où', 'aller', 'il']) // no euphonic t
 })
 
 test('coverage and words-to-unlock', () => {

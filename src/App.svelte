@@ -2,8 +2,10 @@
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
   import * as db from './lib/db.js'
-  import { status, buildRun, dayOf, nextStreak, liveStreak, brief, tokenize, coverage, unlockList, levelFor, isWord, parseConj, listenGoal, milestone, NEW_PER_RUN, NEW_PER_DAY, UNLOCK } from './lib/logic.js'
-  import { unlock, say } from './lib/sound.js'
+  import { status, buildRun, dayOf, nextStreak, liveStreak, brief, levelFor, isWord, parseConj, State, NEW_PER_RUN, NEW_PER_DAY } from './lib/logic.js'
+  import { unlock, say, sfx } from './lib/sound.js'
+  import { STAGES, pathState, focus } from './lib/path.js'
+  import Path from './Path.svelte'
   import { DATA, LANG } from './lib/lang.js'
   import Cat from './Cat.svelte'
   import Run from './Run.svelte'
@@ -21,7 +23,10 @@
   const cards = new SvelteMap() // lemma -> stored card
   let texts = $state([])
   let shelf = $state.raw([]) // built-in public-domain classics (French) and Norman Bridge texts (English)
-  const french = $derived(shelf.filter((t) => t.lang !== 'en'))
+  let story = $state.raw([]) // Pluton's story: one chapter per stage of the path
+  let openText = $state(null) // text the Library shows (set from home goals too)
+  let listenNow = $state(false)
+  let celebrate = $state(null) // index of the stage just reached
   let stats = $state({ streak: 0, lastDay: null, points: 0, bestCombo: 0, newDay: null, newCount: 0 })
   let view = $state('home')
   let now = $state(new Date())
@@ -34,11 +39,12 @@
 
   onMount(async () => {
     try {
-      const [w, f, cj, sh, cs, st, ts] = await Promise.all([
+      const [w, f, cj, sh, sy, cs, st, ts] = await Promise.all([
         fetch(`${DATA}words.json`).then((r) => r.json()),
         fetch(`${DATA}forms.json`).then((r) => r.json()),
         fetch(`${DATA}conj.json`).then((r) => r.json()),
         fetch(`${DATA}shelf.json`).then((r) => r.json()),
+        fetch(`${DATA}story.json`).then((r) => r.json()),
         db.getAll('cards'), db.get('meta', 'stats'), db.getAll('texts'),
       ])
       ai = (await db.get('meta', 'ai')) ?? null
@@ -47,7 +53,8 @@
       words = new Map(w.map((x) => [x.lemma, x]))
       forms = new Map(Object.entries(f))
       conj = cj
-      shelf = sh.map((s, i) => ({ ...s, id: `shelf-${i}` }))
+      shelf = sh.map((s) => ({ ...s, id: s.title })) // titles are unique; the path refers to classics by title
+      story = sy.map((s, i) => ({ ...s, id: `story-${i}`, stage: i, lang: 'fr' }))
       for (const c of cs) cards.set(c.lemma, c)
       if (st) stats = st
       texts = ts
@@ -80,29 +87,63 @@
     : !cards.size ? { fr: "Bonjour ! Moi, c'est Pluton.", en: "Hi! I'm Pluto. Let's learn your first words." }
     : summary && waiting ? { fr: 'Bien joué ! On continue ?', en: 'Well done! Another run?' }
     : summary ? { fr: 'Bien joué ! À demain !', en: 'Well done! See you tomorrow.' }
+    : stage && waiting ? { fr: stage.fr, en: stage.say }
     : waiting ? { fr: 'On y va ?', en: `Shall we? ${waiting} cards are waiting.` }
-    : { fr: 'Zzz… À demain !', en: 'All done. See you tomorrow!' })
-  const TALK = [25, 100, 250, 500, 1000], WRITE = [3, 10, 25, 50, 100]
-  const reading = $derived.by(() => {
-    if (!forms) return { next: null, unlocked: 0 }
-    let next = null, unlocked = 0
-    for (const t of [...texts, ...french]) {
-      const toks = tokenize(t.body, forms)
-      const c = coverage(toks, statusOf)
-      if (c.pct >= UNLOCK) unlocked++
-      else if (c.total && (!next || c.pct > next.pct)) next = { title: t.title, pct: c.pct, need: unlockList(toks, statusOf).length }
+    : { fr: 'Zzz… À demain !', en: 'All done for today. See you tomorrow!' })
+  // Progression: measured from real cards and stats; the stage reached is stored, so forgetting never demotes you.
+  const metrics = $derived.by(() => {
+    let learned = 0, tablesTotal = 0
+    const tables = {}
+    for (const c of cards.values()) {
+      if (!(c.known || c.fsrs.state === State.Review || c.fsrs.state === State.Relearning)) continue
+      if (isWord(c)) learned++
+      else if (!c.known) {
+        const { tense } = parseConj(c.lemma)
+        tables[tense] = (tables[tense] ?? 0) + 1
+        tablesTotal++
+      }
     }
-    return { next, unlocked }
+    return { learned, tables, tablesTotal, read: new Set(stats.read ?? []), listenMin: (stats.listened ?? 0) / 60,
+      talked: stats.talked ?? 0, written: stats.written ?? 0 }
   })
-  const nextUnlock = $derived(reading.next)
-  const road = $derived.by(() => {
-    let deck = 0
-    for (const w of words?.values() ?? []) if (w.sentence) deck++
-    const tables = conj ? Object.values(conj).reduce((n, c) => n + Object.keys(c.t).length, 0) : 0
-    let tablesKnown = 0
-    for (const c of cards.values()) if (!isWord(c) && status(c) === 'known') tablesKnown++
-    return { deck, tables, tablesKnown }
+  const titles = $derived(Object.fromEntries(story.map((c) => [c.id, `Chapitre ${c.stage + 1} · ${c.title}`])))
+  const path = $derived(pathState(metrics, titles))
+  const reached = $derived(Math.max(path.current, stats.stage ?? 0))
+  const stage = $derived(reached < STAGES.length ? path.stages[reached] : null)
+  const todo = $derived(focus(stage, !!ai))
+  $effect(() => {
+    if (!words || path.current <= (stats.stage ?? 0)) return
+    celebrate = path.current
+    stats.stage = path.current
+    sfx('done')
+    db.put('meta', $state.snapshot(stats), 'stats')
   })
+
+  /** Go where a goal is advanced. */
+  function act(g) {
+    unlock()
+    if (g.kind === 'words' || g.kind === 'verbs') return counts.due || counts.fresh ? start() : (view = 'words')
+    if (g.kind === 'talk' || g.kind === 'write') return (view = 'talk')
+    if (g.kind === 'read') openText = g.id
+    if (g.kind === 'listen') {
+      openText = `story-${Math.min(reached, STAGES.length - 1)}`
+      listenNow = true
+    }
+    view = 'read'
+  }
+
+  async function jump(i) {
+    if (!confirm(`Make “${STAGES[i].place}” your current stage? Earlier goals stay as they are; nothing gets locked or unlocked.`)) return
+    stats.stage = i
+    await db.put('meta', $state.snapshot(stats), 'stats')
+    view = 'home'
+  }
+
+  async function markRead(id) {
+    stats.read = [...new Set([...(stats.read ?? []), id])]
+    await db.put('meta', $state.snapshot(stats), 'stats')
+  }
+
   const label = (lemma) => {
     if (isWord({ lemma })) return null
     const { verb, tense } = parseConj(lemma)
@@ -136,7 +177,6 @@
     stats.listened = (stats.listened ?? 0) + seconds
     await db.put('meta', $state.snapshot(stats), 'stats')
   }
-  const hours = $derived((stats.listened ?? 0) / 3600)
 
   async function count(kind) {
     stats[kind] = (stats[kind] ?? 0) + 1
@@ -214,65 +254,41 @@
       <p class="bubble" lang="fr">{line.fr}<small lang="en">{line.en}</small></p>
     </section>
 
+    <Path {path} {reached} onaction={act} onmap={() => (view = 'path')} />
+
+    <section class="today">
+      <h3>Today</h3>
+      <button class="btn go" onclick={start} disabled={!counts.due && !counts.fresh}>
+        {#if counts.due || counts.fresh}
+          <span>{stats.lastDay === today ? 'Another run' : 'Start your run'}</span>
+          <small>{counts.due} reviews · {counts.fresh} new</small>
+        {:else}
+          <span>Run done for today ✓</span>
+          <small>Come back tomorrow for your reviews</small>
+        {/if}
+      </button>
+      {#if todo}
+        <button class="panel task" onclick={() => act(todo)}>
+          <span class="ic">{{ read: '📖', listen: '🎧', talk: '💬', write: '✍️' }[todo.kind]}</span>
+          <span><b>Then: {todo.label}</b><small>{todo.kind === 'listen' ? `${todo.have} / ${todo.need} min · read-along of your chapter` : todo.bonus ? 'Bonus ★' : 'Opens it in the library'}</small></span>
+        </button>
+      {/if}
+    </section>
+
     <section class="tiles">
       <div class="panel tile"><b class="learning">{counts.learning}</b><span>🌱 learning</span></div>
       <div class="panel tile" title="Remembered for 3+ weeks"><b class="known">{counts.known}</b><span>🌳 known</span></div>
       <div class="panel tile"><b class="due">{counts.due}</b><span>⏰ due now</span></div>
     </section>
 
-    <button class="btn go" onclick={start} disabled={!counts.due && !counts.fresh}>
-      {#if counts.due || counts.fresh}
-        <span>Start run</span>
-        <small>{counts.due} reviews · {counts.fresh} new</small>
-      {:else}
-        <span>All done for today</span>
-        <small>Read something in the library</small>
-      {/if}
-    </button>
-
-    {#if nextUnlock}
-      <button class="panel unlock" onclick={() => (view = 'read')}>
-        <span class="muted">Next unlock</span>
-        <b>{nextUnlock.title}</b>
-        <div class="bar"><i style="width:{(100 * nextUnlock.pct) / UNLOCK}%"></i></div>
-        <span>{Math.round(nextUnlock.pct * 100)}% understood · learn <b>{nextUnlock.need}</b> words to unlock</span>
-      </button>
-    {/if}
-
-    <section class="panel road">
-      <h3>Road to C1</h3>
-      <div class="track">
-        <span>📚 Vocabulary</span><span class="bar"><i style="width:{(100 * counts.known) / (road.deck || 1)}%"></i></span>
-        <small>{counts.known} / {road.deck.toLocaleString('en')} words known</small>
-      </div>
-      <div class="track">
-        <span>📐 Verbs</span><span class="bar"><i style="width:{(100 * road.tablesKnown) / (road.tables || 1)}%"></i></span>
-        <small>{road.tablesKnown} / {road.tables} tables known</small>
-      </div>
-      <div class="track">
-        <span>📖 Reading</span><span class="bar"><i style="width:{(100 * reading.unlocked) / (texts.length + french.length || 1)}%"></i></span>
-        <small>{reading.unlocked} / {texts.length + french.length} texts unlocked (incl. {french.length} classics)</small>
-      </div>
-      <div class="track">
-        <span>🎧 Listening</span><span class="bar"><i style="width:{(100 * hours) / listenGoal(hours)}%"></i></span>
-        <small>{hours < 10 ? hours.toFixed(1) : Math.round(hours)} h listened · next milestone {listenGoal(hours)} h</small>
-      </div>
-      <div class="track">
-        <span>🗣️ Talking</span><span class="bar"><i style="width:{(100 * (stats.talked ?? 0)) / milestone(stats.talked ?? 0, TALK)}%"></i></span>
-        <small>{stats.talked ?? 0} messages in French · next milestone {milestone(stats.talked ?? 0, TALK)}</small>
-      </div>
-      <div class="track">
-        <span>✍️ Writing</span><span class="bar"><i style="width:{(100 * (stats.written ?? 0)) / milestone(stats.written ?? 0, WRITE)}%"></i></span>
-        <small>{stats.written ?? 0} texts corrected · next milestone {milestone(stats.written ?? 0, WRITE)}</small>
-      </div>
-      {#if !ai}<button class="link" onclick={() => (view = 'settings')}>Talking and writing need an AI: connect one</button>{/if}
-    </section>
-
     <footer class="muted">
       <span>⭐ {stats.points} pts · best combo ×{stats.bestCombo}</span>
     </footer>
+  {:else if view === 'path'}
+    <Path full {path} {reached} onaction={act} onjump={jump} />
   {:else if view === 'read'}
-    <Reader {words} {forms} {cards} {statusOf} {shelf} bind:texts />
+    <Reader {words} {forms} {cards} {statusOf} {shelf} {story} read={metrics.read} onread={markRead} onlisten={listened}
+      bind:texts bind:openId={openText} bind:listenNow />
   {:else if view === 'listen'}
     <Listen {words} {forms} {cards} {statusOf} onlisten={listened} />
   {:else if view === 'talk'}
@@ -280,12 +296,29 @@
   {:else if view === 'settings'}
     <Settings bind:ai bind:pace onbackup={backup} onrestore={restore} />
   {:else}
-    <Words {words} {cards} {now} />
+    <Words {words} {cards} {now} {conj} />
+  {/if}
+
+  {#if celebrate != null}
+    <div class="overlay" role="dialog" aria-modal="true" aria-label="Stage complete">
+      <div class="panel celebrate">
+        <Cat mood="fire" size={110} />
+        <h2>{STAGES[celebrate - 1].place} ✓</h2>
+        {#if celebrate < STAGES.length}
+          <p>Étape {celebrate} terminée ! Next stop: <b>{STAGES[celebrate].place}</b> ({STAGES[celebrate].level}).</p>
+          <p class="next" lang="fr">{STAGES[celebrate].fr}<small lang="en">{STAGES[celebrate].say}</small></p>
+          <p class="muted">Chapter {celebrate + 1} of Pluton's story is waiting in the library.</p>
+        {:else}
+          <p>Pluton made it to the Opéra, and you walked the whole path. Félicitations !</p>
+        {/if}
+        <button class="btn" onclick={() => (celebrate = null)}>Continuer</button>
+      </div>
+    </div>
   {/if}
 
   <nav>
-    <button class:on={view === 'home'} onclick={() => { view = 'home'; now = new Date() }}><i>🏠</i>Home</button>
-    <button class:on={view === 'read'} onclick={() => (view = 'read')}><i>📖</i>Library</button>
+    <button class:on={view === 'home' || view === 'path'} onclick={() => { view = 'home'; now = new Date() }}><i>🏠</i>Home</button>
+    <button class:on={view === 'read'} onclick={() => { view = 'read'; openText = null }}><i>📖</i>Library</button>
     <button class:on={view === 'listen'} onclick={() => (view = 'listen')}><i>🎧</i>Listen</button>
     <button class:on={view === 'talk'} onclick={() => (view = 'talk')}><i>💬</i>Talk</button>
     <button class:on={view === 'words'} onclick={() => { view = 'words'; now = new Date() }}><i>📚</i>Words</button>
@@ -304,14 +337,15 @@
     background: color-mix(in srgb, var(--gold) 20%, transparent);
   }
   .level i { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--gold); }
-  .road h3 { margin-bottom: 10px; }
-  .track { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 2px 10px; margin-bottom: 10px; }
-  .track > span:first-child { font-weight: 700; font-size: 15px; }
-  .track small { grid-column: 2; color: var(--muted); font-size: 13px; }
-  .track .bar { height: 10px; }
-  .track .bar i { background: linear-gradient(90deg, var(--blue), var(--green)); }
-  .soon { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
-  .road { margin-bottom: 16px; }
+  .today h3 { margin-bottom: 8px; }
+  .task { width: 100%; display: flex; gap: 12px; align-items: center; text-align: left; cursor: pointer; margin-top: -6px; }
+  .task .ic { font-size: 26px; }
+  .task small { display: block; color: var(--muted); font-size: 13px; }
+  .overlay { position: fixed; inset: 0; background: rgba(10, 8, 25, 0.55); display: grid; place-items: center; padding: 16px; z-index: 20; }
+  .celebrate { max-width: 420px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; animation: pop 0.35s; }
+  .celebrate p { margin: 4px 0; }
+  .next { font-weight: 700; font-style: italic; }
+  .next small { display: block; font-weight: 400; color: var(--muted); }
   .recap { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
   .chip {
     border: 2px solid var(--line); background: var(--panel); border-radius: 12px; padding: 6px 10px; cursor: pointer;
@@ -341,9 +375,8 @@
   .learning { color: var(--orange); }
   .known { color: var(--green); }
   .due { color: var(--blue); }
-  .go { width: 100%; flex-direction: column; gap: 2px; font-size: 22px; padding: 18px; margin-bottom: 20px; }
+  .go { width: 100%; flex-direction: column; gap: 2px; font-size: 22px; padding: 18px; margin-bottom: 16px; }
   .go small { font-weight: 600; font-size: 14px; opacity: 0.85; }
-  .unlock { width: 100%; display: flex; flex-direction: column; gap: 6px; text-align: left; cursor: pointer; margin-bottom: 16px; }
   .bar { height: 12px; border-radius: 99px; background: var(--line); overflow: hidden; }
   .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--orange)); border-radius: 99px; }
   .summary { animation: pop 0.4s; }

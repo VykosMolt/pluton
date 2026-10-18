@@ -104,18 +104,28 @@ ELISION = {"l": "le", "d": "de", "j": "je", "m": "me", "t": "te", "s": "se", "n"
            "qu": "que", "jusqu": "jusque", "lorsqu": "lorsque", "puisqu": "puisque", "quoiqu": "quoique"}
 
 
+SENTENCE_START = re.compile(r"(?:[.!?…:«»\"“—\n]\s*|^\s*)$")
+
+
 def tokens(text, forms):
-    """[(surface, lemma|None)]. Compounds Lexique knows stay whole; others split on ' and -."""
+    """[(surface, lemma|None)]. Compounds Lexique knows stay whole; others split on ' and -. A capital mid-sentence
+    is a name (None), the euphonic -t- is skipped. Keep in sync with src/lib/logic.js."""
     out = []
-    for m in WORD.finditer(text.replace("’", "'")):
+    plain_text = text.replace("’", "'")
+    for m in WORD.finditer(plain_text):
         tok = m.group()
+        if tok[0].isupper() and not SENTENCE_START.search(plain_text[max(0, m.start() - 3):m.start()]):
+            out.append((tok, None))
+            continue
         key = tok.lower().replace("œ", "oe")  # Lexique spells "coeur", Tatoeba/Wiktionary mostly "cœur"
         if key in forms and not tok.endswith("'"):
             out.append((tok, forms[key]))
             continue
-        for part in re.split(r"(?<=')|-", tok):
-            if part:
-                low = part.lower().replace("œ", "oe")
+        for p in re.finditer(r"[^'-]+'?", tok):
+            part, low = p.group(), p.group().lower().replace("œ", "oe")
+            if p.start() > 0 and part[0].isupper():
+                out.append((part, None))
+            elif not (p.start() > 0 and low == "t"):
                 out.append((part, ELISION.get(low[:-1]) if low.endswith("'") else forms.get(low)))
     return out
 
@@ -269,6 +279,21 @@ def cognates(rank, gloss_words, from_english, deck):
                     best[en] = ((sim, -rank[fr]), fr, clue)
     out = {en: [fr, clue] for en, (_, fr, clue) in sorted(best.items())}
     return out | {en: [fr, "faux:" + meaning] for en, (fr, meaning) in FALSE_FRIENDS.items()}
+
+
+def split_sentences(body):
+    """[[start, end, spoken text]] for read-along: offsets into body (BMP text, so they match JS string indices)."""
+    out = []
+    for m in re.finditer(r"[^.!?…\n]+(?:[.!?…]+)?", body):
+        s = m.group()
+        if not re.search(r"[^\W\d_]", s):
+            continue
+        lead = len(s) - len(s.lstrip(" «»—\"“”"))
+        start, end = m.start() + lead, m.start() + len(s.rstrip())
+        spoken = re.sub(r"[«»“”\"]|^—\s*", "", body[start:end]).strip()
+        if spoken:
+            out.append([start, end, spoken])
+    return out
 
 
 def phrase(i, tense, form):
@@ -433,6 +458,7 @@ def synth_all(texts):
 
 def main():
     ranked, forms, pos, gender, common = load_lexique()
+    forms["parce"] = "parce que"  # only ever the first half of "parce que"
     ranked = [l for l in ranked if pos[l] != "other"][:N_GLOSS]
     rank = {l: i for i, l in enumerate(ranked)}
     print(f"lexique: {len(forms)} forms, top lemmas: {ranked[:12]}", flush=True)
@@ -464,16 +490,23 @@ def main():
     cog = cognates(rank, gloss_words, from_english, {w["lemma"] for w in deck})
     (OUT / "cognates.json").write_text(json.dumps(cog, ensure_ascii=False, separators=(",", ":")))
     print(f"cognates: {len(cog)} English words with a French counterpart")
+    # Read-along audio for Pluton's story and the French classics: one clip per sentence, with its offsets.
     shelf = json.loads((Path(__file__).parent / "shelf.json").read_text())  # from data/fr/shelf.py
+    story = json.loads((Path(__file__).parent / "story.json").read_text())  # hand-written, one chapter per stage
+    for text in story + [t for t in shelf if t.get("lang") == "fr"]:
+        text["sentences"] = [[a, b, audio_id(s)] for a, b, s in split_sentences(text["body"])]
+        tts += [s for _, _, s in split_sentences(text["body"])]
     (OUT / "shelf.json").write_text(json.dumps(shelf, ensure_ascii=False, separators=(",", ":")))
+    (OUT / "story.json").write_text(json.dumps(story, ensure_ascii=False, separators=(",", ":")))
+    print(f"read-along: {sum(len(t.get('sentences', [])) for t in story + shelf)} sentences")
     tts += [phrase(i, tense, f) for c in conj.values() for tense, forms in c["t"].items() for i, f in enumerate(forms) if f]
     print(f"conj: {len(conj)} verbs, {sum(len(c['t']) for c in conj.values())} tables")
     if "--no-audio" not in sys.argv:
         synth_all(tts)
-    check(words, forms, conj, cog)
+    check(words, forms, conj, cog, story)
 
 
-def check(words, forms, conj, cog):
+def check(words, forms, conj, cog, story):
     deck = [w for w in words if "sentence" in w]
     assert len(deck) >= 0.75 * N_DECK, len(deck)  # most deck lemmas find a usable Tatoeba sentence
     assert sum(bool(w["gloss"]) for w in words[:N_DECK]) >= 0.9 * N_DECK
@@ -485,6 +518,7 @@ def check(words, forms, conj, cog):
     assert forms["est"] == "être" and forms["suis"] == "être" and forms["a"] == "avoir", "form→lemma"
     assert [l for _, l in tokens("L'homme qu'il voit aujourd'hui, dit-il.", forms)] == \
         ["le", "homme", "que", "il", "voir", "aujourd'hui", "dire", "il"]
+    assert tokens("Il va à Paris.", forms)[-1] == ("Paris", None) and ("t", "te") not in tokens("A-t-il dit ?", forms)
     assert with_article("homme", "m") == "l'homme" and with_article("hasard", "m") == "le hasard"
     by = {w["lemma"]: w for w in words}
     assert by["vous"]["gloss"] == GLOSS["vous"] and by["peu"]["display"] == "peu", "overrides applied"
@@ -506,6 +540,11 @@ def check(words, forms, conj, cog):
     assert cog["forest"] == ["forêt", "circumflex"] and cog["strange"] == ["étrange", "es"]
     assert "house" not in cog and cog["library"] == ["librairie", "faux:bookshop"]
     assert "door" not in cog and "window" not in cog  # Germanic, not Norman
+    # read-along: sentence offsets cover the text and point at real sentences
+    ch1 = story[0]
+    assert len(story) == 10 and ch1["body"][slice(*ch1["sentences"][0][:2])] == "Il fait noir."
+    assert all(t["body"][a:b].strip() for t in story for a, b, _ in t["sentences"])
+    assert split_sentences("« Il y a quelqu'un ? » Oui !")[0][2] == "Il y a quelqu'un ?"
     if "--no-audio" not in sys.argv:
         clips = [a for c in conj.values() for ids in c["audio"].values() for a in ids if a]
         assert all((OUT / "audio" / f"{a}.mp3").stat().st_size > 0 for a in clips), "conjugation clip missing"
