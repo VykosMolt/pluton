@@ -1,10 +1,10 @@
 // End-to-end smoke check against the production build: plays a run, uses the library, reloads, jumps the clock
 // three days and plays the review run (which includes English -> French recall).
 // Fails on any console/page error or audio fallback. Screenshots go to argv[2] (default ./smoke-out).
-//   npm run smoke [-- outdir]
+//   npm run smoke [-- outdir]          BROWSER=firefox|webkit npm run smoke   (default chromium)
 import { spawn, execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { chromium } from 'playwright'
+import { chromium, firefox, webkit } from 'playwright'
 import { produceAnswer, brief } from '../src/lib/logic.js'
 import { startMockAI } from './mock-ai.mjs'
 
@@ -22,7 +22,12 @@ await new Promise((ok, fail) => {
   server.on('exit', (code) => fail(new Error(`vite preview exited (${code}); port ${PORT} busy?`)))
 })
 
-const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] })
+const ENGINE = process.env.BROWSER ?? 'chromium'
+const browser = await { chromium, firefox, webkit }[ENGINE].launch({
+  chromium: { args: ['--autoplay-policy=no-user-gesture-required'] },
+  firefox: { firefoxUserPrefs: { 'media.autoplay.default': 0, 'media.autoplay.blocking_policy': 0 } },
+}[ENGINE])
+console.log(`engine: ${ENGINE} ${browser.version()}`)
 const errors = []
 const audio = { ok: 0, bad: 0 }
 

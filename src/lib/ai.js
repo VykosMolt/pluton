@@ -72,8 +72,9 @@ export async function chat(cfg, { system, messages, effort = 'low', onText, sign
     })
     if (!res.ok) throw Object.assign(new Error(await res.text().catch(() => res.statusText)), { status: res.status })
     let text = '', buf = ''
-    for await (const chunk of res.body.pipeThrough(new TextDecoderStream())) {
-      buf += chunk
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader() // Safari can't `for await` a stream
+    for (let r = await reader.read(); !r.done; r = await reader.read()) {
+      buf += r.value
       const lines = buf.split('\n')
       buf = lines.pop()
       for (const line of lines) {

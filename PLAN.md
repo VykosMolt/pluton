@@ -63,22 +63,32 @@ the numbers below as waypoints, not CEFR certification).
 | Skill | What C1 needs | Status |
 |---|---|---|
 | Vocabulary | ~8k most frequent lemmas, spoken + written register | **8k deck** (7351 with sentence+audio), ranked by film+book frequency |
-| Grammar: verbs | all common tenses productive; passé simple / subj. imparfait receptive | **Conjugation drills**: 59 verbs × présent, passé composé, imparfait, futur, conditionnel, subjonctif; tenses unlock in order |
+| Grammar: verbs | all common tenses productive; passé simple / subj. imparfait receptive | **Conjugation drills**: 59 verbs × présent, passé composé, imparfait, futur, conditionnel, subjonctif (auto-introduced in order; any tense practisable from the Verbs tab); not yet: passé simple recognition, pronominal verbs (se souvenir…) |
 | Grammar: rest | pronouns (y/en, order), relatives (dont, lequel), agreement, prepositions, register | not yet: sentence-transformation drills, LLM-checked |
-| Reading | unadapted texts: news, novels | Library with coverage + unlock + **classics shelf** (7 public-domain texts, La Fontaine → Verne); next: more shelf, news |
+| Reading | unadapted texts: news, novels | **Pluton's story** (10 graded chapters) + **classics shelf** (7 texts) with read-along, plus your own texts; not yet: more classics, current news |
 | Listening | native speed, varied speakers | **Listen tab**: own media + subtitles, tappable current line, replay/auto-pause, hours listened; **dictée** for known words |
 | Speaking | fluent, spontaneous | **Talk** (BYOK AI): conversation at the learner's level with inline corrections, mic via browser speech recognition; not yet: pronunciation scoring, voice roleplay scenarios |
 | Writing | clear, structured, precise | **Writing coach** (BYOK AI): level-matched prompts, explained corrections, level estimate; dictée trains spelling/agreement; next: turn recurring errors into cards |
 | Bonus | English as a bridge | **Norman Bridge**: Poe/Lovecraft in English, French-derived words woven back into French; sound-change clues; faux amis |
 
 Phases: (1) vocab + verbs [done] → (2) listening player + reading shelf [done, v1] → (3) AI layer, bring-your-own-key
-from the browser, no server [done, v1: talk + writing] → next: grammar-transformation drills, story campaign, errors
-→ cards, pronunciation scoring (Whisper / browser) → a progress view that estimates level per skill from real
-performance, not from points.
+from the browser, no server [done, v1: talk + writing] → (4) Le Chemin + Pluton's story [done] → next: grammar
+drills beyond verbs, writing errors → cards, pronunciation scoring, AI roleplay scenarios / personalised story, a
+per-skill level estimate from real performance.
 
-## Later
-Sync server (replay `log`), hours-listened metric, language picker, precache all audio for full offline,
-Tauri wrap, settings (new words/day).
+## Not built yet
+- Grammar beyond verbs: pronouns (y/en, order), relatives (dont, lequel), agreement, prepositions, register.
+- Verbs: passé simple recognition (C1 reading), pronominal verbs, more than 59 verbs.
+- Writing: recurring errors from corrections turned into cards.
+- Speaking: pronunciation scoring (Whisper or browser), roleplay scenarios (café, interview…); mic input exists
+  only where the browser has speech recognition (not Firefox/Zen).
+- AI story campaign personalised to the learner's words (the 10-chapter story is hand-written, the same for all).
+- Per-skill level estimate from real performance (the path counts activity, it doesn't test).
+- Reading: more classics, current news.
+- Sync between devices (union the append-only logs + replay FSRS); today: backup/restore.
+- Second language + picker; precache all audio for full offline listening; Tauri wrap for app stores.
+- Not verified yet: real phones (iOS audio, install), real AI keys (mock only), Safari/WebKit engine (can't run on
+  Arch), native-speaker review of the story.
 
 ## Progress log
 - 2026-10-18: MVP built and verified end to end (see checklist).
@@ -97,3 +107,5 @@ Tauri wrap, settings (new words/day).
   (gh-pages via `npm run deploy`). Live check found offline broken on first visit; fixed (precache on install,
   ignoreVary, no redundant fetches). Live site verified: SW, manifest/icons, audio, read-along, offline reload.
   Smoke: 35 checks.
+- 2026-10-18: smoke runs on Firefox too (BROWSER=firefox): 35/35 on Firefox 157 (Zen's engine) and Chromium 156.
+  Fixed Safari-incompatible stream reading in the OpenAI-compatible client (no `for await` over ReadableStream).
