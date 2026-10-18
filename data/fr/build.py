@@ -7,6 +7,7 @@ Expects the raw downloads listed in README.md under data/fr/raw/.
 """
 import bz2
 import csv
+from collections import Counter
 import hashlib
 import io
 import json
@@ -20,10 +21,11 @@ from pathlib import Path
 
 RAW = Path(__file__).resolve().parent / "raw"
 OUT = Path(__file__).resolve().parents[2] / "public" / "data" / "fr"
-N_GLOSS = 10_000  # lemmas shipped with a gloss (reader lookups, mining)
-N_DECK = 2_000  # lemmas that get a sentence + audio (the default deck)
+N_GLOSS = 20_000  # lemmas shipped with a gloss (reader lookups, mining)
+N_DECK = 8_000  # lemmas that get a sentence + audio: the road to C1-level reading (~400 days at 20/day)
 EASY = 300  # sentence words within this rank don't count as "hard" (learned in the first weeks)
 VOICE = RAW / "fr_FR-siwis-medium.onnx"
+TTS_WORKERS, TTS_THREADS = 12, 2  # ONNX Runtime defaults to a thread per core in *each* worker: cap it
 
 POS = {"NOM": "noun", "VER": "verb", "AUX": "verb", "ADJ": "adj", "ADV": "adv", "PRE": "prep",
        "CON": "conj", "ONO": "interj", "ADJ:num": "num"}
@@ -56,7 +58,39 @@ GLOSS = {
     "fois": "time (occurrence), once", "chez": "at (someone's place)", "ami": "friend", "après": "after",
     "accord": "agreement (d'accord: OK)", "monsieur": "sir; Mr.; gentleman", "enfant": "child", "seul": "alone; only",
 }
-POS_OVERRIDES = {"peu": "adv"}  # Lexique tags "un peu" as a noun, which made the card "le peu"
+POS_OVERRIDES = {"peu": "adv"}
+
+# --- conjugation drills ---
+N_CONJ = 60  # most frequent verbs that get conjugation tables
+PERSONS = ["1s", "2s", "3s", "1p", "2p", "3p"]
+PRONOUNS = ["je", "tu", "il", "nous", "vous", "ils"]
+TENSES = ["ind:pre", "ind:imp", "ind:fut", "cnd:pre", "sub:pre"]  # + "pc" (passé composé), built from aux + participle
+ETRE_VERBS = {"aller", "venir", "arriver", "partir", "entrer", "sortir", "monter", "descendre", "naître", "mourir",
+              "rester", "tomber", "retourner", "devenir", "revenir", "rentrer", "parvenir"}
+AUX = {"avoir": ["ai", "as", "a", "avons", "avez", "ont"], "être": ["suis", "es", "est", "sommes", "êtes", "sont"]}
+# Lexique is corpus-based, so rare forms are missing. Two fills that hold for every verb outside these sets:
+# subjonctif nous/vous = imparfait nous/vous; subjonctif ils = présent ils. (Compounds of faire follow faire.)
+SUB_IRREG_NOUS = {"être", "avoir", "faire", "pouvoir", "savoir"}
+SUB_IRREG_ILS = {"être", "avoir", "aller", "faire", "pouvoir", "savoir", "vouloir", "valoir"}
+IMPERSONAL = {"falloir", "pleuvoir"}
+PRONOMINAL = {"souvenir", "enfuir", "évanouir", "absenter", "méfier", "moquer"}  # "je me souviens": needs reflexives
+BOTH_AUX = {"passer"}  # "j'ai passé" and "je suis passé" are both everyday: no passé composé drill
+# Written out: the two most irregular verbs, and Lexique mis-tags them ("sommes" as subjonctif, "étaient" as présent).
+FULL = {
+    "être": {"ind:pre": ["suis", "es", "est", "sommes", "êtes", "sont"],
+             "ind:imp": ["étais", "étais", "était", "étions", "étiez", "étaient"],
+             "ind:fut": ["serai", "seras", "sera", "serons", "serez", "seront"],
+             "cnd:pre": ["serais", "serais", "serait", "serions", "seriez", "seraient"],
+             "sub:pre": ["sois", "sois", "soit", "soyons", "soyez", "soient"]},
+    "avoir": {"ind:pre": ["ai", "as", "a", "avons", "avez", "ont"],
+              "ind:imp": ["avais", "avais", "avait", "avions", "aviez", "avaient"],
+              "ind:fut": ["aurai", "auras", "aura", "aurons", "aurez", "auront"],
+              "cnd:pre": ["aurais", "aurais", "aurait", "aurions", "auriez", "auraient"],
+              "sub:pre": ["aie", "aies", "ait", "ayons", "ayez", "aient"]},
+}
+ENDINGS = {"ind:imp": ["ais", "ais", "ait", "ions", "iez", "aient"], "ind:fut": ["ai", "as", "a", "ons", "ez", "ont"],
+           "cnd:pre": ["ais", "ais", "ait", "ions", "iez", "aient"], "sub:pre": ["e", "es", "e", "ions", "iez", "ent"]}
+VOWEL = "aeiouhâàéèêëîïôûœ"  # Lexique tags "un peu" as a noun, which made the card "le peu"
 
 
 def pos_of(cgram):
@@ -114,8 +148,10 @@ def load_lexique():
             form, lemma, cgram = r["ortho"], r["lemme"], r["cgram"]
             if not cgram or not lemma:
                 continue
-            ff = float(r["freqfilms2"] or 0)
-            lem_freq[lemma, cgram] = max(lem_freq.get((lemma, cgram), 0), float(r["freqlemfilms2"] or 0))
+            # Spoken (film subtitles) and written (books) frequency, averaged: C1 means reading too, not just dialogue.
+            ff = (float(r["freqfilms2"] or 0) + float(r["freqlivres"] or 0)) / 2
+            lf = (float(r["freqlemfilms2"] or 0) + float(r["freqlemlivres"] or 0)) / 2
+            lem_freq[lemma, cgram] = max(lem_freq.get((lemma, cgram), 0), lf)
             form_freq[form, lemma] += ff
             if cgram == "NOM" and form == lemma and r["genre"] and ff >= noun_gender.get(lemma, (-1,))[0]:
                 noun_gender[lemma] = (ff, r["genre"])
@@ -154,6 +190,90 @@ def load_glosses(wanted):
             if w not in best or score < best[w][0]:
                 best[w] = (score, gloss)
     return {w: g for w, (_, g) in best.items()}
+
+
+def phrase(i, tense, form):
+    """What gets spoken for one cell: "j'irai", "que nous soyons", "qu'il aille", "ils sont allés"."""
+    pron = "j'" if i == 0 and form[0] in VOWEL else PRONOUNS[i]
+    text = pron + form if pron.endswith("'") else f"{pron} {form}"
+    if tense == "sub:pre":
+        text = ("qu'" if text.startswith("il") else "que ") + text
+    return text
+
+
+def unsoft(stem):
+    """commenç- / mange- -> commenc- / mang-: the spelling change before a/o isn't a different stem."""
+    return stem[:-1] + "c" if stem.endswith("ç") else stem[:-1] if stem.endswith("ge") else stem
+
+
+def agree(cells, endings, persons=range(6)):
+    """Keep only cells with the right ending and the stem most cells share; mis-tagged forms drop out."""
+    stems = [unsoft(cells[i][: -len(endings[i])]) if cells[i] and cells[i].endswith(endings[i]) else None for i in persons]
+    votes = Counter(s for s in stems if s)
+    if not votes:
+        return {}
+    top = votes.most_common(1)[0][0]
+    return {i: cells[i] for i, s in zip(persons, stems) if s == top}
+
+
+def validate(v, t):
+    """Tenses with regular endings checked against a shared stem; présent nous/vous/ils endings sanity-checked."""
+    out = {tense: [None] * 6 for tense in TENSES}
+    for i, f in agree(t["ind:imp"], ENDINGS["ind:imp"]).items():
+        out["ind:imp"][i] = f
+    fc = agree(t["ind:fut"] + t["cnd:pre"], ENDINGS["ind:fut"] + ENDINGS["cnd:pre"], range(12))  # one stem for both
+    for i, f in fc.items():
+        out["ind:fut" if i < 6 else "cnd:pre"][i % 6] = f
+    for i, f in agree(t["sub:pre"], ENDINGS["sub:pre"], (0, 1, 2, 5)).items():
+        out["sub:pre"][i] = f
+    for i, f in agree(t["sub:pre"], ENDINGS["sub:pre"], (3, 4)).items():
+        out["sub:pre"][i] = f
+    pre = t["ind:pre"]
+    ok = [True, True, True, bool(pre[3] and pre[3].endswith("ons")),
+          bool(pre[4] and (pre[4].endswith("ez") or pre[4] in ("faites", "dites"))),
+          bool(pre[5] and pre[5].endswith(("ent", "ont")))]
+    out["ind:pre"] = [f if good else None for f, good in zip(pre, ok)]
+    return out
+
+
+def load_conjugations(verbs):
+    """verb -> {aux, pp, t: {tense: [6 forms or None]}} from Lexique's infover tags (mood:tense:person)."""
+    best = defaultdict(dict)  # verb -> code -> (frequency, form)
+    with open(RAW / "Lexique383.tsv", encoding="utf-8") as f:
+        for r in csv.DictReader(f, delimiter="\t", quoting=csv.QUOTE_NONE):
+            if r["cgram"] not in ("VER", "AUX") or r["lemme"] not in verbs:
+                continue
+            ff = float(r["freqfilms2"] or 0) + float(r["freqlivres"] or 0)
+            for code in filter(None, r["infover"].split(";")):
+                if code == "par:pas" and (r["genre"] == "f" or r["nombre"] == "p"):
+                    continue  # keep the masculine singular participle
+                if ff >= best[r["lemme"]].get(code, (-1,))[0]:
+                    best[r["lemme"]][code] = (ff, r["ortho"])
+    out = {}
+    for v in verbs:
+        p = {code: form for code, (_, form) in best[v].items()}
+        if "par:pas" not in p:
+            continue
+        get = lambda t, i: p.get(f"{t}:{PERSONS[i]}")
+        t = FULL.get(v) or {tense: [get(tense, i) for i in range(6)] for tense in TENSES}
+        follows_faire = v.endswith("faire")
+        if v not in SUB_IRREG_NOUS and not follows_faire:
+            t["sub:pre"][3] = t["sub:pre"][3] or get("ind:imp", 3)
+            t["sub:pre"][4] = t["sub:pre"][4] or get("ind:imp", 4)
+        if v not in SUB_IRREG_ILS and not follows_faire:
+            t["sub:pre"][5] = t["sub:pre"][5] or get("ind:pre", 5)
+        if v not in FULL:
+            t = validate(v, t)
+        aux = "être" if v in ETRE_VERBS else "avoir"
+        pp = p["par:pas"]
+        plural = pp if pp.endswith("s") else pp + "s"
+        t["pc"] = [f"{AUX[aux][i]} {plural if aux == 'être' and i >= 3 else pp}" for i in range(6)]
+        if v in BOTH_AUX:
+            del t["pc"]
+        t = {tense: forms for tense, forms in t.items() if sum(f is not None for f in forms) >= 5}  # else too gappy
+        out[v] = {"aux": aux, "pp": pp, "t": t,
+                  "audio": {tense: [forms[i] and audio_id(phrase(i, tense, forms[i])) for i in range(6)] for tense, forms in t.items()}}
+    return out
 
 
 def tsv_bz2(name):
@@ -203,13 +323,19 @@ def _synth(job):
     global _voice
     path, text = job
     if _voice is None:
+        import onnxruntime
         from piper import PiperVoice
         _voice = PiperVoice.load(VOICE)
+        opts = onnxruntime.SessionOptions()
+        opts.intra_op_num_threads, opts.inter_op_num_threads = TTS_THREADS, 1
+        _voice.session = onnxruntime.InferenceSession(str(VOICE), sess_options=opts, providers=["CPUExecutionProvider"])
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
         _voice.synthesize_wav(text, w)
-    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "wav", "-i", "-", "-ac", "1", "-b:a", "40k", path],
+    tmp = path + ".part"  # rename when complete, so an interrupted build never leaves a short clip that counts as done
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "wav", "-i", "-", "-ac", "1", "-b:a", "40k", "-f", "mp3", tmp],
                    input=buf.getvalue(), check=True)
+    Path(tmp).replace(path)
 
 
 def synth_all(texts):
@@ -220,7 +346,7 @@ def synth_all(texts):
         Path(p).unlink()
     jobs = [j for j in jobs if not Path(j[0]).exists()]
     print(f"tts: {len(jobs)} clips to render, {len(stale)} stale removed", flush=True)
-    with ProcessPoolExecutor(8) as pool:
+    with ProcessPoolExecutor(TTS_WORKERS) as pool:
         for i, _ in enumerate(pool.map(_synth, jobs, chunksize=16), 1):
             if i % 500 == 0:
                 print(f"  {i}/{len(jobs)}", flush=True)
@@ -251,14 +377,22 @@ def main():
                                                separators=(",", ":")))
     deck = [w for w in words if "sentence" in w]
     print(f"words: {len(words)} ({sum(bool(w['gloss']) for w in words)} glossed), deck: {len(deck)}/{len(deck_lemmas)}")
+    verbs = [l for l in ranked if pos[l] == "verb" and l not in IMPERSONAL | PRONOMINAL and l in sentences][:N_CONJ]
+    conj = load_conjugations(set(verbs))
+    conj = {v: conj[v] for v in verbs if v in conj}  # frequency order
+    (OUT / "conj.json").write_text(json.dumps(conj, ensure_ascii=False, separators=(",", ":")))
+    shelf = json.loads((Path(__file__).parent / "shelf.json").read_text())  # from data/fr/shelf.py
+    (OUT / "shelf.json").write_text(json.dumps(shelf, ensure_ascii=False, separators=(",", ":")))
+    tts += [phrase(i, tense, f) for c in conj.values() for tense, forms in c["t"].items() for i, f in enumerate(forms) if f]
+    print(f"conj: {len(conj)} verbs, {sum(len(c['t']) for c in conj.values())} tables")
     if "--no-audio" not in sys.argv:
         synth_all(tts)
-    check(words, forms)
+    check(words, forms, conj)
 
 
-def check(words, forms):
+def check(words, forms, conj):
     deck = [w for w in words if "sentence" in w]
-    assert len(deck) >= 1500, len(deck)
+    assert len(deck) >= 0.75 * N_DECK, len(deck)  # most deck lemmas find a usable Tatoeba sentence
     assert sum(bool(w["gloss"]) for w in words[:N_DECK]) >= 0.9 * N_DECK
     for w in deck:
         assert occurrences(w["form"], w["sentence"]) == 1, w
@@ -272,6 +406,21 @@ def check(words, forms):
     by = {w["lemma"]: w for w in words}
     assert by["vous"]["gloss"] == GLOSS["vous"] and by["peu"]["display"] == "peu", "overrides applied"
     assert all(l in by for l in GLOSS), [l for l in GLOSS if l not in by]
+    # conjugation spot checks: irregulars from Lexique, the two fills, passé composé agreement, spoken phrases
+    assert conj["aller"]["t"]["ind:fut"][3] == "irons" and conj["être"]["t"]["sub:pre"][3] == "soyons"
+    assert conj["faire"]["t"]["sub:pre"][3] == "fassions" and conj["prendre"]["t"]["sub:pre"][5] == "prennent"
+    assert conj["venir"]["t"]["sub:pre"][3] == "venions" and conj["parler"]["t"]["ind:imp"][5] == "parlaient"
+    assert conj["aller"]["t"]["pc"][0] == "suis allé" and conj["aller"]["t"]["pc"][3] == "sommes allés"
+    assert conj["avoir"]["t"]["pc"][0] == "ai eu" and conj["pouvoir"]["t"]["cnd:pre"][0] == "pourrais"
+    assert conj["être"]["t"]["sub:pre"] == FULL["être"]["sub:pre"]
+    assert conj["commencer"]["t"]["ind:imp"][0] == "commençais" and conj["commencer"]["t"]["ind:imp"][3] == "commencions"
+    assert conj["manger"]["t"]["ind:imp"][3] == "mangions" and conj["manger"]["t"]["ind:imp"][2] == "mangeait"
+    assert phrase(0, "ind:fut", "irai") == "j'irai" and phrase(2, "sub:pre", "aille") == "qu'il aille"
+    assert phrase(3, "sub:pre", "soyons") == "que nous soyons" and "falloir" not in conj and "souvenir" not in conj
+    assert "pc" not in conj["passer"]["t"] and "pc" in conj["parler"]["t"]
+    if "--no-audio" not in sys.argv:
+        clips = [a for c in conj.values() for ids in c["audio"].values() for a in ids if a]
+        assert all((OUT / "audio" / f"{a}.mp3").stat().st_size > 0 for a in clips), "conjugation clip missing"
     print("checks ok")
 
 
