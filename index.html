@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Pluton</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#fff8ef" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#14122b" media="(prefers-color-scheme: dark)" />
+    <style>
+      :root {
+        --bg: #fff8ef; --panel: #ffffff; --ink: #1d1b3a; --muted: #6b6890; --line: #ece4d8;
+        --blue: #3d5afe; --red: #ff4f64; --gold: #ffb300; --green: #12b76a; --orange: #ff8a00;
+        --shadow: rgba(29, 27, 58, 0.12);
+        --cat: #1c1726; --cat-rim: #1c1726; --btn: #3d5afe;
+        color-scheme: light dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #14122b; --panel: #1f1c3d; --ink: #f4f1ff; --muted: #a19cc9; --line: #322e5c;
+          --blue: #8091ff; --red: #ff6b7d; --gold: #ffc940; --green: #3ddc97; --orange: #ffa94d;
+          --shadow: rgba(0, 0, 0, 0.35);
+          --cat: #0b0912; --cat-rim: #5b5394; --btn: #4f5fe8;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body {
+        background: var(--bg); color: var(--ink);
+        font: 17px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #app {
+        max-width: 560px; margin: 0 auto; min-height: 100dvh;
+        padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+      }
+      h1, h2, h3 { margin: 0; line-height: 1.15; }
+      button, input, textarea { font: inherit; color: inherit; }
+      .panel { background: var(--panel); border: 2px solid var(--line); border-radius: 20px; padding: 18px; }
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        border: 0; border-radius: 16px; padding: 14px 20px; font-weight: 800; cursor: pointer;
+        background: var(--btn); color: #fff; box-shadow: 0 5px 0 color-mix(in srgb, var(--btn) 60%, #000);
+        transition: transform 0.06s, box-shadow 0.06s;
+      }
+      .btn:active { transform: translateY(4px); box-shadow: 0 1px 0 color-mix(in srgb, var(--btn) 60%, #000); }
+      .btn:disabled { opacity: 0.5; cursor: default; }
+      .btn.ghost {
+        background: var(--panel); color: var(--ink); border: 2px solid var(--line); box-shadow: 0 4px 0 var(--line);
+      }
+      .btn.ghost:active { box-shadow: 0 0 0 var(--line); }
+      .muted { color: var(--muted); }
+      .m { color: var(--blue); }
+      .f { color: var(--red); }
+      :focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

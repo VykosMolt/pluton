@@ -1,0 +1,21 @@
+{
+  "name": "pluton",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "test": "node --test src/",
+    "smoke": "vite build && node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "playwright": "^1.64.1",
+    "svelte": "^5.57.2",
+    "vite": "^8.3.4"
+  },
+  "dependencies": {
+    "ts-fsrs": "^5.4.2"
+  }
+}
