@@ -50,7 +50,7 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
 
   onMount(async () => {
     if (!texts.length && !(await db.get('meta', 'seeded'))) {
-      await save(SAMPLE)
+      await save({ ...SAMPLE, id: 'sample' })
       await db.put('meta', true, 'seeded')
     }
   })
@@ -105,7 +105,7 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
   async function save(t) {
     const body = t.body.normalize('NFC').trim()
     if (!body) return
-    const rec = { title: t.title.trim() || body.slice(0, 40), body, added: Date.now() }
+    const rec = { ...(t.id && { id: t.id }), title: t.title.trim() || body.slice(0, 40), body, added: Date.now() }
     rec.id = await db.put('texts', rec)
     texts = [...texts, rec]
     draft = null
@@ -160,7 +160,7 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
 {:else if open}
   <div class="row head">
     <button class="btn ghost" onclick={close}>← Library</button>
-    {#if typeof open.id === 'number'}<button class="btn ghost" onclick={remove} aria-label="Delete text">🗑</button>{/if}
+    {#if texts.some((t) => t.id === open.id)}<button class="btn ghost" onclick={remove} aria-label="Delete text">🗑</button>{/if}
   </div>
   {#if open.stage != null}<p class="kicker">Chapitre {open.stage + 1} · {STAGES[open.stage].level}</p>{/if}
   <h2>{open.title}</h2>

@@ -3,7 +3,7 @@
 // Fails on any console/page error or audio fallback. Screenshots go to argv[2] (default ./smoke-out).
 //   npm run smoke [-- outdir]          BROWSER=firefox|webkit npm run smoke   (default chromium)
 import { spawn, execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { chromium, firefox, webkit } from 'playwright'
 import { produceAnswer, brief } from '../src/lib/logic.js'
 import { startMockAI } from './mock-ai.mjs'
@@ -394,12 +394,73 @@ const backup = readFileSync(await download.path(), 'utf8')
 await tutor.ctx.close()
 mock.close()
 
+// Accounts, against the local Supabase stack (npx supabase start): two devices sign in with an emailed code and
+// share progress; deleting the account removes it and its data from the server.
+let accounts = null
+const supabaseUp = existsSync('.env.smoke.local') && await fetch(readFileSync('.env.smoke.local', 'utf8').match(/VITE_SUPABASE_URL="?([^"\n]+)/)[1] + '/auth/v1/health')
+  .then((r) => r.status < 500, () => false)
+if (supabaseUp) {
+  const status = JSON.parse(process.env.SUPABASE_STATUS ?? execFileSync('npx', ['supabase', 'status', '-o', 'json'], { encoding: 'utf8' }))
+  const API = status.API_URL, ADMIN = { apikey: status.SERVICE_ROLE_KEY, Authorization: `Bearer ${status.SERVICE_ROLE_KEY}` }
+  const email = `smoke-${Date.now()}@pluton.test`
+  const codeFor = async () => {
+    for (let i = 0; i < 40; i++) {
+      const { messages } = await (await fetch(`${status.MAILPIT_URL}/api/v1/messages`)).json()
+      const hit = messages.find((m) => m.To.some((t) => t.Address === email))
+      if (hit) { // read once: the next sign-in to this address must not pick up this (then expired) code
+        await fetch(`${status.MAILPIT_URL}/api/v1/messages`, { method: 'DELETE', body: JSON.stringify({ IDs: [hit.ID] }) })
+        return hit.Subject.match(/\d{6}/)[0]
+      }
+      await new Promise((r) => setTimeout(r, 500))
+    }
+    throw new Error('no sign-in email arrived')
+  }
+  const signIn = async (p) => {
+    await p.getByLabel('Email').fill(email)
+    await p.getByRole('button', { name: 'Email me a code' }).click()
+    await p.getByLabel('6-digit code').fill(await codeFor())
+    await p.getByRole('button', { name: 'Sign in' }).click()
+    await p.locator('.note', { hasText: /✓ Synced|⚠️/ }).waitFor()
+    const note = await p.locator('.note').textContent()
+    if (!note.includes('✓')) throw new Error(`sign-in failed: ${note}`)
+    return note
+  }
+  const a = await open('light')
+  await playRun(a.page, { wrongFirst: false, prefix: 'acc-a' })
+  const learningA = await a.page.locator('.tile .learning').textContent()
+  const pointsA = await a.page.locator('footer').textContent()
+  await a.page.getByRole('button', { name: 'Settings' }).click()
+  const syncA = await signIn(a.page)
+  await a.page.screenshot({ path: `${OUT}/9-account.png` })
+  const uid = (await (await fetch(`${API}/auth/v1/admin/users?per_page=1000`, { headers: ADMIN })).json()).users.find((u) => u.email === email)?.id
+  const rowsA = (await (await fetch(`${API}/rest/v1/records?select=key&user_id=eq.${uid}`, { headers: ADMIN })).json()).length
+
+  const bctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, reducedMotion: 'reduce' })
+  const b = await bctx.newPage()
+  b.on('pageerror', (e) => errors.push(`page: ${e.message}`))
+  b.on('dialog', (d) => (d.type() === 'prompt' ? d.accept('DELETE') : d.dismiss()))
+  await b.goto(URL)
+  await b.getByRole('button', { name: 'I have an account: sign in' }).click()
+  const syncB = await signIn(b)
+  await b.locator('nav').getByRole('button', { name: /Home/ }).click()
+  const learningB = await b.locator('.tile .learning').textContent()
+  const pointsB = await b.locator('footer').textContent()
+  await b.getByRole('button', { name: 'Settings' }).click()
+  await b.getByRole('button', { name: 'Delete my account' }).click()
+  await b.locator('.note', { hasText: 'Account deleted' }).waitFor()
+  const users = (await (await fetch(`${API}/auth/v1/admin/users?per_page=1000`, { headers: ADMIN })).json()).users
+  const rowsLeft = (await (await fetch(`${API}/rest/v1/records?select=key&user_id=eq.${uid}`, { headers: ADMIN })).json()).length
+  accounts = { syncA, rowsA, syncB, learningA, learningB, pointsA, pointsB, deleted: !users.some((u) => u.email === email), rowsLeft }
+  await a.ctx.close()
+  await bctx.close()
+}
+
 await browser.close()
 server.kill()
 
 const claudeSent = { model: claude?.body.model, fallbacks: claude?.body.fallbacks, effort: claude?.body.output_config?.effort,
   beta: claude?.headers['anthropic-beta'], browser: claude?.headers['anthropic-dangerous-direct-browser-access'] }
-const report = { topics, revealed, placedRun, fixRun, offlineOk, stageTag, lastChapterWords, steps, celebration, stageAfter, placement, placedKnown, bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
+const report = { accounts, topics, revealed, placedRun, fixRun, offlineOk, stageTag, lastChapterWords, steps, celebration, stageAfter, placement, placedKnown, bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
 console.log(JSON.stringify(report, null, 2))
 const checks = {
   'no errors': !errors.length,
@@ -443,5 +504,12 @@ const checks = {
     && (claudeSent.beta ?? '').includes('server-side-fallback-2026-07-01'),
   'backup never contains the API key': !backup.includes('sk-test') && backup.includes('"talk"'),
 }
+if (accounts) Object.assign(checks, {
+  'accounts: sign in with an emailed code uploads progress': accounts.syncA.includes('✓ Synced') && accounts.rowsA > 10,
+  'accounts: a second device signs in and gets the same progress': accounts.syncB.includes('✓ Synced')
+    && accounts.learningB === accounts.learningA && accounts.pointsB === accounts.pointsA,
+  'accounts: deleting removes the account and all its data': accounts.deleted && accounts.rowsLeft === 0,
+})
+else console.log('accounts: SKIPPED (local Supabase not reachable; npx supabase start, then npx vite build --mode smoke)')
 for (const [name, ok] of Object.entries(checks)) console.log(`${ok ? '✔' : '✖'} ${name}`)
 process.exit(Object.values(checks).every(Boolean) ? 0 : 1)

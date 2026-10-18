@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "test": "node --test src/",
-    "smoke": "vite build && node scripts/smoke.mjs",
+    "smoke": "vite build --mode smoke && node scripts/smoke.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "devDependencies": {
@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
+    "@supabase/supabase-js": "^2.118.0",
     "ts-fsrs": "^5.4.2"
   }
 }

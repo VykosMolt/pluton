@@ -6,7 +6,7 @@
   import Cat from './Cat.svelte'
 
   /** First launch: what Pluton is, and an optional placement check so people who know some French skip ahead. */
-  let { words, cards, ondone } = $props()
+  let { words, cards, ondone, account = false, onaccount } = $props()
 
   // Frequency bands of the deck (by rank) and how many words to sample from each.
   const BANDS = [[0, 100], [100, 300], [300, 700], [700, 1500], [1500, 3000], [3000, 5000], [5000, 8000]]
@@ -88,6 +88,7 @@
     </ul>
     <button class="btn wide" onclick={done}>I'm new to French</button>
     <button class="btn ghost wide" onclick={start}>I already know some French</button>
+    {#if account}<button class="link" onclick={onaccount}>I have an account: sign in</button>{/if}
   {:else if step === 'quiz' && w}
     <p class="muted">Placement · {BANDS[band][0] === 0 ? 'most common words' : `words ranked ${BANDS[band][0]}–${BANDS[band][1]}`}</p>
     <div class="dots">{#each sample as _, k}<i class:on={k < i} class:now={k === i}></i>{/each}</div>

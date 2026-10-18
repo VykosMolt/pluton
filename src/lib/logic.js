@@ -337,17 +337,6 @@ export function requeue(queue, it, now, rnd = Math.random) {
 
 export const dayOf = (d) => d.toLocaleDateString('sv') // local YYYY-MM-DD
 
-const daysBetween = (a, b) => (Date.parse(b) - Date.parse(a)) / 864e5
-
-/** Streak after finishing a run today. One missed day is forgiven. */
-export function nextStreak(streak, lastDay, today) {
-  if (lastDay === today) return streak
-  return daysBetween(lastDay, today) <= 2 ? streak + 1 : 1
-}
-
-/** The streak as it stands today: still alive until more than one day has been missed. */
-export const liveStreak = (streak, lastDay, today) => (daysBetween(lastDay, today) <= 2 ? streak : 0)
-
 /** Word-level diff of `from` -> `to` as [{text, op: 'same'|'del'|'add'}], to show what a correction changed. */
 export function wordDiff(from, to) {
   const a = from.split(/\s+/).filter(Boolean), b = to.split(/\s+/).filter(Boolean)

@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
   import * as db from './lib/db.js'
-  import { status, buildRun, dayOf, nextStreak, liveStreak, brief, levelFor, isWord, parseConj, State, NEW_PER_RUN, NEW_PER_DAY } from './lib/logic.js'
+  import { status, buildRun, dayOf, brief, levelFor, isWord, parseConj, State, NEW_PER_RUN, NEW_PER_DAY } from './lib/logic.js'
   import { unlock, say, sfx } from './lib/sound.js'
   import { STAGES, pathState, focus } from './lib/path.js'
   import Path from './Path.svelte'
@@ -16,6 +16,8 @@
   import Settings from './Settings.svelte'
   import Welcome from './Welcome.svelte'
   import { setActive } from './lib/ai.js'
+  import { combine, daysOf } from './lib/stats.js'
+  import * as sync from './lib/sync.js'
 
   let words = $state.raw(null) // lemma -> entry, frequency order
   let forms = $state.raw(null) // form -> lemma
@@ -29,7 +31,8 @@
   let openText = $state(null) // text the Library shows (set from home goals too)
   let listenNow = $state(false)
   let celebrate = $state(null) // index of the stage just reached
-  let stats = $state({ streak: 0, lastDay: null, points: 0, bestCombo: 0, newDay: null, newCount: 0 })
+  let stats = $state({ points: 0, bestCombo: 0, newDay: null, newCount: 0, days: [] }) // this device's record
+  let others = $state.raw([]) // other devices' records, from account sync
   let view = $state('home')
   let now = $state(new Date())
   let error = $state('')
@@ -61,14 +64,17 @@
       grammar = gr
       for (const c of cs) cards.set(c.lemma, c)
       if (st) stats = st
+      others = await otherStats()
       texts = ts
+      syncSoon()
     } catch (e) {
       error = `Pluton couldn't load his words (${e.message}). Check your connection and reload.`
     }
   })
 
   const today = $derived(dayOf(now))
-  const newToday = $derived(stats.newDay === today ? stats.newCount : 0)
+  const total = $derived(combine(stats, others, today)) // what the app shows: every device's progress
+  const newToday = $derived(total.newToday)
   const statusOf = (l) => status(cards.get(l), words.get(l))
   const TENSES = LANG.tenses.map((t) => t.id)
   const plan = $derived(buildRun([...cards.values()], words ?? new Map(), now, newToday, { conj, grammar, tenses: TENSES, ...pace }))
@@ -84,7 +90,7 @@
     return { known, learning, due, fresh: plan.length - due }
   })
   const waiting = $derived(counts.due + counts.fresh)
-  const lvl = $derived(levelFor(stats.points))
+  const lvl = $derived(levelFor(total.points))
   const catMood = $derived(summary?.levelUp ? 'fire' : summary ? 'happy' : waiting ? 'idle' : 'sleep')
   const line = $derived(
     summary?.levelUp ? { fr: `Niveau ${summary.levelUp} ! Incroyable !`, en: `Level ${summary.levelUp}! Amazing!` }
@@ -108,16 +114,16 @@
         tablesTotal++
       }
     }
-    return { learned, tables, tablesTotal, grammar: grammarDone, read: new Set(stats.read ?? []), listenMin: (stats.listened ?? 0) / 60,
-      talked: stats.talked ?? 0, written: stats.written ?? 0 }
+    return { learned, tables, tablesTotal, grammar: grammarDone, read: new Set(total.read), listenMin: total.listened / 60,
+      talked: total.talked, written: total.written }
   })
   const titles = $derived(Object.fromEntries(story.map((c) => [c.id, `Chapitre ${c.stage + 1} · ${c.title}`])))
   const path = $derived(pathState(metrics, titles))
-  const reached = $derived(Math.max(path.current, stats.stage ?? 0))
+  const reached = $derived(Math.max(path.current, total.stage))
   const stage = $derived(reached < STAGES.length ? path.stages[reached] : null)
   const todo = $derived(focus(stage, !!ai))
   $effect(() => {
-    if (!words || path.current <= (stats.stage ?? 0)) return
+    if (!words || path.current <= total.stage) return
     celebrate = path.current
     stats.stage = path.current
     sfx('done')
@@ -174,14 +180,15 @@
     if (stats.newDay !== today) Object.assign(stats, { newDay: today, newCount: 0 })
     stats.newCount += s.introduced
     const before = lvl.level
-    stats.points += s.points
-    stats.bestCombo = Math.max(stats.bestCombo, s.best)
+    const after = levelFor(total.points + s.points).level
+    stats.points = (stats.points ?? 0) + s.points
+    stats.bestCombo = Math.max(stats.bestCombo ?? 0, s.best)
     if (s.completed) {
-      stats.streak = nextStreak(stats.streak, stats.lastDay, today)
-      stats.lastDay = today
-      summary = { ...s, levelUp: levelFor(stats.points).level > before ? levelFor(stats.points).level : 0 }
+      stats.days = [...new Set([...daysOf(stats), today])].slice(-400) // run days: the streak is computed from them
+      summary = { ...s, levelUp: after > before ? after : 0 }
     }
     await db.put('meta', $state.snapshot(stats), 'stats')
+    syncSoon()
   }
 
   async function listened(seconds) {
@@ -193,6 +200,34 @@
     stats[kind] = (stats[kind] ?? 0) + 1
     await db.put('meta', $state.snapshot(stats), 'stats')
   }
+
+  // Account sync: other devices' stats live under meta "stats:<device>".
+  async function otherStats() {
+    return (await db.entries('meta')).filter(([k]) => k.startsWith('stats:')).map(([, v]) => v)
+  }
+
+  /** Re-read everything a sync may have changed (not during a run: it holds its own queue). */
+  async function reload() {
+    if (view === 'run') return
+    const [cs, ts, st, settings] = await Promise.all([db.getAll('cards'), db.getAll('texts'), db.get('meta', 'stats'), db.get('meta', 'settings')])
+    cards.clear()
+    for (const c of cs) cards.set(c.lemma, c)
+    texts = ts
+    if (st) stats = st
+    others = await otherStats()
+    pace = { ...pace, ...settings }
+    onboarded = onboarded || !!(await db.get('meta', 'onboarded')) || cs.length > 0
+    now = new Date()
+  }
+
+  function syncSoon() {
+    if (sync.hasSession()) sync.sync().then((r) => r && reload()).catch((e) => console.warn('sync:', e.message))
+  }
+  onMount(() => {
+    const hidden = () => document.visibilityState === 'hidden' && syncSoon()
+    document.addEventListener('visibilitychange', hidden)
+    return () => document.removeEventListener('visibilitychange', hidden)
+  })
 
   async function backup() {
     const blob = new Blob([JSON.stringify(await db.exportAll())], { type: 'application/json' })
@@ -218,7 +253,8 @@
 {:else if !words}
   <div class="loading"><Cat mood="sleep" size={100} /><p class="muted">Chargement…</p></div>
 {:else if !onboarded}
-  <Welcome {words} {cards} ondone={() => (onboarded = true)} />
+  <Welcome {words} {cards} ondone={() => (onboarded = true)} account={sync.configured}
+    onaccount={() => { onboarded = true; view = 'settings' }} />
 {:else if view === 'run'}
   <Run {words} {forms} {cards} {conj} {grammar} {newToday} {pace} onexit={finish} />
 {:else}
@@ -228,7 +264,7 @@
       <div class="level" title="{lvl.into} / {lvl.span} points to level {lvl.level + 1}">
         Niv. {lvl.level}<i style="width:{(100 * lvl.into) / lvl.span}%"></i>
       </div>
-      <div class="streak" class:cold={stats.lastDay !== today} title="Day streak">🔥 {liveStreak(stats.streak, stats.lastDay, today)}</div>
+      <div class="streak" class:cold={total.lastDay !== today} title="Day streak">🔥 {total.streak}</div>
       <button class="gear" class:on={view === 'settings'} onclick={() => (view = 'settings')} aria-label="Settings">⚙️</button>
     </div>
   </header>
@@ -271,7 +307,7 @@
       <h3>Today</h3>
       <button class="btn go" onclick={start} disabled={!counts.due && !counts.fresh}>
         {#if counts.due || counts.fresh}
-          <span>{stats.lastDay === today ? 'Another run' : 'Start your run'}</span>
+          <span>{total.lastDay === today ? 'Another run' : 'Start your run'}</span>
           <small>{counts.due} reviews · {counts.fresh} new</small>
         {:else}
           <span>Run done for today ✓</span>
@@ -293,7 +329,7 @@
     </section>
 
     <footer class="muted">
-      <span>⭐ {stats.points} pts · best combo ×{stats.bestCombo}</span>
+      <span>⭐ {total.points} pts · best combo ×{total.bestCombo}</span>
     </footer>
   {:else if view === 'path'}
     <Path full {path} {reached} onaction={act} onjump={jump} />
@@ -305,7 +341,7 @@
   {:else if view === 'talk'}
     <Talk {ai} {words} {forms} {cards} {statusOf} vocab={counts.known + counts.learning} onsettings={() => (view = 'settings')} oncount={count} />
   {:else if view === 'settings'}
-    <Settings bind:ai bind:pace onbackup={backup} onrestore={restore} />
+    <Settings bind:ai bind:pace onbackup={backup} onrestore={restore} onsynced={reload} />
   {:else}
     <Words {words} {cards} {now} {conj} {grammar} bind:tab={wordsTab} />
   {/if}

@@ -1,9 +1,11 @@
 <script>
   import * as db from './lib/db.js'
   import { PROVIDERS, listModels, chat, ready } from './lib/ai.js'
+  import { configured } from './lib/sync.js'
+  import Account from './Account.svelte'
 
   /** ai: the saved AI config (or null); pace: {perRun, perDay}. Both saved here. */
-  let { ai = $bindable(), pace = $bindable(), onbackup, onrestore } = $props()
+  let { ai = $bindable(), pace = $bindable(), onbackup, onrestore, onsynced } = $props()
 
   const blank = (provider) => ({ provider, key: '', model: PROVIDERS[provider].model ?? '', base: '' })
   let draft = $state(ai ? { ...ai } : blank('anthropic'))
@@ -67,6 +69,8 @@
 </script>
 
 <h2>Settings</h2>
+
+{#if configured}<Account {onsynced} />{/if}
 
 <section class="panel">
   <h3>🐈‍⬛ AI tutor</h3>

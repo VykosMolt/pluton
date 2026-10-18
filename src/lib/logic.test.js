@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { tokenize, coverage, unlockList, grade, gradeProduce, produceAnswer, hintOf, modeFor, levelFor, brief, liveStreak, playable, gradeDictee, gradeGram, newGrammar, gramKey, fixCard, firstChange, gradeConj, newConj, conjKey, parseConj, isWord, points, nextCombo, blank, buildRun, requeue, nextStreak,
+import { tokenize, coverage, unlockList, grade, gradeProduce, produceAnswer, hintOf, modeFor, levelFor, brief, playable, gradeDictee, gradeGram, newGrammar, gramKey, fixCard, firstChange, gradeConj, newConj, conjKey, parseConj, isWord, points, nextCombo, blank, buildRun, requeue,
   fromSubtitles, sentenceAt, wordDiff, enLookup, englishTokens, parseCues, cueAt, listenGoal, status, createEmptyCard, LEARN_AHEAD_MS, MAX_SEEN_PER_RUN, NEW_PER_RUN } from './logic.js'
 
 const forms = new Map(Object.entries({ homme: 'homme', il: 'il', voit: 'voir', "aujourd'hui": "aujourd'hui", dit: 'dire',
@@ -248,17 +248,6 @@ test('requeue: only soon-due cards, capped per run', () => {
   assert.deepEqual(requeue([], soon, now), [soon])
   assert.deepEqual(requeue([1], later, now), [1])
   assert.deepEqual(requeue([1], { ...soon, seen: MAX_SEEN_PER_RUN }, now), [1])
-})
-
-test('streak', () => {
-  assert.equal(nextStreak(4, '2026-10-17', '2026-10-18'), 5)
-  assert.equal(nextStreak(4, '2026-10-16', '2026-10-18'), 5) // one missed day forgiven
-  assert.equal(nextStreak(4, '2026-10-15', '2026-10-18'), 1)
-  assert.equal(nextStreak(4, '2026-10-18', '2026-10-18'), 4)
-  assert.equal(nextStreak(0, undefined, '2026-10-18'), 1)
-  assert.equal(liveStreak(4, '2026-10-16', '2026-10-18'), 4)
-  assert.equal(liveStreak(4, '2026-10-15', '2026-10-18'), 0)
-  assert.equal(liveStreak(0, null, '2026-10-18'), 0)
 })
 
 test('brief gloss', () => {
