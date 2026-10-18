@@ -207,6 +207,15 @@ await ctx.close()
 
 const dark = await open('dark')
 await dark.page.screenshot({ path: `${OUT}/5-home-dark.png` })
+// Offline right after a first visit: the service worker precaches the shell and the word data on install.
+await dark.page.evaluate(() => navigator.serviceWorker.ready)
+await dark.page.waitForFunction(() => caches.open('pluton-v2').then((c) => c.match('data/fr/words.json')).then(Boolean))
+await dark.ctx.setOffline(true)
+await dark.page.reload()
+const offlineOk = await dark.page.locator('.tiles').waitFor({ timeout: 15000 }).then(() => true, () => false)
+await dark.ctx.setOffline(false)
+await dark.page.reload()
+await dark.page.locator('.tiles').waitFor()
 // Dictée only comes up for well-known words, so seed one: "être", stable for 30 days, due now, 4th review.
 const etre = deck.find((w) => w.lemma === 'être')
 await dark.page.evaluate(() => new Promise((ok) => {
@@ -361,7 +370,7 @@ server.kill()
 
 const claudeSent = { model: claude?.body.model, fallbacks: claude?.body.fallbacks, effort: claude?.body.output_config?.effort,
   beta: claude?.headers['anthropic-beta'], browser: claude?.headers['anthropic-dangerous-direct-browser-access'] }
-const report = { stageTag, lastChapterWords, steps, celebration, stageAfter, placement, placedKnown, bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
+const report = { offlineOk, stageTag, lastChapterWords, steps, celebration, stageAfter, placement, placedKnown, bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
 console.log(JSON.stringify(report, null, 2))
 const checks = {
   'no errors': !errors.length,
@@ -372,6 +381,7 @@ const checks = {
   'streak lapses after 3 days away': streakLater.includes('0'),
   'levelled up': !level.includes('Niv. 1'),
   'service worker': sw,
+  'works offline right after the first visit': offlineOk,
   'audio loads': audio.ok > 0 && !audio.bad,
   'queuing does not fake coverage': unlockBefore === unlockAfter,
   'reviews due after 3 days': Number(due) > 0,
