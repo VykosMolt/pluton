@@ -29,6 +29,13 @@ export const put = async (store, value, key) =>
   result((await db).transaction(store, 'readwrite').objectStore(store).put(value, key))
 export const del = async (store, key) => result((await db).transaction(store, 'readwrite').objectStore(store).delete(key))
 
+/** Many records in one transaction (keyPath stores). */
+export async function putMany(store, values) {
+  const t = (await db).transaction(store, 'readwrite')
+  for (const v of values) t.objectStore(store).put(v)
+  return done(t)
+}
+
 /** Card state + its review log entry in one transaction, so they never disagree. */
 export async function review(card, entry) {
   const t = (await db).transaction(['cards', 'log'], 'readwrite')

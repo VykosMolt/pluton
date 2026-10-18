@@ -12,6 +12,7 @@
   import Listen from './Listen.svelte'
   import Talk from './Talk.svelte'
   import Settings from './Settings.svelte'
+  import Welcome from './Welcome.svelte'
   import { setActive } from './lib/ai.js'
 
   let words = $state.raw(null) // lemma -> entry, frequency order
@@ -26,6 +27,7 @@
   let now = $state(new Date())
   let error = $state('')
   let summary = $state(null)
+  let onboarded = $state(true)
   let ai = $state(null) // AI provider config incl. the user's key (this device only)
   let pace = $state({ perRun: NEW_PER_RUN, perDay: NEW_PER_DAY })
   $effect(() => setActive(ai))
@@ -40,6 +42,7 @@
         db.getAll('cards'), db.get('meta', 'stats'), db.getAll('texts'),
       ])
       ai = (await db.get('meta', 'ai')) ?? null
+      onboarded = !!(await db.get('meta', 'onboarded')) || cs.length > 0
       pace = { ...pace, ...(await db.get('meta', 'settings')) }
       words = new Map(w.map((x) => [x.lemma, x]))
       forms = new Map(Object.entries(f))
@@ -49,7 +52,7 @@
       if (st) stats = st
       texts = ts
     } catch (e) {
-      error = `Couldn't load: ${e.message}. Did you run data/fr/build.py?`
+      error = `Pluton couldn't load his words (${e.message}). Check your connection and reload.`
     }
   })
 
@@ -160,9 +163,11 @@
 </script>
 
 {#if error}
-  <p class="panel">{error}</p>
+  <div class="loading"><Cat mood="sad" size={100} /><p class="panel">{error}</p></div>
 {:else if !words}
-  <p class="muted loading">Chargement…</p>
+  <div class="loading"><Cat mood="sleep" size={100} /><p class="muted">Chargement…</p></div>
+{:else if !onboarded}
+  <Welcome {words} {cards} ondone={() => (onboarded = true)} />
 {:else if view === 'run'}
   <Run {words} {forms} {cards} {conj} {newToday} {pace} onexit={finish} />
 {:else}
@@ -317,7 +322,7 @@
   .chip.wrong { border-color: var(--red); }
   .streak { font-weight: 900; font-size: 20px; padding: 6px 14px; border-radius: 99px; background: color-mix(in srgb, var(--orange) 18%, transparent); }
   .streak.cold { filter: grayscale(1); opacity: 0.7; }
-  .loading { text-align: center; margin-top: 40vh; }
+  .loading { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 28vh; text-align: center; }
   section { margin-bottom: 16px; }
   .pluto { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 14px; }
   .bubble {

@@ -30,7 +30,13 @@ C1's skills, not a vocab drill. See "Road to C1" below.
 - **In-run requeue** for cards due within 20 min (same idea as Anki's learn-ahead limit).
 - **Exercise rotation**: cloze → dictation → English→French recall (every 3rd rep, graduated content words only,
   first-letter hint). Nouns must come with an article; wrong gender = "almost" (French's classic weak spot).
-- **Name**: Pluton (user approved 2026-10-18). Repo: github.com/VykosMolt/pluton, private (free plan: Pages needs public).
+- **Name**: Pluton (user approved 2026-10-18). Repo: github.com/VykosMolt/pluton, going public (user, 2026-10-18) after the
+  commit-email rewrite (user chose noreply); deploy = `npm run deploy` → gh-pages (appends, never force-pushes).
+- **AI = bring your own key, no server** (user wants Claude/ChatGPT/DeepSeek): subscriptions can't be used by other apps,
+  so API keys; Anthropic via the official SDK (default claude-opus-5-5, effort low for chat / medium for marking,
+  server-side refusal fallback where supported), others via the OpenAI chat format. Key never in backups.
+- **Norman Bridge** (user's idea): cognates only when the English word appears in the French word's own Wiktionary
+  definition (so false friends can't match); loans from English excluded; curated faux amis taught instead.
 
 ## MVP checklist
 - [x] data/fr/build.py → words.json (10k lemmas, 9816 glossed; 1930 with sentence+translation+audio), forms.json, 3.7k mp3s
@@ -53,12 +59,14 @@ the numbers below as waypoints, not CEFR certification).
 | Grammar: rest | pronouns (y/en, order), relatives (dont, lequel), agreement, prepositions, register | not yet: sentence-transformation drills, LLM-checked |
 | Reading | unadapted texts: news, novels | Library with coverage + unlock + **classics shelf** (7 public-domain texts, La Fontaine → Verne); next: more shelf, news |
 | Listening | native speed, varied speakers | **Listen tab**: own media + subtitles, tappable current line, replay/auto-pause, hours listened; **dictée** for known words |
-| Speaking | fluent, spontaneous | not yet: shadowing with Whisper scoring, LLM conversation roleplay |
-| Writing | clear, structured, precise | dictée trains spelling/agreement; not yet: LLM-corrected writing prompts, errors fed back as cards |
+| Speaking | fluent, spontaneous | **Talk** (BYOK AI): conversation at the learner's level with inline corrections, mic via browser speech recognition; not yet: pronunciation scoring, voice roleplay scenarios |
+| Writing | clear, structured, precise | **Writing coach** (BYOK AI): level-matched prompts, explained corrections, level estimate; dictée trains spelling/agreement; next: turn recurring errors into cards |
+| Bonus | English as a bridge | **Norman Bridge**: Poe/Lovecraft in English, French-derived words woven back into French; sound-change clues; faux amis |
 
-Phases: (1) vocab + verbs [done] → (2) listening player + public-domain reading shelf [done, v1] → (3) LLM layer (server):
-writing correction, roleplay, story campaign, grammar-transformation drills → (4) speaking (Whisper) → (5) a
-progress view that estimates level per skill from real performance, not from points.
+Phases: (1) vocab + verbs [done] → (2) listening player + reading shelf [done, v1] → (3) AI layer, bring-your-own-key
+from the browser, no server [done, v1: talk + writing] → next: grammar-transformation drills, story campaign, errors
+→ cards, pronunciation scoring (Whisper / browser) → a progress view that estimates level per skill from real
+performance, not from points.
 
 ## Later
 Sync server (replay `log`), hours-listened metric, language picker, precache all audio for full offline,
@@ -71,3 +79,6 @@ Tauri wrap, settings (new words/day).
 - 2026-10-18: C1 target set. Deck → 8k (film+book frequency), conjugation drills (59 verbs, Lexique tags validated:
   hand-written être/avoir, stem agreement for regular-ending tenses), classics shelf, Listen tab, dictée, Words tab,
   Road to C1 panel. TTS: capped ONNX threads per worker (was ~190 threads on 24 cores), atomic clip writes.
+- 2026-10-18: commit emails rewritten to noreply (needs one force-push by the user: hook blocks it for Claude).
+  AI tutor (talk + writing, 5 providers + custom), Settings, pace, Norman Bridge (5 Poe/Lovecraft texts, 7.4k
+  cognates), welcome + placement, deploy script. Checks: 25 unit tests, 30 smoke checks.

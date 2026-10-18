@@ -36,6 +36,9 @@ async function open(colorScheme, { clock = false } = {}) {
   page.on('pageerror', (e) => errors.push(`page: ${e.message}`))
   page.on('response', (r) => r.url().includes('/audio/') && (r.ok() ? audio.ok++ : audio.bad++))
   await page.goto(URL)
+  await page.locator('.tiles, .wrap').first().waitFor()
+  if (await page.getByRole('button', { name: "I'm new to French" }).isVisible())
+    await page.getByRole('button', { name: "I'm new to French" }).click()
   await page.locator('.tiles').waitFor()
   return { ctx, page }
 }
@@ -230,6 +233,25 @@ const listenedSec = await ear.page.evaluate(() => new Promise((ok) => {
 }))
 await ear.ctx.close()
 
+// Placement: someone who knows the 300 most common words skips them.
+const placeCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, reducedMotion: 'reduce' })
+const pp = await placeCtx.newPage()
+pp.on('pageerror', (e) => errors.push(`page: ${e.message}`))
+await pp.goto(URL)
+await pp.getByRole('button', { name: 'I already know some French' }).waitFor()
+await pp.screenshot({ path: `${OUT}/0-welcome.png`, fullPage: true })
+await pp.getByRole('button', { name: 'I already know some French' }).click()
+for (let k = 0; k < 10; k++) { // two bands known
+  await pp.getByRole('button', { name: 'I think so' }).click()
+  await pp.getByRole('button', { name: '✓ Yes' }).click()
+}
+for (let k = 0; k < 5; k++) await pp.getByRole('button', { name: 'No idea' }).click() // the third band not
+await pp.getByRole('button', { name: "Let's go" }).waitFor()
+const placement = await pp.locator('.wrap').textContent()
+await pp.getByRole('button', { name: "Let's go" }).click()
+const placedKnown = await pp.locator('.tile .known').textContent()
+await placeCtx.close()
+
 // AI: talk and writing through a mock OpenAI-compatible provider, then Claude through the Anthropic SDK.
 const mock = await startMockAI(4180)
 const MOCK = 'http://localhost:4180'
@@ -280,7 +302,7 @@ server.kill()
 
 const claudeSent = { model: claude?.body.model, fallbacks: claude?.body.fallbacks, effort: claude?.body.output_config?.effort,
   beta: claude?.headers['anthropic-beta'], browser: claude?.headers['anthropic-dangerous-direct-browser-access'] }
-const report = { bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
+const report = { placement, placedKnown, bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
 console.log(JSON.stringify(report, null, 2))
 const checks = {
   'no errors': !errors.length,
@@ -302,6 +324,7 @@ const checks = {
   'words search by English': searchHits.length === 1 && searchHits[0].includes('avoir'),
   'classics shelf lists 7 texts': shelfItems === 7,
   'shelf text shows author': byline.includes('Maupassant'),
+  'placement estimates ~300 words and marks them known': /~300 words/.test(placement) && placedKnown.trim() === '300',
   'bridge counts the French in Poe': /\d+ words here \(\d+%\) came that way/.test(bridgeIntro),
   'bridge weaves French into the English': woven > 100,
   'bridge explains the lost s (bête → beast)': beastNote.includes('circumflex') && beastNote.includes('bête'),

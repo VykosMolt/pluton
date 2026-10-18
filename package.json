@@ -7,7 +7,8 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "test": "node --test src/",
-    "smoke": "vite build && node scripts/smoke.mjs"
+    "smoke": "vite build && node scripts/smoke.mjs",
+    "deploy": "bash scripts/deploy.sh"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
