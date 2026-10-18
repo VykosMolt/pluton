@@ -24,6 +24,8 @@
   let texts = $state([])
   let shelf = $state.raw([]) // built-in public-domain classics (French) and Norman Bridge texts (English)
   let story = $state.raw([]) // Pluton's story: one chapter per stage of the path
+  let grammar = $state.raw([]) // grammar topics, A2 to C1
+  let wordsTab = $state('words')
   let openText = $state(null) // text the Library shows (set from home goals too)
   let listenNow = $state(false)
   let celebrate = $state(null) // index of the stage just reached
@@ -39,12 +41,13 @@
 
   onMount(async () => {
     try {
-      const [w, f, cj, sh, sy, cs, st, ts] = await Promise.all([
+      const [w, f, cj, sh, sy, gr, cs, st, ts] = await Promise.all([
         fetch(`${DATA}words.json`).then((r) => r.json()),
         fetch(`${DATA}forms.json`).then((r) => r.json()),
         fetch(`${DATA}conj.json`).then((r) => r.json()),
         fetch(`${DATA}shelf.json`).then((r) => r.json()),
         fetch(`${DATA}story.json`).then((r) => r.json()),
+        fetch(`${DATA}grammar.json`).then((r) => r.json()),
         db.getAll('cards'), db.get('meta', 'stats'), db.getAll('texts'),
       ])
       ai = (await db.get('meta', 'ai')) ?? null
@@ -55,6 +58,7 @@
       conj = cj
       shelf = sh.map((s) => ({ ...s, id: s.title })) // titles are unique; the path refers to classics by title
       story = sy.map((s, i) => ({ ...s, id: `story-${i}`, stage: i, lang: 'fr' }))
+      grammar = gr
       for (const c of cs) cards.set(c.lemma, c)
       if (st) stats = st
       texts = ts
@@ -67,7 +71,7 @@
   const newToday = $derived(stats.newDay === today ? stats.newCount : 0)
   const statusOf = (l) => status(cards.get(l), words.get(l))
   const TENSES = LANG.tenses.map((t) => t.id)
-  const plan = $derived(buildRun([...cards.values()], words ?? new Map(), now, newToday, { conj, tenses: TENSES, ...pace }))
+  const plan = $derived(buildRun([...cards.values()], words ?? new Map(), now, newToday, { conj, grammar, tenses: TENSES, ...pace }))
   const counts = $derived.by(() => {
     let known = 0, learning = 0
     for (const c of cards.values()) {
@@ -92,18 +96,19 @@
     : { fr: 'Zzz… À demain !', en: 'All done for today. See you tomorrow!' })
   // Progression: measured from real cards and stats; the stage reached is stored, so forgetting never demotes you.
   const metrics = $derived.by(() => {
-    let learned = 0, tablesTotal = 0
+    let learned = 0, tablesTotal = 0, grammarDone = 0
     const tables = {}
     for (const c of cards.values()) {
       if (!(c.known || c.fsrs.state === State.Review || c.fsrs.state === State.Relearning)) continue
       if (isWord(c)) learned++
-      else if (!c.known) {
+      else if (c.lemma.startsWith('gram/')) grammarDone++
+      else if (c.lemma.startsWith('conj/') && !c.known) {
         const { tense } = parseConj(c.lemma)
         tables[tense] = (tables[tense] ?? 0) + 1
         tablesTotal++
       }
     }
-    return { learned, tables, tablesTotal, read: new Set(stats.read ?? []), listenMin: (stats.listened ?? 0) / 60,
+    return { learned, tables, tablesTotal, grammar: grammarDone, read: new Set(stats.read ?? []), listenMin: (stats.listened ?? 0) / 60,
       talked: stats.talked ?? 0, written: stats.written ?? 0 }
   })
   const titles = $derived(Object.fromEntries(story.map((c) => [c.id, `Chapitre ${c.stage + 1} · ${c.title}`])))
@@ -123,6 +128,10 @@
   function act(g) {
     unlock()
     if (g.kind === 'words' || g.kind === 'verbs') return counts.due || counts.fresh ? start() : (view = 'words')
+    if (g.kind === 'grammar') {
+      wordsTab = 'grammar'
+      return (view = 'words')
+    }
     if (g.kind === 'talk' || g.kind === 'write') return (view = 'talk')
     if (g.kind === 'read') openText = g.id
     if (g.kind === 'listen') {
@@ -146,8 +155,10 @@
 
   const label = (lemma) => {
     if (isWord({ lemma })) return null
+    if (lemma.startsWith('gram/')) return `🧩 ${grammar.find((t) => `gram/${t.id}` === lemma)?.name ?? 'grammar'}`
+    if (lemma.startsWith('fix/')) return `🔧 ${cards.get(lemma)?.fix?.answer ?? 'correction'}`
     const { verb, tense } = parseConj(lemma)
-    return `${verb} · ${LANG.tenses.find((t) => t.id === tense)?.name}`
+    return `📐 ${verb} · ${LANG.tenses.find((t) => t.id === tense)?.name}`
   }
 
   function start() {
@@ -209,7 +220,7 @@
 {:else if !onboarded}
   <Welcome {words} {cards} ondone={() => (onboarded = true)} />
 {:else if view === 'run'}
-  <Run {words} {forms} {cards} {conj} {newToday} {pace} onexit={finish} />
+  <Run {words} {forms} {cards} {conj} {grammar} {newToday} {pace} onexit={finish} />
 {:else}
   <header>
     <h1>Pluton<span class="dot">.</span></h1>
@@ -237,7 +248,7 @@
             {#each summary.words as { lemma, result } (lemma)}
               {@const w = words.get(lemma)}
               {#if label(lemma)}
-                <span class="chip {result}"><b>📐 {label(lemma)}</b></span>
+                <span class="chip {result}"><b>{label(lemma)}</b></span>
               {:else}
                 <button class="chip {result}" onclick={() => say([w?.audio_word, w?.display ?? lemma])}>
                   <b class={w?.gender}>{w?.display ?? lemma}</b> <small>{brief(w?.gloss ?? '', 1)}</small>
@@ -296,7 +307,7 @@
   {:else if view === 'settings'}
     <Settings bind:ai bind:pace onbackup={backup} onrestore={restore} />
   {:else}
-    <Words {words} {cards} {now} {conj} />
+    <Words {words} {cards} {now} {conj} {grammar} bind:tab={wordsTab} />
   {/if}
 
   {#if celebrate != null}

@@ -4,7 +4,7 @@
   /** The current stage card (home) or the whole path (full). Goals are buttons that go where they're advanced. */
   let { path, reached, full = false, onaction, onmap, onjump } = $props()
 
-  const ICON = { words: '📚', verbs: '📐', read: '📖', listen: '🎧', talk: '💬', write: '✍️' }
+  const ICON = { words: '📚', verbs: '📐', grammar: '🧩', read: '📖', listen: '🎧', talk: '💬', write: '✍️' }
   const finished = $derived(reached >= STAGES.length)
   const current = $derived(path.stages[Math.min(reached, STAGES.length - 1)])
   let open = $state(null) // stage expanded in the full view

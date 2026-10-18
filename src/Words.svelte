@@ -2,9 +2,9 @@
   import { status, brief, isWord, KNOWN_DAYS } from './lib/logic.js'
   import { say } from './lib/sound.js'
   import Verbs from './Verbs.svelte'
+  import Grammar from './Grammar.svelte'
 
-  let { words, cards, now, conj } = $props()
-  let tab = $state('words')
+  let { words, cards, now, conj, grammar = [], tab = $bindable('words') } = $props()
 
   let q = $state('')
   let only = $state('all')
@@ -28,13 +28,17 @@
 </script>
 
 <div class="top">
-  <h2>{tab === 'words' ? 'Words' : 'Verbs'}</h2>
+  <h2>{{ words: 'Words', verbs: 'Verbs', grammar: 'Grammar' }[tab]}</h2>
   <div class="seg" role="tablist">
     <button role="tab" aria-selected={tab === 'words'} class:on={tab === 'words'} onclick={() => (tab = 'words')}>📚 Words</button>
     <button role="tab" aria-selected={tab === 'verbs'} class:on={tab === 'verbs'} onclick={() => (tab = 'verbs')}>📐 Verbs</button>
+    <button role="tab" aria-selected={tab === 'grammar'} class:on={tab === 'grammar'} onclick={() => (tab = 'grammar')}>🧩 Grammar</button>
   </div>
 </div>
-{#if tab === 'verbs'}
+{#if tab === 'grammar'}
+  <p class="muted">{grammar.length} topics from A2 to C1, all open. Tap a gap to see the answer; Practice adds a topic to your runs.</p>
+  <Grammar {grammar} {cards} />
+{:else if tab === 'verbs'}
   <p class="muted">All {Object.keys(conj ?? {}).length} verbs in every tense, whatever your stage. Tap a form to hear it.</p>
   <Verbs {conj} {cards} {words} />
 {:else}

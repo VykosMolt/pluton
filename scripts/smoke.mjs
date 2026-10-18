@@ -14,6 +14,8 @@ const PORT = 4179
 const URL = `http://localhost:${PORT}/`
 const deck = JSON.parse(readFileSync('public/data/fr/words.json', 'utf8')).filter((w) => w.sentence)
 const conj = JSON.parse(readFileSync('public/data/fr/conj.json', 'utf8'))
+const grammar = JSON.parse(readFileSync('public/data/fr/grammar.json', 'utf8'))
+let fixAnswer = null // the correction the AI section turns into a card
 
 const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { stdio: 'pipe' })
 process.on('exit', () => server.kill()) // also on a failed step
@@ -50,6 +52,12 @@ async function open(colorScheme, { clock = false } = {}) {
 
 /** The right answer for the card on screen, recovered from the deck. */
 async function answerFor(page, mode) {
+  if (mode === 'gram') {
+    const p = page.locator('.card .topic')
+    const [topic, item] = await Promise.all(['topic', 'item'].map((k) => p.getAttribute(`data-${k}`)))
+    return grammar.find((t) => t.id === topic).items[Number(item)].a[0]
+  }
+  if (mode === 'fix') return fixAnswer
   if (mode === 'conj') {
     const p = page.locator('.card .prompt')
     const [verb, tense, person] = await Promise.all(['verb', 'tense', 'person'].map((k) => p.getAttribute(`data-${k}`)))
@@ -69,7 +77,7 @@ async function answerFor(page, mode) {
   throw new Error(`no deck sentence matches "${shown}"`)
 }
 
-const MODES = { Listen: 'dictation', 'Say it': 'produce', 'Fill the gap': 'cloze', Conjugate: 'conj' }
+const MODES = { Listen: 'dictation', 'Say it': 'produce', 'Fill the gap': 'cloze', Conjugate: 'conj', Grammar: 'gram', 'own mistake': 'fix' }
 
 /** Plays a whole run; answers the first card wrong if asked (then overrides it if asked), everything else right. */
 async function playRun(page, { wrongFirst, override = false, prefix }) {
@@ -175,6 +183,15 @@ const subj = page.locator('.tense', { hasText: 'subjonctif' })
 await subj.getByRole('button', { name: 'Practice' }).click()
 await subj.getByText('queued for your runs').waitFor()
 await page.screenshot({ path: `${OUT}/2-verbs.png` })
+// Grammar: every topic open whatever the stage; practise the B2 subjunctive topic on day one.
+await page.getByRole('tab', { name: /Grammar/ }).click()
+const topics = await page.locator('.topic').count()
+await page.locator('.topic', { hasText: 'subjonctif ou indicatif' }).locator('.head').click()
+await page.getByRole('button', { name: 'Show the answer' }).first().click()
+const revealed = await page.locator('.topic.open mark').first().textContent()
+await page.getByRole('button', { name: 'Practice this topic' }).click()
+await page.locator('.topic.open .state').waitFor()
+await page.screenshot({ path: `${OUT}/2-grammar.png` })
 
 // Persistence: progress survives a reload.
 const counts = () => page.evaluate(() => new Promise((ok) => {
@@ -182,7 +199,7 @@ const counts = () => page.evaluate(() => new Promise((ok) => {
   r.onsuccess = () => {
     const t = r.result.transaction(['cards', 'log'])
     const a = t.objectStore('cards').getAllKeys(), b = t.objectStore('log').getAll()
-    t.oncomplete = () => ok({ cards: a.result.length, words: a.result.filter((k) => !k.startsWith('conj/')).length,
+    t.oncomplete = () => ok({ cards: a.result.length, words: a.result.filter((k) => !k.includes('/')).length, // as isWord()
       log: b.result.length, overridden: b.result.filter((e) => e.overridden).map((e) => e.rating) })
   }
 }))
@@ -323,6 +340,7 @@ await pp.getByRole('button', { name: "Let's go" }).waitFor()
 const placement = await pp.locator('.wrap').textContent()
 await pp.getByRole('button', { name: "Let's go" }).click()
 const placedKnown = await pp.locator('.tile .known').textContent()
+const placedRun = await playRun(pp, { wrongFirst: false, prefix: '9' }) // 300 words known: a grammar topic comes in
 await placeCtx.close()
 
 // AI: talk and writing through a mock OpenAI-compatible provider, then Claude through the Anthropic SDK.
@@ -353,6 +371,12 @@ await tp.getByRole('button', { name: 'Correct it' }).click()
 await tp.locator('.result .diff').waitFor()
 const writeAdds = await tp.locator('.diff .add').allTextContents()
 await tp.screenshot({ path: `${OUT}/8-writing.png`, fullPage: true })
+// The mistake becomes a card and comes back in the next run.
+await tp.getByRole('button', { name: '+ Practise this' }).first().click()
+await tp.getByText('✓ in your runs').waitFor()
+fixAnswer = 'à Paris'
+await tp.locator('nav').getByRole('button', { name: /Home/ }).click()
+const fixRun = await playRun(tp, { wrongFirst: false, prefix: '8f' })
 
 await tp.getByRole('button', { name: 'Settings' }).click()
 await tp.getByLabel('Provider').selectOption('anthropic')
@@ -375,7 +399,7 @@ server.kill()
 
 const claudeSent = { model: claude?.body.model, fallbacks: claude?.body.fallbacks, effort: claude?.body.output_config?.effort,
   beta: claude?.headers['anthropic-beta'], browser: claude?.headers['anthropic-dangerous-direct-browser-access'] }
-const report = { offlineOk, stageTag, lastChapterWords, steps, celebration, stageAfter, placement, placedKnown, bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
+const report = { topics, revealed, placedRun, fixRun, offlineOk, stageTag, lastChapterWords, steps, celebration, stageAfter, placement, placedKnown, bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
 console.log(JSON.stringify(report, null, 2))
 const checks = {
   'no errors': !errors.length,
@@ -401,6 +425,9 @@ const checks = {
   'home shows stage 1 of the path': /Étape 1 \/ 10/.test(stageTag),
   'every chapter is open at stage 1 (C1 chapter readable)': lastChapterWords > 150,
   'the path map lists 10 stages': steps === 10,
+  'grammar: all 15 topics open, answers revealable, B2 topic practisable on day one': topics === 15 && revealed.length > 0,
+  'grammar topic comes into runs once the vocabulary is there': (placedRun.modes.gram ?? 0) > 0,
+  'a writing mistake becomes a card and comes back in a run': (fixRun.modes.fix ?? 0) > 0,
   'finishing a stage is celebrated and moves you on': celebration.includes('Le Mur ✓') && /Étape 2 \/ 10/.test(stageAfter),
   'placement estimates ~300 words and marks them known': /~300 words/.test(placement) && placedKnown.trim() === '300',
   'bridge counts the French in Poe': /\d+ words here \(\d+%\) came that way/.test(bridgeIntro),

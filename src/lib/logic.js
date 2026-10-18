@@ -321,7 +321,9 @@ export function buildRun(cards, words, now, newToday,
   const room = Math.max(0, Math.min(CONJ_PER_RUN, perDay - newToday - Math.min(n, fresh.length)))
   const tables = conj ? newConj(cards, conj, tenses, room) : []
   tables.forEach((key, i) => queue.splice(Math.min(queue.length, 3 + i * 6), 0, item({ lemma: key, fsrs: createEmptyCard(now) }, true)))
-  if (room > tables.length) newGrammar(cards, grammar, 1)
+  // Grammar gets its own slot (one topic per run), so verb tables can't crowd it out; both draw on the daily budget.
+  const gramRoom = Math.max(0, Math.min(1, perDay - newToday - Math.min(n, fresh.length) - tables.length))
+  newGrammar(cards, grammar, gramRoom)
     .forEach((key) => queue.splice(Math.min(queue.length, 8), 0, item({ lemma: key, fsrs: createEmptyCard(now) }, true)))
   return queue
 }

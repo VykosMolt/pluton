@@ -498,12 +498,27 @@ def main():
         tts += [s for _, _, s in split_sentences(text["body"])]
     (OUT / "shelf.json").write_text(json.dumps(shelf, ensure_ascii=False, separators=(",", ":")))
     (OUT / "story.json").write_text(json.dumps(story, ensure_ascii=False, separators=(",", ":")))
+    grammar = json.loads((Path(__file__).parent / "grammar.json").read_text())  # hand-written topics, A2 to C1
+    check_grammar(grammar)
+    (OUT / "grammar.json").write_text(json.dumps(grammar, ensure_ascii=False, separators=(",", ":")))
+    print(f"grammar: {len(grammar)} topics, {sum(len(t['items']) for t in grammar)} exercises")
     print(f"read-along: {sum(len(t.get('sentences', [])) for t in story + shelf)} sentences")
     tts += [phrase(i, tense, f) for c in conj.values() for tense, forms in c["t"].items() for i, f in enumerate(forms) if f]
     print(f"conj: {len(conj)} verbs, {sum(len(c['t']) for c in conj.values())} tables")
     if "--no-audio" not in sys.argv:
         synth_all(tts)
     check(words, forms, conj, cog, story)
+
+
+def check_grammar(grammar):
+    """Every topic complete and in level order; every exercise has exactly one gap and at least one answer."""
+    levels = ["A1", "A2", "B1", "B2", "C1", "C2"]
+    assert len({t["id"] for t in grammar}) == len(grammar), "duplicate topic id"
+    assert [levels.index(t["level"]) for t in grammar] == sorted(levels.index(t["level"]) for t in grammar), "level order"
+    for t in grammar:
+        assert t["name"] and t["how"] and len(t["items"]) >= 5, t["id"]
+        for it in t["items"]:
+            assert it["q"].count("___") == 1 and it["a"] and all(a.strip() for a in it["a"]), (t["id"], it)
 
 
 def check(words, forms, conj, cog, story):

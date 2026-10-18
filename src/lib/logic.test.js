@@ -150,6 +150,13 @@ test('buildRun introduces a grammar topic when the vocabulary is there', () => {
   const grammar = [{ id: 'objets', level: 'A2' }]
   const intros = buildRun(learned, words, now, 0, { grammar }).filter((i) => i.phase === 'intro').map((i) => i.lemma)
   assert.deepEqual(intros, ['x', gramKey('objets')])
+  // its own slot: verb tables waiting don't crowd it out
+  const withVerbs = [...learned, { lemma: 'aller', fsrs: { ...createEmptyCard(now), state: 2, due: new Date(+now + 864e5) } },
+    { lemma: 'être', fsrs: { ...createEmptyCard(now), state: 2, due: new Date(+now + 864e5) } }]
+  const conj = { aller: { t: { 'ind:pre': [] } }, être: { t: { 'ind:pre': [] } } }
+  for (const v of ['aller', 'être']) words.set(v, { lemma: v, sentence: '…' })
+  const all = buildRun(withVerbs, words, now, 0, { grammar, conj, tenses: ['ind:pre'] }).filter((i) => i.phase === 'intro').map((i) => i.lemma)
+  assert.ok(all.includes(gramKey('objets')) && all.filter((l) => l.startsWith('conj/')).length === 2, all.join())
 })
 
 test('buildRun adds conjugation tables within the daily budget', () => {

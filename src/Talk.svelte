@@ -3,7 +3,7 @@
   import * as db from './lib/db.js'
   import { chat, ready, parseJSON, AIError, PROVIDERS } from './lib/ai.js'
   import { chatSystem, writeSystem, splitCorrection, levelOf, PROMPTS } from './lib/tutor.js'
-  import { tokenize, wordDiff, sentenceAt, isWord } from './lib/logic.js'
+  import { tokenize, wordDiff, sentenceAt, isWord, fixCard, firstChange } from './lib/logic.js'
   import { LANG } from './lib/lang.js'
   import Cat from './Cat.svelte'
   import Tokens from './Tokens.svelte'
@@ -139,6 +139,23 @@
   }
 
   const pick = (t, sentence) => (sel = { tok: t, sentence })
+
+  // Corrections become review cards: the corrected sentence, with what was fixed to type back.
+  let practised = $state(new Set())
+  async function practise(id, card) {
+    if (!card || practised.has(id)) return
+    await db.put('cards', card)
+    cards.set(card.lemma, card)
+    practised = new Set([...practised, id])
+  }
+  const fromError = (e) => {
+    const i = result.corrected.indexOf(e.fix)
+    return i < 0 ? null : fixCard(sentenceAt(result.corrected, i), e.fix, e.original, e.why)
+  }
+  const fromChat = (k, r) => {
+    const change = log[k - 1]?.role === 'user' ? firstChange(log[k - 1].content, r.fix) : null
+    return change && fixCard(r.fix, change.answer, change.wrong, r.why)
+  }
 </script>
 
 <div class="head">
@@ -172,7 +189,12 @@
         <div class="msg pluton">
           <Cat mood={r.fix ? 'idle' : 'happy'} size={40} />
           <div class="bubble" lang="fr">
-            {#if r.fix}<p class="fix">✏️ {r.fix}{#if r.why}<small>{r.why}</small>{/if}</p>{/if}
+            {#if r.fix}
+              {@const card = fromChat(k, r)}
+              <p class="fix">✏️ {r.fix}{#if r.why}<small>{r.why}</small>{/if}
+                {#if card}<button class="practise" disabled={practised.has(`chat-${k}`)} onclick={() => practise(`chat-${k}`, card)}>
+                  {practised.has(`chat-${k}`) ? '✓ in your runs' : '+ Practise this'}</button>{/if}</p>
+            {/if}
             {#if r.body}
               <Tokens text={r.body} toks={tokenize(r.body, forms)} {statusOf} sel={sel?.tok} onpick={(t) => pick(t, sentenceAt(r.body, t.start))} />
               <button class="speak" onclick={() => say(r.body)} aria-label="Read aloud">🔊</button>
@@ -208,7 +230,10 @@
       {#if result.errors.length}
         <ul class="errors">
           {#each result.errors as e}
-            <li><span class="kind">{e.kind}</span> <s>{e.original}</s> → <b>{e.fix}</b><br /><small>{e.why}</small></li>
+            {@const card = fromError(e)}
+            <li><span class="kind">{e.kind}</span> <s>{e.original}</s> → <b>{e.fix}</b><br /><small>{e.why}</small>
+              {#if card}<button class="practise" disabled={practised.has(`err-${e.fix}`)} onclick={() => practise(`err-${e.fix}`, card)}>
+                {practised.has(`err-${e.fix}`) ? '✓ in your runs' : '+ Practise this'}</button>{/if}</li>
           {/each}
         </ul>
       {:else}
@@ -291,6 +316,8 @@
   .diff .add { color: var(--green); font-weight: 700; }
   .errors { padding-left: 18px; }
   .errors li { margin-bottom: 8px; }
+  .practise { display: block; margin-top: 4px; border: 0; background: none; padding: 0; color: var(--blue); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: underline; }
+  .practise:disabled { color: var(--green); text-decoration: none; cursor: default; }
   .kind { font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--muted); }
   .ok { color: var(--green); font-weight: 700; }
   .feedback { font-style: italic; }

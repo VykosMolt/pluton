@@ -1,25 +1,27 @@
 <script>
   import { onMount, tick } from 'svelte'
   import * as db from './lib/db.js'
-  import { buildRun, grade, gradeProduce, gradeConj, gradeDictee, parseConj, CONJ, produceAnswer, hintOf, brief, modeFor, RATING, points, nextCombo, blank, requeue, scheduler } from './lib/logic.js'
+  import { buildRun, grade, gradeProduce, gradeConj, gradeDictee, gradeGram, parseConj, CONJ, GRAM, FIX, produceAnswer, hintOf, brief, modeFor, RATING, points, nextCombo, blank, requeue, scheduler } from './lib/logic.js'
   import { say, sfx, stop } from './lib/sound.js'
   import { LANG } from './lib/lang.js'
   import Cat from './Cat.svelte'
   import AccentBar from './AccentBar.svelte'
 
-  let { words, forms, cards, conj, newToday, pace, onexit } = $props()
+  let { words, forms, cards, conj, grammar, newToday, pace, onexit } = $props()
 
   const COLORS = ['var(--blue)', 'var(--red)', 'var(--gold)', 'var(--green)', 'var(--orange)']
   const TAGS = { cloze: '✍️ Fill the gap', dictation: '🎧 Listen, type the missing word', produce: '💬 Say it in French',
-    conj: '📐 Conjugate', dictee: '📝 Dictée: write the whole sentence' }
+    conj: '📐 Conjugate', dictee: '📝 Dictée: write the whole sentence', gram: '🧩 Grammar', fix: '🔧 Your own mistake' }
   const PROMPTS = { cloze: 'Quel mot manque ? (which word is missing?)', dictation: 'Écoute bien… (listen closely)',
     produce: 'Comment dit-on… ? (how do you say…?)', conj: 'Conjugue ! (conjugate it)',
-    dictee: 'Écris tout ce que tu entends. (write everything you hear)' }
+    dictee: 'Écris tout ce que tu entends. (write everything you hear)', gram: 'Complète ! (fill it in)',
+    fix: 'Corrige-toi ! (fix your own sentence)' }
 
-  let queue = $state(buildRun([...cards.values()], words, new Date(), newToday, { conj, tenses: LANG.tenses.map((t) => t.id), ...pace }))
+  let queue = $state(buildRun([...cards.values()], words, new Date(), newToday, { conj, grammar, tenses: LANG.tenses.map((t) => t.id), ...pace }))
   let done = $state(0)
   let mode = $state('cloze') // fixed per card when shown; the card's reps change on answer
   let person = $state(0) // conjugation cell being asked
+  let pick = $state(0) // grammar exercise being asked
   let answer = $state('')
   let fb = $state(null) // feedback for the current answer
   let combo = $state(0)
@@ -36,7 +38,10 @@
 
   const cur = $derived(queue[0])
   const w = $derived(cur && content(cur.lemma))
-  const parts = $derived(w && !w.conj ? blank(w.sentence, w.form) : ['', '', ''])
+  const gap = (s, a) => s.includes(a) ? [s.slice(0, s.indexOf(a)), a, s.slice(s.indexOf(a) + a.length)] : [s, '', '']
+  const exercise = $derived(w?.gram ? w.topic.items[pick] : null)
+  const parts = $derived(!w || w.conj ? ['', '', ''] : w.gram ? exercise.q.split('___').toSpliced(1, 0, exercise.a[0])
+    : w.fixed ? gap(w.sentence, w.answer) : blank(w.sentence, w.form))
   const expected = $derived(!w ? '' : mode === 'conj' ? w.forms[person] : mode === 'produce' ? produceAnswer(w)
     : mode === 'dictee' ? w.sentence : parts[1])
   const progress = $derived(done / (done + queue.length || 1))
@@ -44,6 +49,8 @@
     fb?.result === 'wrong' ? 'sad' : combo >= 5 && fb?.result !== 'almost' ? 'fire' : fb?.result === 'right' ? 'happy' : 'idle')
 
   function content(lemma) {
+    if (lemma.startsWith(GRAM)) return { gram: true, lemma, topic: grammar.find((t) => GRAM + t.id === lemma) }
+    if (lemma.startsWith(FIX)) return { fixed: true, lemma, ...cards.get(lemma).fix }
     if (lemma.startsWith(CONJ)) {
       const { verb, tense } = parseConj(lemma)
       const c = conj[verb]
@@ -60,6 +67,7 @@
   const rows = (w) => w.forms.map((form, i) => form && { i, form, subject: LANG.subject(i, w.tense) }).filter(Boolean)
   const cell = (i) => [w.audio[i], `${LANG.subject(i, w.tense)} ${w.forms[i]}`]
   function replay() {
+    if (w.gram || w.fixed) return stop() // no recordings for these
     if (w.conj) return cur.phase === 'intro' ? say(...rows(w).map((r) => cell(r.i))) : say(cell(person))
     return wordFirst() ? say([w.audio_word, w.display], sentenceClip()) : say(sentenceClip())
   }
@@ -68,7 +76,11 @@
     answer = ''
     fb = null
     if (!cur) return finish(done > 0)
-    mode = w.conj ? 'conj' : modeFor(cur.card, w)
+    mode = w.gram ? 'gram' : w.fixed ? 'fix' : w.conj ? 'conj' : modeFor(cur.card, w)
+    if (w.gram) {
+      const n = w.topic.items.length
+      pick = cur.pick = (cur.pick ?? -1) >= 0 ? (cur.pick + 1 + Math.floor(Math.random() * (n - 1))) % n : Math.floor(Math.random() * n)
+    }
     if (w.conj) {
       const open = rows(w).map((r) => r.i).filter((i) => i !== cur.person || rows(w).length === 1)
       person = cur.person = open[Math.floor(Math.random() * open.length)]
@@ -109,7 +121,8 @@
   let pending = null // { stored, entry } to write on Next
 
   function check(typed) {
-    const g = mode === 'dictee' ? gradeDictee(typed, w.sentence)
+    const g = mode === 'gram' ? gradeGram(typed, exercise.a) : mode === 'fix' ? gradeGram(typed, [w.answer])
+      : mode === 'dictee' ? gradeDictee(typed, w.sentence)
       : mode === 'conj' ? gradeConj(typed, expected, w.tense === 'pc' && w.aux === 'être')
       : mode === 'produce' ? gradeProduce(typed, w, forms) : grade(typed, parts[1], cur.lemma, forms)
     before = { card: $state.snapshot(cur.card), missed: cur.missed, combo, best, score, tally: { ...tally }, ms: Date.now() - shownAt }
@@ -180,7 +193,27 @@
 {#if cur}
   <form onsubmit={submit}>
     {#key `${done}:${cur.lemma}:${cur.phase}`}
-      {#if cur.phase === 'intro' && w.conj}
+      {#if cur.phase === 'intro' && w.gram}
+        <div class="panel card enter">
+          <span class="tag new">🧩 New grammar topic · {w.topic.level}</span>
+          <h2 class="word small">{w.topic.name}</h2>
+          <p class="muted">{w.topic.en}</p>
+          <p class="how">{w.topic.how}</p>
+          {#each w.topic.items.slice(0, 2) as it}
+            {@const [a, b] = it.q.split('___')}
+            <p class="example" lang="fr">{a}<mark>{it.a[0]}</mark>{b}</p>
+          {/each}
+        </div>
+        <button class="btn wide" bind:this={gotBtn}>Got it →</button>
+      {:else if cur.phase === 'intro' && w.fixed}
+        <div class="panel card enter">
+          <span class="tag new">🔧 From your own French</span>
+          <p class="sentence" lang="fr">{parts[0]}<mark>{parts[1]}</mark>{parts[2]}</p>
+          {#if w.wrong}<p>You wrote <s>{w.wrong}</s>, it's <b>{w.answer}</b>.</p>{/if}
+          {#if w.why}<p class="muted">{w.why}</p>{/if}
+        </div>
+        <button class="btn wide" bind:this={gotBtn}>Got it →</button>
+      {:else if cur.phase === 'intro' && w.conj}
         <div class="panel card enter">
           <span class="tag new">📐 New table</span>
           <h2 class="word">{w.verb} <small class="tense">· {w.info.name}</small></h2>
@@ -208,7 +241,14 @@
       {:else}
         <div class="panel card enter" class:shake={fb?.result === 'wrong'} class:glow={fb?.result === 'right'}>
           <span class="tag">{TAGS[mode]}</span>
-          {#if mode === 'conj'}
+          {#if mode === 'gram' || mode === 'fix'}
+            {#if mode === 'gram'}<p class="muted topic" data-topic={w.topic.id} data-item={pick}>{w.topic.name}{w.topic.ask ? ` · ${w.topic.ask}` : ''}</p>{/if}
+            <p class="sentence" lang="fr">
+              {parts[0]}{#if fb}<mark class={fb.result}>{parts[1]}</mark>{:else}<span class="gap" style="min-width:{Math.max(4, parts[1].length + 1)}ch"></span>{/if}{parts[2]}
+            </p>
+            {#if mode === 'fix' && !fb}<p class="hint">{w.wrong ? `You once wrote “${w.wrong}”. ` : ''}{w.why}</p>{/if}
+            {#if fb && mode === 'gram'}<p class="how">{w.topic.how}</p>{/if}
+          {:else if mode === 'conj'}
             <p class="prompt" data-verb={w.verb} data-tense={w.tense} data-person={person}>{w.verb} <small class="tense">· {w.info.name}</small></p>
             {#if fb}
               <div class="table">
@@ -245,7 +285,7 @@
               <p class="hint">{w.pos} · {brief(w.gloss)}</p>
             {/if}
           {/if}
-          {#if (mode !== 'produce' && mode !== 'conj' && mode !== 'dictee') || fb}
+          {#if (!['produce', 'conj', 'dictee', 'gram', 'fix'].includes(mode)) || (fb && !w.gram && !w.fixed)}
             <button type="button" class="btn ghost replay" onclick={replay} aria-label="Play audio">🔊</button>
           {/if}
           {#if fb?.gained}<span class="plus">+{fb.gained}</span>{/if}
@@ -323,6 +363,9 @@
   .dm.accent { background: color-mix(in srgb, var(--orange) 30%, transparent); border-radius: 5px; }
   .tense { font-size: 0.6em; font-weight: 700; color: var(--muted); }
   .how { font-size: 15px; line-height: 1.45; margin: 10px 0; }
+  .word.small { font-size: 30px; }
+  .example { font-size: 19px; margin: 6px 0; }
+  .topic { margin: 8px 0 0; font-weight: 700; font-size: 14px; }
   .table { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
   .table button {
     display: flex; gap: 6px; align-items: baseline; padding: 8px 10px; border-radius: 10px; cursor: pointer;
