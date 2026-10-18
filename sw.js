@@ -5,7 +5,7 @@
 // ponytail: audio is cached as it's played; precache all ~160 MB only if offline listening from day one matters.
 const CACHE = 'pluton-v2'
 const SHELL = ['./', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png',
-  ...['words', 'forms', 'conj', 'shelf', 'story'].map((f) => `data/fr/${f}.json`)]
+  ...['words', 'forms', 'conj', 'shelf', 'story', 'grammar'].map((f) => `data/fr/${f}.json`)]
 
 self.addEventListener('install', (e) => e.waitUntil((async () => {
   const cache = await caches.open(CACHE)
