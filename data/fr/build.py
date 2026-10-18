@@ -30,6 +30,34 @@ POS = {"NOM": "noun", "VER": "verb", "AUX": "verb", "ADJ": "adj", "ADV": "adv", 
 KAIKKI_POS = {"interj": "intj"}
 SKIP_TAGS = {"obsolete", "archaic", "rare", "dated", "historical"}
 
+# Hand-written glosses for the first cards a learner meets. Wiktionary's first senses for function words are often
+# explanations ("du: Forms the partitive article."), and English->French recall needs ne/pas to be distinguishable.
+GLOSS = {
+    "de": "of; from", "ne": "not (the ne of ne … pas)", "pas": "not (the pas of ne … pas)",
+    "le": "the (masculine); him, it", "la": "the (feminine); her, it", "les": "the (plural); them",
+    "un": "a, an (masculine); one", "une": "a, an (feminine); one", "des": "some (plural of un / une)",
+    "du": "some (de + le); of the", "au": "to the, at the (à + le)", "aux": "to the, at the (à + les)",
+    "vous": "you (plural or formal)", "il": "he; it", "elle": "she; her; it", "nous": "we; us",
+    "à": "to; at; in", "qui": "who; which, that", "en": "in; to; some, of it", "ça": "that; this; it",
+    "que": "that; what; than", "ce": "this, that; it", "y": "there; (about) it", "plus": "more; no more (ne … plus)",
+    "te": "you (object, informal)", "me": "me; to me", "se": "oneself; himself, herself, themselves",
+    "moi": "me; I (stressed)", "toi": "you (informal, stressed)", "lui": "him; to him, to her",
+    "si": "if; so; yes (contradicting)", "là": "there; here", "mon": "my (masculine)", "ma": "my (feminine)",
+    "mes": "my (plural)", "ton": "your (informal, masculine)", "ta": "your (informal, feminine)",
+    "tes": "your (informal, plural)", "son": "his, her, its (masculine)", "sa": "his, her, its (feminine)",
+    "ses": "his, her, its, their (plural)", "notre": "our", "nos": "our (plural)", "votre": "your (plural or formal)",
+    "vos": "your (plural or formal; plural noun)", "leurs": "their (plural noun)", "cette": "this, that (feminine)",
+    "ces": "these, those", "quelques": "a few, some", "autres": "others", "ok": "OK",
+    "dire": "to say; to tell", "vouloir": "to want", "venir": "to come", "suivre": "to follow",
+    "parler": "to speak, to talk", "aimer": "to love; to like", "falloir": "to be necessary (il faut: one must)",
+    "penser": "to think", "trouver": "to find", "arriver": "to arrive; to happen", "donner": "to give",
+    "arrêter": "to stop; to arrest", "connaître": "to know (be familiar with)", "tuer": "to kill",
+    "peu": "little, not much (un peu: a bit)", "homme": "man", "vie": "life", "dieu": "god",
+    "fois": "time (occurrence), once", "chez": "at (someone's place)", "ami": "friend", "après": "after",
+    "accord": "agreement (d'accord: OK)", "monsieur": "sir; Mr.; gentleman", "enfant": "child", "seul": "alone; only",
+}
+POS_OVERRIDES = {"peu": "adv"}  # Lexique tags "un peu" as a noun, which made the card "le peu"
+
 
 def pos_of(cgram):
     return POS.get(cgram) or {"PRO": "pron", "ART": "article", "ADJ": "det"}.get(cgram.split(":")[0], "other")
@@ -102,7 +130,7 @@ def load_lexique():
         forms[form] = lemma  # ascending, so the most frequent lemma for each form wins
         by_lemma[lemma].append(form)
     common = {l: set(fs[-3:]) for l, fs in by_lemma.items()}  # each lemma's 3 most frequent forms
-    pos = {l: pos_of(top_cgram[l][0]) for l in ranked}
+    pos = {l: pos_of(top_cgram[l][0]) for l in ranked} | POS_OVERRIDES
     gender = {l: noun_gender[l][1] for l in ranked if pos[l] == "noun" and l in noun_gender}
     return ranked, forms, pos, gender, common
 
@@ -203,7 +231,7 @@ def main():
     ranked = [l for l in ranked if pos[l] != "other"][:N_GLOSS]
     rank = {l: i for i, l in enumerate(ranked)}
     print(f"lexique: {len(forms)} forms, top lemmas: {ranked[:12]}", flush=True)
-    glosses = load_glosses({l: pos[l] for l in ranked})
+    glosses = load_glosses({l: pos[l] for l in ranked}) | GLOSS
     deck_lemmas = [l for l in ranked[:N_DECK] if pos[l] != "interj" and not (pos[l] == "noun" and len(l) < 2)]
     sentences = pick_sentences(rank, forms, common)
     words, tts = [], []
@@ -241,6 +269,9 @@ def check(words, forms):
     assert [l for _, l in tokens("L'homme qu'il voit aujourd'hui, dit-il.", forms)] == \
         ["le", "homme", "que", "il", "voir", "aujourd'hui", "dire", "il"]
     assert with_article("homme", "m") == "l'homme" and with_article("hasard", "m") == "le hasard"
+    by = {w["lemma"]: w for w in words}
+    assert by["vous"]["gloss"] == GLOSS["vous"] and by["peu"]["display"] == "peu", "overrides applied"
+    assert all(l in by for l in GLOSS), [l for l in GLOSS if l not in by]
     print("checks ok")
 
 

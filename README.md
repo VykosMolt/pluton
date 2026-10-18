@@ -2,8 +2,9 @@
 
 Learn French for real, with Pluton the black cat (Poe's cat, as Baudelaire's translation names him).
 
-- **Runs**: ~10-minute sessions. New words are introduced in a real sentence, then you *type* them back
-  (fill-the-gap, or listen-and-type). FSRS schedules every review. Combos, points, a streak, and a cat with opinions.
+- **Runs**: ~10-minute sessions. New words are introduced in a real sentence, then you *type* them back:
+  fill the gap, listen and type, and later recall them from English (nouns with the right gender). FSRS schedules
+  every review. Combos, points, levels, a streak, and a cat with opinions.
 - **Library**: paste lyrics, an article, or subtitles. Every word is coloured by whether you know it. A text
   unlocks at 95% understood, and one tap queues exactly the words that get you there.
 
@@ -30,6 +31,9 @@ npm run smoke                # builds, then plays a full run + library flow in h
 every audio file exists, form→lemma spot checks).
 
 ## On your phone
+
+Quick test: `npm run dev`, then open `http://<this machine's LAN IP>:5173` on the phone (same Wi-Fi).
+Everything works over plain HTTP except offline mode and the install prompt.
 
 Install needs HTTPS (service worker). Build with `npm run build` and put `dist/` on any static HTTPS host
 (GitHub Pages, Cloudflare Pages, Netlify), or serve it from this machine with `tailscale serve`.

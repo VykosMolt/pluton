@@ -62,6 +62,7 @@
   onMount(show)
 
   function finish(completed) {
+    commit()
     stop()
     if (completed) sfx('done')
     onexit({ completed, points: score, best, introduced, ...tally, total: tally.right + tally.almost + tally.wrong,
@@ -83,16 +84,28 @@
     show()
   }
 
+  // The answer is graded on Check but saved on Next, so "I was right" can re-grade it without touching the log.
+  let before = null // run + card state just before this answer
+  let pending = null // { stored, entry } to write on Next
+
   function check(typed) {
     const g = mode === 'produce' ? gradeProduce(typed, w, forms) : grade(typed, parts[1], cur.lemma, forms)
-    const revenge = cur.missed && g.result === 'right'
-    const gained = points(g.result, combo, Date.now() - shownAt, revenge)
-    combo = nextCombo(g.result, combo)
-    best = Math.max(best, combo)
-    score += gained
+    before = { card: $state.snapshot(cur.card), missed: cur.missed, combo, best, score, tally: { ...tally }, ms: Date.now() - shownAt }
+    cur.seen++
+    apply(g, typed)
+    if (g.result === 'wrong') navigator.vibrate?.([40, 30, 40])
+    replay()
+  }
+
+  function apply(g, typed) {
+    const revenge = before.missed && g.result === 'right'
+    const gained = points(g.result, before.combo, before.ms, revenge)
+    combo = nextCombo(g.result, before.combo)
+    best = Math.max(before.best, combo)
+    score = before.score + gained
+    Object.assign(tally, before.tally)
     tally[g.result]++
     sfx(g.result)
-    if (g.result === 'wrong') navigator.vibrate?.([40, 30, 40])
     if (g.result === 'right' && combo % 5 === 0) {
       sfx('combo')
       burst++
@@ -100,19 +113,27 @@
     }
     seen.set(cur.lemma, g.result)
     const now = new Date()
-    const card = scheduler.next($state.snapshot(cur.card), now, RATING[g.result]).card
-    const stored = { ...(cards.get(cur.lemma) ?? { lemma: cur.lemma, added: now.getTime() }), fsrs: card }
-    cards.set(cur.lemma, stored)
-    db.review(stored, { lemma: cur.lemma, rating: RATING[g.result], mode, at: now.getTime() })
-      .catch((err) => (saveError = `Progress not saved (${err.message}). Make a backup soon.`))
+    const card = scheduler.next(structuredClone(before.card), now, RATING[g.result]).card
+    pending = {
+      stored: { ...(cards.get(cur.lemma) ?? { lemma: cur.lemma, added: now.getTime() }), fsrs: card },
+      entry: { lemma: cur.lemma, rating: RATING[g.result], mode, at: now.getTime(), ...(g.overridden && { overridden: true }) },
+    }
     cur.card = card
-    cur.seen++
-    cur.missed ||= g.result === 'wrong'
+    cur.missed = before.missed || g.result === 'wrong'
     fb = { ...g, gained, revenge, typed, praise: LANG.praise[Math.floor(Math.random() * LANG.praise.length)] }
-    replay()
+  }
+
+  const iWasRight = () => apply({ result: 'right', overridden: true }, fb.typed)
+
+  function commit() {
+    if (!pending) return
+    cards.set(pending.stored.lemma, pending.stored)
+    db.review(pending.stored, pending.entry).catch((err) => (saveError = `Progress not saved (${err.message}). Make a backup soon.`))
+    pending = null
   }
 
   function next() {
+    commit()
     const [it, ...rest] = queue
     queue = requeue(rest, it, new Date())
     done++
@@ -171,7 +192,7 @@
             {#if fb}
               <p class="wordline"><b class={w.gender}>{w.display}</b> — {w.gloss}</p>
             {:else if mode === 'cloze'}
-              <p class="hint">{w.pos} · {w.gloss}</p>
+              <p class="hint">{w.pos} · {brief(w.gloss)}</p>
             {/if}
           {/if}
           {#if mode !== 'produce' || fb}
@@ -184,6 +205,7 @@
           <Cat mood={catMood} size={60} />
           <p class="msg {fb?.result ?? ''}">
             {#if !fb}<span class="muted">{PROMPTS[mode]}</span>
+            {:else if fb.overridden}OK, counted as right.
             {:else if fb.result === 'right'}{fb.revenge ? 'Revanche ! 💥' : fb.praise}
             {:else if fb.why === 'gender'}Right word, wrong gender: <b class={w.gender}>{expected}</b> ({w.gender === 'f' ? 'feminine' : 'masculine'})
             {:else if fb.why === 'article'}Add the article: <b class={w.gender}>{expected}</b>
@@ -192,6 +214,9 @@
             {:else if fb.why === 'typo'}Typo, it's <b>{expected}</b>
             {:else if fb.why === 'other'}“{fb.typed}” is a different word ({words.get(fb.other)?.gloss || fb.other}). Here: <b>{expected}</b>
             {:else}It's <b>{expected}</b>{/if}
+            {#if fb && fb.result !== 'right'}
+              <button type="button" class="override" onclick={iWasRight}>I was right</button>
+            {/if}
           </p>
         </div>
 
@@ -267,6 +292,10 @@
   .accents button {
     min-width: 40px; padding: 8px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel);
     font-size: 18px; cursor: pointer;
+  }
+  .override {
+    display: block; margin-top: 4px; border: 0; background: none; padding: 0; font-size: 14px; font-weight: 600;
+    color: var(--muted); text-decoration: underline; cursor: pointer;
   }
   .dunno { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 6px 0; }
   .wide { width: 100%; font-size: 20px; }

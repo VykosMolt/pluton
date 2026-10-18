@@ -56,8 +56,8 @@ async function answerFor(page, mode) {
 
 const MODES = { Listen: 'dictation', 'Say it': 'produce', 'Fill the gap': 'cloze' }
 
-/** Plays a whole run; answers the first card wrong if asked, everything else right. */
-async function playRun(page, { wrongFirst, prefix }) {
+/** Plays a whole run; answers the first card wrong if asked (then overrides it if asked), everything else right. */
+async function playRun(page, { wrongFirst, override = false, prefix }) {
   await page.getByRole('button', { name: /Start run/ }).click()
   const modes = {}
   let answered = 0, wrongDone = !wrongFirst
@@ -80,6 +80,10 @@ async function playRun(page, { wrongFirst, prefix }) {
     await page.getByRole('button', { name: 'Check' }).click()
     await page.locator(wrongDone ? '.msg.right' : '.msg.wrong').waitFor()
     if (!wrongDone || modes[mode] === 1) await page.screenshot({ path: `${OUT}/${prefix}-${mode}-${wrongDone ? 'right' : 'wrong'}.png` })
+    if (!wrongDone && override) {
+      await page.getByRole('button', { name: 'I was right' }).click()
+      await page.getByText('counted as right').waitFor()
+    }
     wrongDone = true
     answered++
     await page.getByRole('button', { name: 'Next →' }).click()
@@ -114,8 +118,8 @@ const counts = () => page.evaluate(() => new Promise((ok) => {
   const r = indexedDB.open('pluton-fr')
   r.onsuccess = () => {
     const t = r.result.transaction(['cards', 'log'])
-    const a = t.objectStore('cards').count(), b = t.objectStore('log').count()
-    t.oncomplete = () => ok({ cards: a.result, log: b.result })
+    const a = t.objectStore('cards').count(), b = t.objectStore('log').getAll()
+    t.oncomplete = () => ok({ cards: a.result, log: b.result.length, overridden: b.result.filter((e) => e.overridden).map((e) => e.rating) })
   }
 }))
 const before = await counts()
@@ -132,7 +136,8 @@ await page.getByRole('button', { name: /Home/ }).click()
 const due = await page.locator('.tile .due').textContent()
 const streakLater = await page.locator('.streak').textContent()
 await page.screenshot({ path: `${OUT}/3-home-later.png` })
-const run2 = await playRun(page, { wrongFirst: false, prefix: '4' })
+const run2 = await playRun(page, { wrongFirst: true, override: true, prefix: '4' })
+const end = await counts()
 await ctx.close()
 
 const dark = await open('dark')
@@ -141,7 +146,7 @@ await dark.ctx.close()
 await browser.close()
 server.kill()
 
-const report = { streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
+const report = { end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
 console.log(JSON.stringify(report, null, 2))
 const checks = {
   'no errors': !errors.length,
@@ -156,6 +161,8 @@ const checks = {
   'queuing does not fake coverage': unlockBefore === unlockAfter,
   'reviews due after 3 days': Number(due) > 0,
   'production cards appear': (run2.modes.produce ?? 0) > 0,
+  'one log entry per answer': end.log === run1.answered + run2.answered,
+  'override logged as Good': JSON.stringify(end.overridden) === '[3]',
 }
 for (const [name, ok] of Object.entries(checks)) console.log(`${ok ? '✔' : '✖'} ${name}`)
 process.exit(Object.values(checks).every(Boolean) ? 0 : 1)
