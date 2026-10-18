@@ -1,5 +1,5 @@
 <script>
-  import { status, brief, KNOWN_DAYS } from './lib/logic.js'
+  import { status, brief, isWord, KNOWN_DAYS } from './lib/logic.js'
   import { say } from './lib/sound.js'
 
   let { words, cards, now } = $props()
@@ -8,7 +8,7 @@
   let only = $state('all')
 
   const LABEL = { queued: 'queued', learning: 'learning', known: 'known' }
-  const rows = $derived([...cards.values()]
+  const rows = $derived([...cards.values()].filter(isWord)
     .map((c) => ({ c, w: words.get(c.lemma), st: status(c) }))
     .sort((a, b) => b.c.added - a.c.added))
   const shown = $derived(rows.filter(({ c, w, st }) =>

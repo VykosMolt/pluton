@@ -57,6 +57,13 @@
       .m { color: var(--blue); }
       .f { color: var(--red); }
       :focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+      /* word status, wherever words are tappable */
+      .w { cursor: pointer; border-radius: 5px; }
+      .w:focus-visible { outline: 2px solid var(--gold); }
+      .w.new { background: color-mix(in srgb, var(--red) 16%, transparent); text-decoration: underline dotted var(--red); text-underline-offset: 4px; }
+      .w.learning { background: color-mix(in srgb, var(--gold) 26%, transparent); }
+      .w.queued { background: color-mix(in srgb, var(--blue) 14%, transparent); text-decoration: underline dashed var(--blue); text-underline-offset: 4px; }
+      .w.sel { outline: 2px solid var(--blue); }
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
     </style>
   </head>

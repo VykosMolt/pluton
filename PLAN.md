@@ -4,6 +4,9 @@ Goal: a French learning app that actually teaches (FSRS spaced repetition, produ
 not recognition, frequency order, comprehensible input) and is fun (combo/points, real
 content unlocks, short runs). One local-first PWA for Linux, Android, iOS.
 
+**Target (user, 2026-10-18): a learner can reach C1 with this app.** That makes the app the hub for all of
+C1's skills, not a vocab drill. See "Road to C1" below.
+
 ## Decisions
 - **PWA, not native** — one codebase; iOS installs via Safari "Add to Home Screen", no Mac/Xcode/$99.
   Wrap with Tauri 2 later only if store distribution is wanted.
@@ -37,11 +40,34 @@ content unlocks, short runs). One local-first PWA for Linux, Android, iOS.
 - [x] PWA: manifest, icons, service worker
 - [x] Checks: `npm test` (10 pass), build.py self-asserts, `npm run smoke` (full run + library + reload in Chromium)
 
-## Later (not in MVP)
-Sync server (replay `log`), LLM story campaign + roleplay, speaking (Whisper), hours-listened metric,
-language picker, precache all audio for full offline, Tauri wrap, settings (new words/day).
+## Road to C1
+C1 (CEFR): understands long, demanding texts and implicit meaning, follows native-speed speech on unfamiliar
+topics, speaks and writes fluently and precisely with complex grammar. Rough scale: 1000+ hours of contact,
+recognition vocabulary well past the top few thousand words (estimates vary with how words are counted: treat
+the numbers below as waypoints, not CEFR certification).
+
+| Skill | What C1 needs | Status |
+|---|---|---|
+| Vocabulary | ~8k most frequent lemmas, spoken + written register | **8k deck** (7351 with sentence+audio), ranked by film+book frequency |
+| Grammar: verbs | all common tenses productive; passé simple / subj. imparfait receptive | **Conjugation drills**: 59 verbs × présent, passé composé, imparfait, futur, conditionnel, subjonctif; tenses unlock in order |
+| Grammar: rest | pronouns (y/en, order), relatives (dont, lequel), agreement, prepositions, register | not yet: sentence-transformation drills, LLM-checked |
+| Reading | unadapted texts: news, novels | Library with coverage + unlock + **classics shelf** (7 public-domain texts, La Fontaine → Verne); next: more shelf, news |
+| Listening | native speed, varied speakers | **Listen tab**: own media + subtitles, tappable current line, replay/auto-pause, hours listened; **dictée** for known words |
+| Speaking | fluent, spontaneous | not yet: shadowing with Whisper scoring, LLM conversation roleplay |
+| Writing | clear, structured, precise | dictée trains spelling/agreement; not yet: LLM-corrected writing prompts, errors fed back as cards |
+
+Phases: (1) vocab + verbs [done] → (2) listening player + public-domain reading shelf [done, v1] → (3) LLM layer (server):
+writing correction, roleplay, story campaign, grammar-transformation drills → (4) speaking (Whisper) → (5) a
+progress view that estimates level per skill from real performance, not from points.
+
+## Later
+Sync server (replay `log`), hours-listened metric, language picker, precache all audio for full offline,
+Tauri wrap, settings (new words/day).
 
 ## Progress log
 - 2026-10-18: MVP built and verified end to end (see checklist).
 - 2026-10-18: renamed to Pluton, pushed (private). Added recall mode with gender grading, levels, run recap,
   live streak, About/credits, iOS audio session, audio-fallback warnings. Smoke now fakes +3 days for a review run.
+- 2026-10-18: C1 target set. Deck → 8k (film+book frequency), conjugation drills (59 verbs, Lexique tags validated:
+  hand-written être/avoir, stem agreement for regular-ending tenses), classics shelf, Listen tab, dictée, Words tab,
+  Road to C1 panel. TTS: capped ONNX threads per worker (was ~190 threads on 24 cores), atomic clip writes.

@@ -1,21 +1,24 @@
 <script>
   import { onMount, tick } from 'svelte'
   import * as db from './lib/db.js'
-  import { buildRun, grade, gradeProduce, produceAnswer, hintOf, brief, modeFor, RATING, points, nextCombo, blank, requeue, scheduler } from './lib/logic.js'
+  import { buildRun, grade, gradeProduce, gradeConj, gradeDictee, parseConj, CONJ, produceAnswer, hintOf, brief, modeFor, RATING, points, nextCombo, blank, requeue, scheduler } from './lib/logic.js'
   import { say, sfx, stop } from './lib/sound.js'
   import { LANG } from './lib/lang.js'
   import Cat from './Cat.svelte'
 
-  let { words, forms, cards, newToday, onexit } = $props()
+  let { words, forms, cards, conj, newToday, onexit } = $props()
 
   const COLORS = ['var(--blue)', 'var(--red)', 'var(--gold)', 'var(--green)', 'var(--orange)']
-  const TAGS = { cloze: '✍️ Fill the gap', dictation: '🎧 Listen, type the missing word', produce: '💬 Say it in French' }
+  const TAGS = { cloze: '✍️ Fill the gap', dictation: '🎧 Listen, type the missing word', produce: '💬 Say it in French',
+    conj: '📐 Conjugate', dictee: '📝 Dictée: write the whole sentence' }
   const PROMPTS = { cloze: 'Quel mot manque ? (which word is missing?)', dictation: 'Écoute bien… (listen closely)',
-    produce: 'Comment dit-on… ? (how do you say…?)' }
+    produce: 'Comment dit-on… ? (how do you say…?)', conj: 'Conjugue ! (conjugate it)',
+    dictee: 'Écris tout ce que tu entends. (write everything you hear)' }
 
-  let queue = $state(buildRun([...cards.values()], words.values(), new Date(), newToday))
+  let queue = $state(buildRun([...cards.values()], words, new Date(), newToday, conj, LANG.tenses.map((t) => t.id)))
   let done = $state(0)
   let mode = $state('cloze') // fixed per card when shown; the card's reps change on answer
+  let person = $state(0) // conjugation cell being asked
   let answer = $state('')
   let fb = $state(null) // feedback for the current answer
   let combo = $state(0)
@@ -32,13 +35,20 @@
 
   const cur = $derived(queue[0])
   const w = $derived(cur && content(cur.lemma))
-  const parts = $derived(w ? blank(w.sentence, w.form) : ['', '', ''])
-  const expected = $derived(w && mode === 'produce' ? produceAnswer(w) : parts[1])
+  const parts = $derived(w && !w.conj ? blank(w.sentence, w.form) : ['', '', ''])
+  const expected = $derived(!w ? '' : mode === 'conj' ? w.forms[person] : mode === 'produce' ? produceAnswer(w)
+    : mode === 'dictee' ? w.sentence : parts[1])
   const progress = $derived(done / (done + queue.length || 1))
   const catMood = $derived(
     fb?.result === 'wrong' ? 'sad' : combo >= 5 && fb?.result !== 'almost' ? 'fire' : fb?.result === 'right' ? 'happy' : 'idle')
 
   function content(lemma) {
+    if (lemma.startsWith(CONJ)) {
+      const { verb, tense } = parseConj(lemma)
+      const c = conj[verb]
+      return { conj: true, lemma, verb, tense, aux: c.aux, forms: c.t[tense], audio: c.audio[tense],
+        info: LANG.tenses.find((t) => t.id === tense), word: words.get(verb) }
+    }
     const base = words.get(lemma) ?? { lemma, display: lemma, gloss: '', pos: '' }
     const mined = cards.get(lemma)?.mined
     return mined ? { ...base, ...mined, audio_sentence: null } : base
@@ -46,15 +56,24 @@
 
   const sentenceClip = () => [w.audio_sentence, w.sentence]
   const wordFirst = () => cur.phase === 'intro' || (mode === 'produce' && fb)
-  const replay = () => (wordFirst() ? say([w.audio_word, w.display], sentenceClip()) : say(sentenceClip()))
+  const rows = (w) => w.forms.map((form, i) => form && { i, form, subject: LANG.subject(i, w.tense) }).filter(Boolean)
+  const cell = (i) => [w.audio[i], `${LANG.subject(i, w.tense)} ${w.forms[i]}`]
+  function replay() {
+    if (w.conj) return cur.phase === 'intro' ? say(...rows(w).map((r) => cell(r.i))) : say(cell(person))
+    return wordFirst() ? say([w.audio_word, w.display], sentenceClip()) : say(sentenceClip())
+  }
 
   async function show() {
     answer = ''
     fb = null
     if (!cur) return finish(done > 0)
-    mode = modeFor(cur.card, w)
+    mode = w.conj ? 'conj' : modeFor(cur.card, w)
+    if (w.conj) {
+      const open = rows(w).map((r) => r.i).filter((i) => i !== cur.person || rows(w).length === 1)
+      person = cur.person = open[Math.floor(Math.random() * open.length)]
+    }
     shownAt = Date.now()
-    if (cur.phase === 'intro' || mode === 'dictation') replay()
+    if (cur.phase === 'intro' || mode === 'dictation' || mode === 'dictee') replay()
     else stop()
     await tick()
     ;(cur?.phase === 'intro' ? gotBtn : input)?.focus()
@@ -89,7 +108,9 @@
   let pending = null // { stored, entry } to write on Next
 
   function check(typed) {
-    const g = mode === 'produce' ? gradeProduce(typed, w, forms) : grade(typed, parts[1], cur.lemma, forms)
+    const g = mode === 'dictee' ? gradeDictee(typed, w.sentence)
+      : mode === 'conj' ? gradeConj(typed, expected, w.tense === 'pc' && w.aux === 'être')
+      : mode === 'produce' ? gradeProduce(typed, w, forms) : grade(typed, parts[1], cur.lemma, forms)
     before = { card: $state.snapshot(cur.card), missed: cur.missed, combo, best, score, tally: { ...tally }, ms: Date.now() - shownAt }
     cur.seen++
     apply(g, typed)
@@ -123,7 +144,7 @@
     fb = { ...g, gained, revenge, typed, praise: LANG.praise[Math.floor(Math.random() * LANG.praise.length)] }
   }
 
-  const iWasRight = () => apply({ result: 'right', overridden: true }, fb.typed)
+  const iWasRight = () => apply({ result: 'right', overridden: true, marks: fb.marks }, fb.typed) // marks: dictée highlight
 
   function commit() {
     if (!pending) return
@@ -166,7 +187,21 @@
 {#if cur}
   <form onsubmit={submit}>
     {#key `${done}:${cur.lemma}:${cur.phase}`}
-      {#if cur.phase === 'intro'}
+      {#if cur.phase === 'intro' && w.conj}
+        <div class="panel card enter">
+          <span class="tag new">📐 New table</span>
+          <h2 class="word">{w.verb} <small class="tense">· {w.info.name}</small></h2>
+          <p class="muted">{w.info.en}{w.word ? ` · ${w.verb}: ${brief(w.word.gloss, 1)}` : ''}</p>
+          <p class="how">{w.info.how}</p>
+          <div class="table">
+            {#each rows(w) as r (r.i)}
+              <button type="button" style="grid-area:{(r.i % 3) + 1}/{r.i < 3 ? 1 : 2}" onclick={() => say(cell(r.i))}><span>{r.subject}</span> <b>{r.form}</b></button>
+            {/each}
+          </div>
+          <button type="button" class="btn ghost replay" onclick={replay} aria-label="Play audio">🔊</button>
+        </div>
+        <button class="btn wide" bind:this={gotBtn}>Got it →</button>
+      {:else if cur.phase === 'intro'}
         <div class="panel card enter">
           <span class="tag new">✨ New word</span>
           <h2 class="word {w.gender ?? ''}">{w.display}</h2>
@@ -180,7 +215,29 @@
       {:else}
         <div class="panel card enter" class:shake={fb?.result === 'wrong'} class:glow={fb?.result === 'right'}>
           <span class="tag">{TAGS[mode]}</span>
-          {#if mode === 'produce' && !fb}
+          {#if mode === 'conj'}
+            <p class="prompt" data-verb={w.verb} data-tense={w.tense} data-person={person}>{w.verb} <small class="tense">· {w.info.name}</small></p>
+            {#if fb}
+              <div class="table">
+                {#each rows(w) as r (r.i)}
+                  <button type="button" class:asked={r.i === person} style="grid-area:{(r.i % 3) + 1}/{r.i < 3 ? 1 : 2}" onclick={() => say(cell(r.i))}><span>{r.subject}</span> <b>{r.form}</b></button>
+                {/each}
+              </div>
+            {:else}
+              <p class="sentence">{LANG.subject(person, w.tense)} <span class="gap" style="min-width:6ch"></span></p>
+              <p class="hint">{w.info.en}</p>
+            {/if}
+          {:else if mode === 'dictee'}
+            {#if fb}
+              <p class="sentence">
+                {#each fb.marks as m, k}{w.sentence.slice(k ? fb.marks[k - 1].end : 0, m.start)}<span class="dm {m.mark}">{w.sentence.slice(m.start, m.end)}</span>{/each}{w.sentence.slice(fb.marks.at(-1)?.end ?? 0)}
+              </p>
+              {#if w.translation}<p class="muted">{w.translation}</p>{/if}
+              <p class="wordline"><b class={w.gender}>{w.display}</b> — {w.gloss}</p>
+            {:else}
+              <button type="button" class="btn big-play" onclick={replay}>🔊 Play again</button>
+            {/if}
+          {:else if mode === 'produce' && !fb}
             <p class="prompt">{brief(w.gloss)}</p>
             <p class="hint">{w.pos}{w.pos === 'noun' && w.gender ? ' · with its article (le / la)' : ''}</p>
             <p class="letters" aria-label="Hint: first letter">{w.pos === 'noun' && w.gender ? '__ ' : ''}{hintOf(w)}</p>
@@ -195,7 +252,7 @@
               <p class="hint">{w.pos} · {brief(w.gloss)}</p>
             {/if}
           {/if}
-          {#if mode !== 'produce' || fb}
+          {#if (mode !== 'produce' && mode !== 'conj' && mode !== 'dictee') || fb}
             <button type="button" class="btn ghost replay" onclick={replay} aria-label="Play audio">🔊</button>
           {/if}
           {#if fb?.gained}<span class="plus">+{fb.gained}</span>{/if}
@@ -209,6 +266,7 @@
             {:else if fb.result === 'right'}{fb.revenge ? 'Revanche ! 💥' : fb.praise}
             {:else if fb.why === 'gender'}Right word, wrong gender: <b class={w.gender}>{expected}</b> ({w.gender === 'f' ? 'feminine' : 'masculine'})
             {:else if fb.why === 'article'}Add the article: <b class={w.gender}>{expected}</b>
+            {:else if mode === 'dictee'}{fb.why === 'accent' ? 'Only accents off, look at the orange words.' : fb.result === 'almost' ? 'One slip, so close.' : 'The red words got away.'}
             {:else if fb.why === 'accent'}Watch the accent: <b>{expected}</b>
             {:else if fb.why === 'form'}Right word, wrong form: <b>{expected}</b>
             {:else if fb.why === 'typo'}Typo, it's <b>{expected}</b>
@@ -222,7 +280,7 @@
 
         <div class="answer">
           <input bind:this={input} bind:value={answer} class:wrong={fb?.result === 'wrong'} lang="fr" autocomplete="off" autocapitalize="none"
-            autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder={mode === 'produce' && w.gender ? 'le / la …' : 'Type the word…'} aria-label="Your answer" />
+            autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder={mode === 'dictee' ? 'Write the sentence…' : mode === 'produce' && w.gender ? 'le / la …' : 'Type the word…'} aria-label="Your answer" />
           <button class="btn">{fb ? 'Next →' : 'Check'}</button>
         </div>
         {#if !fb}
@@ -271,6 +329,18 @@
   mark.wrong { background: color-mix(in srgb, var(--red) 30%, transparent); }
   .hint, .wordline { margin: 12px 0 0; }
   .prompt { font-size: 28px; font-weight: 800; margin: 14px 0 4px; padding-right: 44px; line-height: 1.2; }
+  .big-play { margin: 26px auto 8px; display: flex; font-size: 20px; }
+  .dm.bad { background: color-mix(in srgb, var(--red) 28%, transparent); border-radius: 5px; }
+  .dm.accent { background: color-mix(in srgb, var(--orange) 30%, transparent); border-radius: 5px; }
+  .tense { font-size: 0.6em; font-weight: 700; color: var(--muted); }
+  .how { font-size: 15px; line-height: 1.45; margin: 10px 0; }
+  .table { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
+  .table button {
+    display: flex; gap: 6px; align-items: baseline; padding: 8px 10px; border-radius: 10px; cursor: pointer;
+    border: 2px solid var(--line); background: none; text-align: left; font-size: 17px;
+  }
+  .table button span { color: var(--muted); font-size: 14px; }
+  .table button.asked { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, transparent); }
   .letters { font: 700 26px ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: 0.12em; margin: 14px 0 0; color: var(--blue); }
   .hint { color: var(--muted); font-style: italic; }
   .replay { position: absolute; top: 12px; right: 12px; padding: 8px 10px; font-size: 18px; }
@@ -303,6 +373,7 @@
     position: fixed; left: 50%; top: 45%; width: 9px; height: 14px; border-radius: 2px; pointer-events: none;
     animation: fly 1s ease-out forwards;
   }
+  @media (prefers-reduced-motion: reduce) { .confetti { display: none; } } /* static pieces would just litter the screen */
   @keyframes enter { from { transform: translateY(10px) scale(0.98); opacity: 0; } }
   @keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
   @keyframes float { from { transform: translateY(10px); opacity: 0; } 30% { opacity: 1; } to { transform: translateY(-30px); opacity: 0; } }

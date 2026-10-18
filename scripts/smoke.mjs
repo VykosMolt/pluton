@@ -2,8 +2,8 @@
 // three days and plays the review run (which includes English -> French recall).
 // Fails on any console/page error or audio fallback. Screenshots go to argv[2] (default ./smoke-out).
 //   npm run smoke [-- outdir]
-import { spawn } from 'node:child_process'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { spawn, execFileSync } from 'node:child_process'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { chromium } from 'playwright'
 import { produceAnswer, brief } from '../src/lib/logic.js'
 
@@ -12,6 +12,7 @@ mkdirSync(OUT, { recursive: true })
 const PORT = 4179
 const URL = `http://localhost:${PORT}/`
 const deck = JSON.parse(readFileSync('public/data/fr/words.json', 'utf8')).filter((w) => w.sentence)
+const conj = JSON.parse(readFileSync('public/data/fr/conj.json', 'utf8'))
 
 const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { stdio: 'pipe' })
 process.on('exit', () => server.kill()) // also on a failed step
@@ -20,7 +21,7 @@ await new Promise((ok, fail) => {
   server.on('exit', (code) => fail(new Error(`vite preview exited (${code}); port ${PORT} busy?`)))
 })
 
-const browser = await chromium.launch()
+const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] })
 const errors = []
 const audio = { ok: 0, bad: 0 }
 
@@ -40,6 +41,11 @@ async function open(colorScheme, { clock = false } = {}) {
 
 /** The right answer for the card on screen, recovered from the deck. */
 async function answerFor(page, mode) {
+  if (mode === 'conj') {
+    const p = page.locator('.card .prompt')
+    const [verb, tense, person] = await Promise.all(['verb', 'tense', 'person'].map((k) => p.getAttribute(`data-${k}`)))
+    return conj[verb].t[tense][Number(person)]
+  }
   if (mode === 'produce') {
     const gloss = await page.locator('.card .prompt').textContent()
     const w = deck.find((x) => brief(x.gloss) === gloss)
@@ -54,7 +60,7 @@ async function answerFor(page, mode) {
   throw new Error(`no deck sentence matches "${shown}"`)
 }
 
-const MODES = { Listen: 'dictation', 'Say it': 'produce', 'Fill the gap': 'cloze' }
+const MODES = { Listen: 'dictation', 'Say it': 'produce', 'Fill the gap': 'cloze', Conjugate: 'conj' }
 
 /** Plays a whole run; answers the first card wrong if asked (then overrides it if asked), everything else right. */
 async function playRun(page, { wrongFirst, override = false, prefix }) {
@@ -112,14 +118,21 @@ await page.getByRole('button', { name: /Queue the \d+ words/ }).click()
 await page.getByRole('button', { name: /Queue the \d+ words/ }).waitFor({ state: 'detached' })
 await page.screenshot({ path: `${OUT}/2-library-queued.png` })
 const unlockAfter = await page.getByText(/learn \d+ words to unlock/).textContent()
+await page.getByRole('button', { name: '← Library' }).click()
+const shelfItems = await page.locator('.shelf ~ .item').count()
+await page.screenshot({ path: `${OUT}/2-shelf.png`, fullPage: true })
+await page.getByText('La Parure').click()
+const byline = await page.locator('.byline').textContent()
+await page.getByRole('button', { name: '← Library' }).click()
 
 // Persistence: progress survives a reload.
 const counts = () => page.evaluate(() => new Promise((ok) => {
   const r = indexedDB.open('pluton-fr')
   r.onsuccess = () => {
     const t = r.result.transaction(['cards', 'log'])
-    const a = t.objectStore('cards').count(), b = t.objectStore('log').getAll()
-    t.oncomplete = () => ok({ cards: a.result, log: b.result.length, overridden: b.result.filter((e) => e.overridden).map((e) => e.rating) })
+    const a = t.objectStore('cards').getAllKeys(), b = t.objectStore('log').getAll()
+    t.oncomplete = () => ok({ cards: a.result.length, words: a.result.filter((k) => !k.startsWith('conj/')).length,
+      log: b.result.length, overridden: b.result.filter((e) => e.overridden).map((e) => e.rating) })
   }
 }))
 const before = await counts()
@@ -148,11 +161,66 @@ await ctx.close()
 
 const dark = await open('dark')
 await dark.page.screenshot({ path: `${OUT}/5-home-dark.png` })
+// Dictée only comes up for well-known words, so seed one: "être", stable for 30 days, due now, 4th review.
+const etre = deck.find((w) => w.lemma === 'être')
+await dark.page.evaluate(() => new Promise((ok) => {
+  const r = indexedDB.open('pluton-fr')
+  r.onsuccess = () => {
+    const day = 864e5, now = Date.now()
+    const fsrs = { due: new Date(now - day), stability: 30, difficulty: 5, elapsed_days: 30, scheduled_days: 30,
+      reps: 3, lapses: 0, learning_steps: 0, state: 2, last_review: new Date(now - 31 * day) }
+    const t = r.result.transaction('cards', 'readwrite')
+    t.objectStore('cards').put({ lemma: 'être', fsrs, added: now - 60 * day })
+    t.oncomplete = ok
+  }
+}))
+await dark.page.reload()
+await dark.page.getByRole('button', { name: /Start run/ }).click()
+await dark.page.getByRole('button', { name: 'Got it →' }).click() // a run opens with a new word when one is available
+await dark.page.getByText('Dictée').waitFor()
+await dark.page.screenshot({ path: `${OUT}/5-dictee.png` })
+await dark.page.getByLabel('Your answer').fill(etre.sentence)
+await dark.page.getByRole('button', { name: 'Check' }).click()
+await dark.page.locator('.msg.right').waitFor()
+const dicteeMarks = await dark.page.locator('.dm.ok').count()
+await dark.page.screenshot({ path: `${OUT}/5-dictee-right.png` })
 await dark.ctx.close()
+
+// Listen: three deck sentences glued into one mp3 + an .srt timed from their durations.
+const clips = deck.slice(0, 3).map((w) => ({ text: w.sentence, file: `public/data/fr/audio/${w.audio_sentence}.mp3` }))
+const srtTime = (s) => new Date(s * 1000).toISOString().slice(11, 23).replace('.', ',')
+let at = 0
+const srt = clips.map((c, i) => {
+  const d = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', c.file]))
+  const cue = `${i + 1}\n${srtTime(at)} --> ${srtTime(at + d)}\n${c.text}\n`
+  at += d
+  return cue
+}).join('\n')
+execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...clips.flatMap((c) => ['-i', c.file]),
+  '-filter_complex', `concat=n=${clips.length}:v=0:a=1`, `${OUT}/listen.mp3`])
+writeFileSync(`${OUT}/listen.srt`, srt)
+
+const ear = await open('dark')
+await ear.page.getByRole('button', { name: /Listen/ }).click()
+await ear.page.locator('input[accept="audio/*,video/*"]').setInputFiles(`${OUT}/listen.mp3`)
+await ear.page.locator('input[accept=".srt,.vtt"]').setInputFiles(`${OUT}/listen.srt`)
+await ear.page.locator('video').evaluate((v) => v.play())
+await ear.page.waitForFunction((t) => document.querySelector('.line')?.textContent.replace(/\s+/g, ' ').trim() === t, // nbsp before ! ? :
+  clips[0].text.replace(/\s+/g, ' ').trim())
+const lineWords = await ear.page.locator('.line .w').count()
+await ear.page.waitForFunction(() => document.querySelector('video').currentTime > 3)
+await ear.page.screenshot({ path: `${OUT}/7-listen.png` })
+await ear.page.locator('.line .w').first().click() // tapping a word pauses and opens the sheet
+await ear.page.getByRole('button', { name: 'Close' }).waitFor()
+const listenedSec = await ear.page.evaluate(() => new Promise((ok) => {
+  const r = indexedDB.open('pluton-fr')
+  r.onsuccess = () => { const g = r.result.transaction('meta').objectStore('meta').get('stats'); g.onsuccess = () => ok(g.result?.listened ?? 0) }
+}))
+await ear.ctx.close()
 await browser.close()
 server.kill()
 
-const report = { wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
+const report = { dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
 console.log(JSON.stringify(report, null, 2))
 const checks = {
   'no errors': !errors.length,
@@ -167,10 +235,16 @@ const checks = {
   'queuing does not fake coverage': unlockBefore === unlockAfter,
   'reviews due after 3 days': Number(due) > 0,
   'production cards appear': (run2.modes.produce ?? 0) > 0,
+  'conjugation tables appear once verbs are learned': !run1.modes.conj && (run2.modes.conj ?? 0) > 0,
   'one log entry per answer': end.log === run1.answered + run2.answered,
   'override logged as Good': JSON.stringify(end.overridden) === '[3]',
-  'words tab lists every card': wordRows === end.cards,
+  'words tab lists every word card': wordRows === end.words,
   'words search by English': searchHits.length === 1 && searchHits[0].includes('avoir'),
+  'classics shelf lists 7 texts': shelfItems === 7,
+  'shelf text shows author': byline.includes('Maupassant'),
+  'dictée for a well-known word, graded word by word': dicteeMarks === [...etre.sentence.matchAll(/[\p{L}\p{N}'’-]+/gu)].length,
+  'listen shows the playing line, tappable': lineWords > 0,
+  'listening time saved': listenedSec > 2,
 }
 for (const [name, ok] of Object.entries(checks)) console.log(`${ok ? '✔' : '✖'} ${name}`)
 process.exit(Object.values(checks).every(Boolean) ? 0 : 1)

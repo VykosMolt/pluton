@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { tokenize, coverage, unlockList, grade, gradeProduce, produceAnswer, hintOf, modeFor, levelFor, brief, liveStreak, points, nextCombo, blank, buildRun, requeue, nextStreak,
-  fromSubtitles, sentenceAt, status, createEmptyCard, LEARN_AHEAD_MS, MAX_SEEN_PER_RUN, NEW_PER_RUN } from './logic.js'
+import { tokenize, coverage, unlockList, grade, gradeProduce, produceAnswer, hintOf, modeFor, levelFor, brief, liveStreak, playable, gradeDictee, gradeConj, newConj, conjKey, parseConj, isWord, points, nextCombo, blank, buildRun, requeue, nextStreak,
+  fromSubtitles, sentenceAt, parseCues, cueAt, listenGoal, status, createEmptyCard, LEARN_AHEAD_MS, MAX_SEEN_PER_RUN, NEW_PER_RUN } from './logic.js'
 
 const forms = new Map(Object.entries({ homme: 'homme', il: 'il', voit: 'voir', "aujourd'hui": "aujourd'hui", dit: 'dire',
   a: 'avoir', 'à': 'à', ou: 'ou', 'où': 'où', es: 'être', est: 'être', suis: 'être', parle: 'parler', parles: 'parler',
@@ -74,6 +74,21 @@ test('production: article gender, hint, answer', () => {
   assert.equal(hintOf({ lemma: "aujourd'hui" }), "a••••••'•••")
 })
 
+test('dictée', () => {
+  const s = "Je n’ai pas vu le chat, d'accord ?"
+  const marks = (r) => r.marks.map((m) => m.mark).join(' ')
+  assert.equal(gradeDictee("je n'ai pas vu le chat d'accord", s).result, 'right') // case, apostrophe, punctuation
+  const one = gradeDictee("je n'ai pas vue le chat d'accord", s)
+  assert.deepEqual([one.result, marks(one)], ['almost', 'ok ok ok bad ok ok ok'])
+  const missing = gradeDictee("je n'ai vu chat d'accord", s)
+  assert.deepEqual([missing.result, marks(missing)], ['wrong', 'ok ok bad ok bad ok ok'])
+  const acc = gradeDictee('Il était là, déjà.', 'Il etait la, deja.')
+  assert.deepEqual([acc.result, acc.why], ['almost', 'accent'])
+  assert.equal(gradeDictee('', s).result, 'wrong')
+  const m = gradeDictee('x', 'Bon, ça va.').marks[1]
+  assert.equal('Bon, ça va.'.slice(m.start, m.end), 'ça') // offsets point into the sentence
+})
+
 test('mode rotation', () => {
   const noun = { pos: 'noun', gloss: 'house' }
   const review = (reps) => ({ reps, state: 2 })
@@ -82,6 +97,10 @@ test('mode rotation', () => {
   assert.equal(modeFor({ reps: 2, state: 1 }, noun), 'cloze') // still in learning steps: keep the sentence
   assert.equal(modeFor(review(2), { pos: 'article', gloss: 'the' }), 'cloze') // function words stay in context
   assert.equal(modeFor(review(2), { pos: 'noun', gloss: '' }), 'cloze') // no gloss, nothing to recall from
+  const known = { reps: 3, state: 2, stability: 30 }
+  assert.equal(modeFor(known, { ...noun, audio_sentence: 'x' }), 'dictee')
+  assert.equal(modeFor({ ...known, stability: 5 }, { ...noun, audio_sentence: 'x' }), 'dictation') // not yet known
+  assert.equal(modeFor(known, noun), 'dictation') // no recording, no dictée
 })
 
 test('levels', () => {
@@ -89,6 +108,44 @@ test('levels', () => {
   assert.deepEqual(levelFor(99).level, 1)
   assert.deepEqual(levelFor(100), { level: 2, into: 0, span: 200 })
   assert.deepEqual(levelFor(650), { level: 4, into: 50, span: 400 })
+})
+
+test('conjugation grading', () => {
+  assert.equal(gradeConj('irons', 'irons').result, 'right')
+  assert.equal(gradeConj('nous irons', 'irons').result, 'right') // pronoun allowed
+  assert.equal(gradeConj("qu'il aille", 'aille').result, 'right')
+  assert.equal(gradeConj("j'irai", 'irai').result, 'right')
+  assert.equal(gradeConj('irez', 'irons').result, 'wrong') // another person is the mistake being drilled
+  assert.equal(gradeConj('etes', 'êtes').why, 'accent')
+  assert.equal(gradeConj('sommes allées', 'sommes allés', true).result, 'right') // agreement not tested
+  assert.equal(gradeConj('suis allée', 'suis allé', true).result, 'right')
+  assert.equal(gradeConj('ai allé', 'suis allé', true).result, 'wrong') // wrong auxiliary is
+})
+
+test('conjugation unlocks', () => {
+  const conj = { être: { t: { 'ind:pre': [], pc: [] } }, avoir: { t: { 'ind:pre': [] } }, aller: { t: { 'ind:pre': [] } } }
+  const order = ['ind:pre', 'pc']
+  const card = (lemma, state, extra = {}) => ({ lemma, fsrs: { ...createEmptyCard(), state }, ...extra })
+  // only learned verbs get tables; marked-known counts as learned
+  assert.deepEqual(newConj([card('être', 2), card('avoir', 0), card('aller', 0, { known: true })], conj, order, 5),
+    [conjKey('être', 'ind:pre'), conjKey('aller', 'ind:pre')])
+  // pc stays shut until UNLOCK_NEXT_TENSE présent tables are in review
+  const some = [card('être', 2), card(conjKey('être', 'ind:pre'), 2)]
+  assert.deepEqual(newConj(some, conj, order, 5), [])
+  const many = [card('être', 2), ...Array.from({ length: 8 }, (_, i) => card(conjKey(`v${i}`, 'ind:pre'), 2))]
+  assert.deepEqual(newConj(many, conj, order, 5), [conjKey('être', 'ind:pre'), conjKey('être', 'pc')])
+  assert.deepEqual(parseConj(conjKey('aller', 'ind:fut')), { verb: 'aller', tense: 'ind:fut' })
+  assert.equal(isWord({ lemma: conjKey('aller', 'pc') }), false)
+})
+
+test('buildRun adds conjugation tables within the daily budget', () => {
+  const now = new Date()
+  const cards = [{ lemma: 'être', fsrs: { ...createEmptyCard(now), state: 2, due: new Date(+now + 864e5) } }]
+  const words = new Map([['x', { lemma: 'x', sentence: '…' }], ['être', { lemma: 'être', sentence: '…' }]])
+  const conj = { être: { t: { 'ind:pre': [] } } }
+  const intros = (q) => q.filter((i) => i.phase === 'intro').map((i) => i.lemma)
+  assert.deepEqual(intros(buildRun(cards, words, now, 0, conj, ['ind:pre'])), ['x', conjKey('être', 'ind:pre')])
+  assert.deepEqual(intros(buildRun(cards, words, now, 19, conj, ['ind:pre'])), ['x']) // budget spent on the word
 })
 
 test('points and combo', () => {
@@ -108,13 +165,26 @@ test('blank finds whole words only, any case', () => {
 test('buildRun: due oldest first, new words spread, mined first, daily cap', () => {
   const now = new Date('2026-10-18T12:00:00')
   const card = (lemma, dueMinAgo, state = 2) => ({ lemma, fsrs: { ...createEmptyCard(now), state, due: new Date(now - dueMinAgo * 60e3) } })
-  const cards = [card('b', 5), card('a', 50), card('c', -60), card('mined', 0, 0), { ...card('k', 99), known: true }]
-  const words = ['x', 'y', 'z', 'w', 'v', 'u'].map((lemma) => ({ lemma, sentence: '…' })).concat([{ lemma: 'nosentence' }])
+  const cards = [card('b', 5), card('a', 50), card('c', -60), { ...card('mined', 0, 0), mined: {} }, { ...card('k', 99), known: true },
+    card('gone', 70)] // "gone" lost its sentence in a data rebuild: skipped, not crashed on
+  const words = new Map(['x', 'y', 'z', 'w', 'v', 'u', 'a', 'b', 'c', 'k'].map((lemma) => [lemma, { lemma, sentence: '…' }])
+    .concat([['nosentence', { lemma: 'nosentence' }]]))
   const q = buildRun(cards, words, now, 0)
   assert.deepEqual(q.filter((i) => i.phase === 'quiz').map((i) => i.lemma), ['a', 'b']) // c not due, k known
   assert.deepEqual(q.filter((i) => i.phase === 'intro').map((i) => i.lemma), ['mined', 'x', 'y', 'z', 'w'].slice(0, NEW_PER_RUN))
   assert.equal(q[0].phase, 'intro')
   assert.equal(buildRun(cards, words, now, 19).filter((i) => i.phase === 'intro').length, 1)
+})
+
+test('playable', () => {
+  const words = new Map([['chat', { sentence: 'Le chat.' }], ['x', {}]])
+  const conj = { aller: { t: { 'ind:pre': [] } } }
+  assert.equal(playable({ lemma: 'chat' }, words, conj), true)
+  assert.equal(playable({ lemma: 'x' }, words, conj), false)
+  assert.equal(playable({ lemma: 'x', mined: { sentence: 's' } }, words, conj), true)
+  assert.equal(playable({ lemma: conjKey('aller', 'ind:pre') }, words, conj), true)
+  assert.equal(playable({ lemma: conjKey('souvenir', 'ind:pre') }, words, conj), false)
+  assert.equal(playable({ lemma: conjKey('aller', 'pc') }, words, null), false)
 })
 
 test('requeue: only soon-due cards, capped per run', () => {
@@ -141,6 +211,17 @@ test('streak', () => {
 test('brief gloss', () => {
   assert.equal(brief('to have; to own; to possess'), 'to have; to own')
   assert.equal(brief('dog', 1), 'dog')
+})
+
+test('timed cues', () => {
+  const srt = '1\r\n00:00:01,000 --> 00:00:02,500\r\n<i>Bonjour</i>\r\ntoi.\r\n\r\n2\r\n01:00:03,250 --> 01:00:04,000\r\nÇa va ?\r\n'
+  assert.deepEqual(parseCues(srt), [{ start: 1, end: 2.5, text: 'Bonjour toi.' }, { start: 3603.25, end: 3604, text: 'Ça va ?' }])
+  const vtt = 'WEBVTT\n\n00:05.000 --> 00:06.000 align:start\nSalut.\n\nNOTE skipped\n\n00:02.000 --> 00:03.000\nAvant.'
+  assert.deepEqual(parseCues(vtt).map((c) => c.text), ['Avant.', 'Salut.']) // sorted by start
+  const cues = parseCues(vtt)
+  assert.deepEqual([0, 2, 2.5, 4, 5.5, 99].map((t) => cueAt(cues, t)), [-1, 0, 0, 0, 1, 1])
+  assert.equal(cueAt([], 3), -1)
+  assert.deepEqual([0, 9.9, 10, 600, 2500].map(listenGoal), [10, 10, 50, 1000, 3000])
 })
 
 test('subtitles and sentence extraction', () => {

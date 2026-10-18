@@ -2,18 +2,21 @@
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
   import * as db from './lib/db.js'
-  import { status, buildRun, dayOf, nextStreak, liveStreak, brief, tokenize, coverage, unlockList, levelFor, UNLOCK } from './lib/logic.js'
+  import { status, buildRun, dayOf, nextStreak, liveStreak, brief, tokenize, coverage, unlockList, levelFor, isWord, parseConj, listenGoal, UNLOCK } from './lib/logic.js'
   import { unlock, say } from './lib/sound.js'
-  import { DATA } from './lib/lang.js'
+  import { DATA, LANG } from './lib/lang.js'
   import Cat from './Cat.svelte'
   import Run from './Run.svelte'
   import Reader from './Reader.svelte'
   import Words from './Words.svelte'
+  import Listen from './Listen.svelte'
 
   let words = $state.raw(null) // lemma -> entry, frequency order
   let forms = $state.raw(null) // form -> lemma
+  let conj = $state.raw(null) // verb -> conjugation tables
   const cards = new SvelteMap() // lemma -> stored card
   let texts = $state([])
+  let shelf = $state.raw([]) // built-in public-domain classics
   let stats = $state({ streak: 0, lastDay: null, points: 0, bestCombo: 0, newDay: null, newCount: 0 })
   let view = $state('home')
   let now = $state(new Date())
@@ -22,13 +25,17 @@
 
   onMount(async () => {
     try {
-      const [w, f, cs, st, ts] = await Promise.all([
+      const [w, f, cj, sh, cs, st, ts] = await Promise.all([
         fetch(`${DATA}words.json`).then((r) => r.json()),
         fetch(`${DATA}forms.json`).then((r) => r.json()),
+        fetch(`${DATA}conj.json`).then((r) => r.json()),
+        fetch(`${DATA}shelf.json`).then((r) => r.json()),
         db.getAll('cards'), db.get('meta', 'stats'), db.getAll('texts'),
       ])
       words = new Map(w.map((x) => [x.lemma, x]))
       forms = new Map(Object.entries(f))
+      conj = cj
+      shelf = sh.map((s, i) => ({ ...s, id: `shelf-${i}` }))
       for (const c of cs) cards.set(c.lemma, c)
       if (st) stats = st
       texts = ts
@@ -40,10 +47,12 @@
   const today = $derived(dayOf(now))
   const newToday = $derived(stats.newDay === today ? stats.newCount : 0)
   const statusOf = (l) => status(cards.get(l), words.get(l))
-  const plan = $derived(buildRun([...cards.values()], words?.values() ?? [], now, newToday))
+  const TENSES = LANG.tenses.map((t) => t.id)
+  const plan = $derived(buildRun([...cards.values()], words ?? new Map(), now, newToday, conj, TENSES))
   const counts = $derived.by(() => {
     let known = 0, learning = 0
     for (const c of cards.values()) {
+      if (!isWord(c)) continue
       const s = status(c)
       if (s === 'known') known++
       if (s === 'learning') learning++
@@ -61,16 +70,31 @@
     : summary ? { fr: 'Bien joué ! À demain !', en: 'Well done! See you tomorrow.' }
     : waiting ? { fr: 'On y va ?', en: `Shall we? ${waiting} cards are waiting.` }
     : { fr: 'Zzz… À demain !', en: 'All done. See you tomorrow!' })
-  const nextUnlock = $derived.by(() => {
-    if (!forms) return null
-    let best = null
-    for (const t of texts) {
+  const reading = $derived.by(() => {
+    if (!forms) return { next: null, unlocked: 0 }
+    let next = null, unlocked = 0
+    for (const t of [...texts, ...shelf]) {
       const toks = tokenize(t.body, forms)
       const c = coverage(toks, statusOf)
-      if (c.total && c.pct < UNLOCK && (!best || c.pct > best.pct)) best = { title: t.title, pct: c.pct, need: unlockList(toks, statusOf).length }
+      if (c.pct >= UNLOCK) unlocked++
+      else if (c.total && (!next || c.pct > next.pct)) next = { title: t.title, pct: c.pct, need: unlockList(toks, statusOf).length }
     }
-    return best
+    return { next, unlocked }
   })
+  const nextUnlock = $derived(reading.next)
+  const road = $derived.by(() => {
+    let deck = 0
+    for (const w of words?.values() ?? []) if (w.sentence) deck++
+    const tables = conj ? Object.values(conj).reduce((n, c) => n + Object.keys(c.t).length, 0) : 0
+    let tablesKnown = 0
+    for (const c of cards.values()) if (!isWord(c) && status(c) === 'known') tablesKnown++
+    return { deck, tables, tablesKnown }
+  })
+  const label = (lemma) => {
+    if (isWord({ lemma })) return null
+    const { verb, tense } = parseConj(lemma)
+    return `${verb} · ${LANG.tenses.find((t) => t.id === tense)?.name}`
+  }
 
   function start() {
     now = new Date()
@@ -94,6 +118,12 @@
     }
     await db.put('meta', $state.snapshot(stats), 'stats')
   }
+
+  async function listened(seconds) {
+    stats.listened = (stats.listened ?? 0) + seconds
+    await db.put('meta', $state.snapshot(stats), 'stats')
+  }
+  const hours = $derived((stats.listened ?? 0) / 3600)
 
   async function backup() {
     const blob = new Blob([JSON.stringify(await db.exportAll())], { type: 'application/json' })
@@ -119,7 +149,7 @@
 {:else if !words}
   <p class="muted loading">Chargement…</p>
 {:else if view === 'run'}
-  <Run {words} {forms} {cards} {newToday} onexit={finish} />
+  <Run {words} {forms} {cards} {conj} {newToday} onexit={finish} />
 {:else}
   <header>
     <h1>Pluton<span class="dot">.</span></h1>
@@ -145,9 +175,13 @@
           <div class="recap">
             {#each summary.words as { lemma, result } (lemma)}
               {@const w = words.get(lemma)}
-              <button class="chip {result}" onclick={() => say([w?.audio_word, w?.display ?? lemma])}>
-                <b class={w?.gender}>{w?.display ?? lemma}</b> <small>{brief(w?.gloss ?? '', 1)}</small>
-              </button>
+              {#if label(lemma)}
+                <span class="chip {result}"><b>📐 {label(lemma)}</b></span>
+              {:else}
+                <button class="chip {result}" onclick={() => say([w?.audio_word, w?.display ?? lemma])}>
+                  <b class={w?.gender}>{w?.display ?? lemma}</b> <small>{brief(w?.gloss ?? '', 1)}</small>
+                </button>
+              {/if}
             {/each}
           </div>
         {/if}
@@ -184,6 +218,27 @@
       </button>
     {/if}
 
+    <section class="panel road">
+      <h3>Road to C1</h3>
+      <div class="track">
+        <span>📚 Vocabulary</span><span class="bar"><i style="width:{(100 * counts.known) / (road.deck || 1)}%"></i></span>
+        <small>{counts.known} / {road.deck.toLocaleString('en')} words known</small>
+      </div>
+      <div class="track">
+        <span>📐 Verbs</span><span class="bar"><i style="width:{(100 * road.tablesKnown) / (road.tables || 1)}%"></i></span>
+        <small>{road.tablesKnown} / {road.tables} tables known</small>
+      </div>
+      <div class="track">
+        <span>📖 Reading</span><span class="bar"><i style="width:{(100 * reading.unlocked) / (texts.length + shelf.length || 1)}%"></i></span>
+        <small>{reading.unlocked} / {texts.length + shelf.length} texts unlocked (incl. {shelf.length} classics)</small>
+      </div>
+      <div class="track">
+        <span>🎧 Listening</span><span class="bar"><i style="width:{(100 * hours) / listenGoal(hours)}%"></i></span>
+        <small>{hours < 10 ? hours.toFixed(1) : Math.round(hours)} h listened · next milestone {listenGoal(hours)} h</small>
+      </div>
+      <p class="soon">🗣️ Speaking · ✍️ Writing: not in the app yet</p>
+    </section>
+
     <footer class="muted">
       <span>⭐ {stats.points} pts · best combo ×{stats.bestCombo}</span>
       <span>
@@ -198,19 +253,23 @@
           Example sentences: Tatoeba contributors, CC BY 2.0 FR.
           Definitions: English Wiktionary via kaikki.org, CC BY-SA 4.0.
           Voice: Piper TTS, SIWIS dataset (CC BY 4.0). Scheduling: FSRS via ts-fsrs.
+          Classics shelf: public-domain texts via French Wikisource.
         </p>
       </details>
     </footer>
   {:else if view === 'read'}
-    <Reader {words} {forms} {cards} {statusOf} bind:texts />
+    <Reader {words} {forms} {cards} {statusOf} {shelf} bind:texts />
+  {:else if view === 'listen'}
+    <Listen {words} {forms} {cards} {statusOf} onlisten={listened} />
   {:else}
     <Words {words} {cards} {now} />
   {/if}
 
   <nav>
-    <button class:on={view === 'home'} onclick={() => { view = 'home'; now = new Date() }}>🏠 Home</button>
-    <button class:on={view === 'read'} onclick={() => (view = 'read')}>📖 Library</button>
-    <button class:on={view === 'words'} onclick={() => { view = 'words'; now = new Date() }}>📚 Words</button>
+    <button class:on={view === 'home'} onclick={() => { view = 'home'; now = new Date() }}><i>🏠</i>Home</button>
+    <button class:on={view === 'read'} onclick={() => (view = 'read')}><i>📖</i>Library</button>
+    <button class:on={view === 'listen'} onclick={() => (view = 'listen')}><i>🎧</i>Listen</button>
+    <button class:on={view === 'words'} onclick={() => { view = 'words'; now = new Date() }}><i>📚</i>Words</button>
   </nav>
 {/if}
 
@@ -224,6 +283,14 @@
     background: color-mix(in srgb, var(--gold) 20%, transparent);
   }
   .level i { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--gold); }
+  .road h3 { margin-bottom: 10px; }
+  .track { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 2px 10px; margin-bottom: 10px; }
+  .track > span:first-child { font-weight: 700; font-size: 15px; }
+  .track small { grid-column: 2; color: var(--muted); font-size: 13px; }
+  .track .bar { height: 10px; }
+  .track .bar i { background: linear-gradient(90deg, var(--blue), var(--green)); }
+  .soon { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+  .road { margin-bottom: 16px; }
   .recap { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
   .chip {
     border: 2px solid var(--line); background: var(--panel); border-radius: 12px; padding: 6px 10px; cursor: pointer;
@@ -272,7 +339,11 @@
     position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; gap: 8px;
     padding: 10px 16px max(10px, env(safe-area-inset-bottom)); background: var(--panel); border-top: 2px solid var(--line);
   }
-  nav button { flex: 0 1 200px; border: 0; background: none; padding: 10px; border-radius: 12px; font-weight: 700; cursor: pointer; color: var(--muted); }
+  nav button {
+    flex: 0 1 120px; display: flex; flex-direction: column; align-items: center; gap: 1px; border: 0; background: none;
+    padding: 6px 4px; border-radius: 12px; font-weight: 700; font-size: 13px; cursor: pointer; color: var(--muted);
+  }
+  nav button i { font-style: normal; font-size: 20px; line-height: 1.1; }
   nav button.on { background: color-mix(in srgb, var(--blue) 14%, transparent); color: var(--blue); }
   @keyframes pop { from { transform: scale(0.9); opacity: 0; } }
   @media (max-width: 380px) { .grid { grid-template-columns: repeat(2, 1fr); } }

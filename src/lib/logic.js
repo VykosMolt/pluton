@@ -12,6 +12,17 @@ export const NEW_PER_RUN = 5
 export const NEW_PER_DAY = 20
 export const MAX_REVIEWS_PER_RUN = 40
 export const MAX_SEEN_PER_RUN = 5 // per card, so a run always ends even if you keep missing one
+export const CONJ_PER_RUN = 2
+export const UNLOCK_NEXT_TENSE = 8 // tables of a tense in long-term review before the next tense opens
+
+// Conjugation cards live in the same store as words, keyed "conj/<verb>/<tense>" (French words never contain "/").
+export const CONJ = 'conj/'
+export const conjKey = (verb, tense) => `${CONJ}${verb}/${tense}`
+export const parseConj = (key) => {
+  const [, verb, tense] = key.split('/')
+  return { verb, tense }
+}
+export const isWord = (c) => !c.lemma.startsWith(CONJ)
 
 // --- tokenizer: keep in sync with data/fr/build.py ---
 const WORD = /\p{L}+(?:['-]\p{L}+)*'?/gu
@@ -120,10 +131,40 @@ export const hintOf = (w) => w.lemma[0] + w.lemma.slice(1).replace(/\p{L}/gu, '�
 const PRODUCE_POS = new Set(['noun', 'verb', 'adj', 'adv'])
 
 /** Exercise for a card's next review: fill the gap, then listen, then (every third rep, once the word has
- *  graduated from learning steps) recall from English with no sentence to lean on. */
+ *  graduated from learning steps) recall from English with no sentence to lean on. Words already known get a
+ *  full-sentence dictée every fourth rep. */
 export function modeFor(card, word) {
+  if (card.reps % 4 === 3 && card.stability >= KNOWN_DAYS && word.audio_sentence) return 'dictee'
   if (card.reps % 3 === 2 && card.state === State.Review && PRODUCE_POS.has(word.pos) && word.gloss) return 'produce'
   return card.reps % 2 ? 'dictation' : 'cloze'
+}
+
+const WORDS = /[\p{L}\p{N}'’-]+/gu
+
+/**
+ * Dictée: what was typed, aligned word by word against the sentence (edit distance over words). marks give each
+ * sentence word's offsets and 'ok' | 'accent' | 'bad', for highlighting. One slip, or accents only, is "almost".
+ */
+export function gradeDictee(typed, sentence) {
+  const ref = [...sentence.matchAll(WORDS)]
+  const a = ref.map((m) => norm(m[0])), b = [...norm(typed).matchAll(WORDS)].map((m) => m[0])
+  const cost = (i, j) => (a[i] === b[j] ? 0 : 1)
+  const d = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => (i ? (j ? 0 : i) : j)))
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++)
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost(i - 1, j - 1))
+  const marks = Array(a.length).fill('bad')
+  for (let i = a.length, j = b.length; i > 0 && j >= 0;) {
+    if (j > 0 && d[i][j] === d[i - 1][j - 1] + cost(i - 1, j - 1)) {
+      marks[i - 1] = a[i - 1] === b[j - 1] ? 'ok' : strip(a[i - 1]) === strip(b[j - 1]) ? 'accent' : 'bad'
+      i--, j--
+    } else if (d[i][j] === d[i - 1][j] + 1) i--
+    else j--
+  }
+  const errors = d[a.length][b.length]
+  const accentsOnly = errors > 0 && marks.filter((m) => m === 'accent').length === errors
+  const result = errors === 0 ? 'right' : errors === 1 || accentsOnly ? 'almost' : 'wrong'
+  return { result, ...(accentsOnly && { why: 'accent' }), marks: ref.map((m, i) => ({ start: m.index, end: m.index + m[0].length, mark: marks[i] })) }
 }
 
 export const RATING = { right: Rating.Good, almost: Rating.Hard, wrong: Rating.Again }
@@ -151,22 +192,71 @@ export function blank(sentence, form) {
   return m ? [sentence.slice(0, m.index), m[0], sentence.slice(m.index + m[0].length)] : [sentence, '', '']
 }
 
+const PRONOUN = /^(que |qu')?(je |j'|tu |il |elle |on |nous |vous |ils |elles )/
+
+/** Grading for a conjugation cell. A leading pronoun is fine; être-verbs' participle agreement isn't tested. */
+export function gradeConj(typed, expected, agrees = false) {
+  const clean = (s) => {
+    const x = norm(s).replace(PRONOUN, '')
+    return agrees ? x.replace(/(es|e|s)$/, '') : x
+  }
+  const t = clean(typed), e = clean(expected)
+  if (t === e) return { result: 'right' }
+  if (t && strip(t) === strip(e)) return { result: 'almost', why: 'accent' }
+  return { result: 'wrong' }
+}
+
+/**
+ * Conjugation tables to introduce next, in tense order. A tense opens once UNLOCK_NEXT_TENSE tables of the previous
+ * one are in long-term review; a verb's tables wait until the verb itself has been learned (or marked known).
+ */
+export function newConj(cards, conj, order, n) {
+  const have = new Map(cards.map((c) => [c.lemma, c]))
+  const out = []
+  for (let k = 0; k < order.length && out.length < n; k++) {
+    if (k > 0) {
+      const ready = cards.filter((c) => c.lemma.startsWith(CONJ) && parseConj(c.lemma).tense === order[k - 1]
+        && c.fsrs.state === State.Review).length
+      if (ready < UNLOCK_NEXT_TENSE) break
+    }
+    for (const verb of Object.keys(conj)) {
+      if (out.length >= n) break
+      const word = have.get(verb)
+      const learned = word && (word.known || word.fsrs.state !== State.New)
+      if (learned && conj[verb].t[order[k]] && !have.has(conjKey(verb, order[k]))) out.push(conjKey(verb, order[k]))
+    }
+  }
+  return out
+}
+
+/** Whether a stored card can be shown with the current data: a rebuild can drop a sentence or a table. */
+export function playable(c, words, conj) {
+  if (isWord(c)) return !!(c.mined || words.get(c.lemma)?.sentence)
+  const { verb, tense } = parseConj(c.lemma)
+  return !!conj?.[verb]?.t[tense]
+}
+
 // --- runs ---
 const item = (card, isNew) => ({ lemma: card.lemma, card: card.fsrs, phase: isNew ? 'intro' : 'quiz', seen: 0, missed: false })
 
-/** Due reviews (oldest first) with up to NEW_PER_RUN new words spread through them. Mined cards go first. */
-export function buildRun(cards, words, now, newToday) {
+/** Due reviews (oldest first) with up to NEW_PER_RUN new words spread through them (mined cards first), then up to
+ *  CONJ_PER_RUN new conjugation tables. New words and tables share the NEW_PER_DAY budget. */
+export function buildRun(cards, words, now, newToday, conj = null, tenses = []) {
+  cards = cards.filter((c) => playable(c, words, conj))
   const due = cards.filter((c) => !c.known && c.fsrs.state !== State.New && c.fsrs.due <= now)
     .sort((a, b) => a.fsrs.due - b.fsrs.due).slice(0, MAX_REVIEWS_PER_RUN).map((c) => item(c, false))
   const have = new Set(cards.map((c) => c.lemma))
   const n = Math.max(0, Math.min(NEW_PER_RUN, NEW_PER_DAY - newToday))
   const fresh = [...cards.filter((c) => !c.known && c.fsrs.state === State.New)]
-  for (const w of words) {
+  for (const w of words.values()) {
     if (fresh.length >= n) break
     if (w.sentence && !have.has(w.lemma)) fresh.push({ lemma: w.lemma, fsrs: createEmptyCard(now) })
   }
   const queue = [...due]
   fresh.slice(0, n).forEach((c, i) => queue.splice(Math.min(queue.length, i * 5), 0, item(c, true)))
+  const room = Math.max(0, Math.min(CONJ_PER_RUN, NEW_PER_DAY - newToday - Math.min(n, fresh.length)))
+  if (conj) newConj(cards, conj, tenses, room)
+    .forEach((key, i) => queue.splice(Math.min(queue.length, 3 + i * 6), 0, item({ lemma: key, fsrs: createEmptyCard(now) }, true)))
   return queue
 }
 
@@ -195,6 +285,36 @@ export const liveStreak = (streak, lastDay, today) => (daysBetween(lastDay, toda
 export const fromSubtitles = (s) =>
   s.split(/\r?\n/).filter((l) => l.trim() && !/^\d+$/.test(l.trim()) && !l.includes('-->') && !/^WEBVTT/.test(l))
     .map((l) => l.replace(/<[^>]+>|\{[^}]+\}/g, '')).join('\n')
+
+const TIME = /(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{3})/
+const secs = (m) => (+(m[1] ?? 0)) * 3600 + +m[2] * 60 + +m[3] + +m[4] / 1000
+
+/** Timed lines from .srt / .vtt: [{start, end, text}] in seconds, sorted. Tags and cue settings dropped. */
+export function parseCues(s) {
+  const cues = []
+  for (const block of s.replace(/\r/g, '').split(/\n{2,}/)) {
+    const lines = block.split('\n')
+    const i = lines.findIndex((l) => l.includes('-->'))
+    if (i < 0) continue
+    const [a, b] = lines[i].split('-->').map((x) => TIME.exec(x))
+    const text = lines.slice(i + 1).join(' ').replace(/<[^>]+>|\{[^}]+\}/g, '').replace(/\s+/g, ' ').trim()
+    if (a && b && text) cues.push({ start: secs(a), end: secs(b), text: text.normalize('NFC') })
+  }
+  return cues.sort((x, y) => x.start - y.start)
+}
+
+/** Index of the cue showing at time t: the last one started (kept on screen through gaps), or -1 before the first. */
+export function cueAt(cues, t) {
+  let lo = 0, hi = cues.length - 1, found = -1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (cues[mid].start <= t) { found = mid; lo = mid + 1 } else hi = mid - 1
+  }
+  return found
+}
+
+/** Next listening milestone (hours) above `h`, for a progress bar that always has somewhere to go. */
+export const listenGoal = (h) => [10, 50, 100, 250, 500, 1000, 2000].find((g) => g > h) ?? Math.floor(h / 1000 + 1) * 1000
 
 /** The sentence around offset `at`, cropped to ~160 chars so a mined card stays readable. */
 export function sentenceAt(text, at) {
