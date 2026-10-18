@@ -8,6 +8,7 @@
   import Cat from './Cat.svelte'
   import Run from './Run.svelte'
   import Reader from './Reader.svelte'
+  import Words from './Words.svelte'
 
   let words = $state.raw(null) // lemma -> entry, frequency order
   let forms = $state.raw(null) // form -> lemma
@@ -200,13 +201,16 @@
         </p>
       </details>
     </footer>
-  {:else}
+  {:else if view === 'read'}
     <Reader {words} {forms} {cards} {statusOf} bind:texts />
+  {:else}
+    <Words {words} {cards} {now} />
   {/if}
 
   <nav>
     <button class:on={view === 'home'} onclick={() => { view = 'home'; now = new Date() }}>🏠 Home</button>
     <button class:on={view === 'read'} onclick={() => (view = 'read')}>📖 Library</button>
+    <button class:on={view === 'words'} onclick={() => { view = 'words'; now = new Date() }}>📚 Words</button>
   </nav>
 {/if}
 

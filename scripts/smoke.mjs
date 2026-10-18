@@ -138,6 +138,12 @@ const streakLater = await page.locator('.streak').textContent()
 await page.screenshot({ path: `${OUT}/3-home-later.png` })
 const run2 = await playRun(page, { wrongFirst: true, override: true, prefix: '4' })
 const end = await counts()
+await page.getByRole('button', { name: /Words/ }).click()
+await page.locator('.row').first().waitFor()
+const wordRows = await page.locator('.row').count()
+await page.screenshot({ path: `${OUT}/6-words.png` })
+await page.getByLabel('Search words').fill('to have')
+const searchHits = await page.locator('.row').allTextContents()
 await ctx.close()
 
 const dark = await open('dark')
@@ -146,7 +152,7 @@ await dark.ctx.close()
 await browser.close()
 server.kill()
 
-const report = { end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
+const report = { wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
 console.log(JSON.stringify(report, null, 2))
 const checks = {
   'no errors': !errors.length,
@@ -163,6 +169,8 @@ const checks = {
   'production cards appear': (run2.modes.produce ?? 0) > 0,
   'one log entry per answer': end.log === run1.answered + run2.answered,
   'override logged as Good': JSON.stringify(end.overridden) === '[3]',
+  'words tab lists every card': wordRows === end.cards,
+  'words search by English': searchHits.length === 1 && searchHits[0].includes('avoir'),
 }
 for (const [name, ok] of Object.entries(checks)) console.log(`${ok ? '✔' : '✖'} ${name}`)
 process.exit(Object.values(checks).every(Boolean) ? 0 : 1)
