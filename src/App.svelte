@@ -2,8 +2,8 @@
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
   import * as db from './lib/db.js'
-  import { status, buildRun, dayOf, nextStreak, tokenize, coverage, unlockList, UNLOCK } from './lib/logic.js'
-  import { unlock } from './lib/sound.js'
+  import { status, buildRun, dayOf, nextStreak, liveStreak, brief, tokenize, coverage, unlockList, levelFor, UNLOCK } from './lib/logic.js'
+  import { unlock, say } from './lib/sound.js'
   import { DATA } from './lib/lang.js'
   import Cat from './Cat.svelte'
   import Run from './Run.svelte'
@@ -51,9 +51,11 @@
     return { known, learning, due, fresh: plan.length - due }
   })
   const waiting = $derived(counts.due + counts.fresh)
-  const catMood = $derived(summary ? 'happy' : waiting ? 'idle' : 'sleep')
+  const lvl = $derived(levelFor(stats.points))
+  const catMood = $derived(summary?.levelUp ? 'fire' : summary ? 'happy' : waiting ? 'idle' : 'sleep')
   const line = $derived(
-    !cards.size ? { fr: "Bonjour ! Moi, c'est Pluton.", en: "Hi! I'm Pluto. Let's learn your first words." }
+    summary?.levelUp ? { fr: `Niveau ${summary.levelUp} ! Incroyable !`, en: `Level ${summary.levelUp}! Amazing!` }
+    : !cards.size ? { fr: "Bonjour ! Moi, c'est Pluton.", en: "Hi! I'm Pluto. Let's learn your first words." }
     : summary && waiting ? { fr: 'Bien joué ! On continue ?', en: 'Well done! Another run?' }
     : summary ? { fr: 'Bien joué ! À demain !', en: 'Well done! See you tomorrow.' }
     : waiting ? { fr: 'On y va ?', en: `Shall we? ${waiting} cards are waiting.` }
@@ -81,12 +83,13 @@
     now = new Date()
     if (stats.newDay !== today) Object.assign(stats, { newDay: today, newCount: 0 })
     stats.newCount += s.introduced
+    const before = lvl.level
     stats.points += s.points
     stats.bestCombo = Math.max(stats.bestCombo, s.best)
     if (s.completed) {
       stats.streak = nextStreak(stats.streak, stats.lastDay, today)
       stats.lastDay = today
-      summary = s
+      summary = { ...s, levelUp: levelFor(stats.points).level > before ? levelFor(stats.points).level : 0 }
     }
     await db.put('meta', $state.snapshot(stats), 'stats')
   }
@@ -119,19 +122,34 @@
 {:else}
   <header>
     <h1>Pluton<span class="dot">.</span></h1>
-    <div class="streak" class:cold={stats.lastDay !== today} title="Day streak">🔥 {stats.streak}</div>
+    <div class="chips">
+      <div class="level" title="{lvl.into} / {lvl.span} points to level {lvl.level + 1}">
+        Niv. {lvl.level}<i style="width:{(100 * lvl.into) / lvl.span}%"></i>
+      </div>
+      <div class="streak" class:cold={stats.lastDay !== today} title="Day streak">🔥 {liveStreak(stats.streak, stats.lastDay, today)}</div>
+    </div>
   </header>
 
   {#if view === 'home'}
     {#if summary}
       <section class="panel summary">
-        <h2>Terminé ! 🎉</h2>
+        <h2>{summary.levelUp ? `Niveau ${summary.levelUp} ! ⬆️` : 'Terminé ! 🎉'}</h2>
         <div class="grid">
           <div><b>{summary.points}</b><span>points</span></div>
           <div><b>{summary.total ? Math.round((100 * (summary.right + summary.almost)) / summary.total) : 0}%</b><span>accuracy</span></div>
           <div><b>×{summary.best}</b><span>best combo</span></div>
           <div><b>{summary.introduced}</b><span>new words</span></div>
         </div>
+        {#if summary.words?.length}
+          <div class="recap">
+            {#each summary.words as { lemma, result } (lemma)}
+              {@const w = words.get(lemma)}
+              <button class="chip {result}" onclick={() => say([w?.audio_word, w?.display ?? lemma])}>
+                <b class={w?.gender}>{w?.display ?? lemma}</b> <small>{brief(w?.gloss ?? '', 1)}</small>
+              </button>
+            {/each}
+          </div>
+        {/if}
       </section>
     {/if}
 
@@ -171,6 +189,16 @@
         <button class="link" onclick={backup}>Backup</button> ·
         <label class="link">Restore<input type="file" accept="application/json" onchange={restore} hidden /></label>
       </span>
+      <details class="about">
+        <summary class="link">About</summary>
+        <p>Pluton is the black cat from Edgar Allan Poe's “The Black Cat” (1843), named as in Baudelaire's French translation, “Le Chat noir”.</p>
+        <p>
+          Word frequencies and lemmas: Lexique 3.83 (New &amp; Pallier), CC BY-SA 4.0.
+          Example sentences: Tatoeba contributors, CC BY 2.0 FR.
+          Definitions: English Wiktionary via kaikki.org, CC BY-SA 4.0.
+          Voice: Piper TTS, SIWIS dataset (CC BY 4.0). Scheduling: FSRS via ts-fsrs.
+        </p>
+      </details>
     </footer>
   {:else}
     <Reader {words} {forms} {cards} {statusOf} bind:texts />
@@ -186,6 +214,23 @@
   header { display: flex; justify-content: space-between; align-items: center; margin: 4px 0 18px; }
   h1 { font-size: 34px; font-weight: 900; letter-spacing: -0.03em; }
   .dot { color: var(--red); }
+  .chips { display: flex; gap: 8px; align-items: center; }
+  .level {
+    position: relative; overflow: hidden; font-weight: 900; font-size: 16px; padding: 7px 12px; border-radius: 99px;
+    background: color-mix(in srgb, var(--gold) 20%, transparent);
+  }
+  .level i { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--gold); }
+  .recap { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .chip {
+    border: 2px solid var(--line); background: var(--panel); border-radius: 12px; padding: 6px 10px; cursor: pointer;
+    text-align: left; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .chip small { color: var(--muted); }
+  .chip.almost { border-color: var(--orange); }
+  .chip.wrong { border-color: var(--red); }
+  .about { flex-basis: 100%; }
+  .about summary { display: inline; list-style: none; }
+  .about p { margin: 8px 0 0; }
   .streak { font-weight: 900; font-size: 20px; padding: 6px 14px; border-radius: 99px; background: color-mix(in srgb, var(--orange) 18%, transparent); }
   .streak.cold { filter: grayscale(1); opacity: 0.7; }
   .loading { text-align: center; margin-top: 40vh; }

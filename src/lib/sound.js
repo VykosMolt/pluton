@@ -6,6 +6,8 @@ let token = 0
 let source
 
 export function unlock() {
+  // iOS mutes Web Audio with the ringer switch unless the page asks for media playback (Safari 16.4+).
+  if (navigator.audioSession) navigator.audioSession.type = 'playback'
   ctx ??= new AudioContext()
   if (ctx.state === 'suspended') ctx.resume()
 }
@@ -36,7 +38,8 @@ async function play(audioId, text, me) {
     source.buffer = buffer
     source.connect(ctx.destination)
     await new Promise((resolve) => { source.onended = resolve; source.start() })
-  } catch {
+  } catch (err) {
+    if (audioId) console.warn(`audio fallback for ${audioId}: ${err.message}`)
     if (me !== token || !text || !globalThis.speechSynthesis) return
     const u = new SpeechSynthesisUtterance(text)
     u.lang = LANG.speech

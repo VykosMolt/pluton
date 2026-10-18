@@ -94,6 +94,38 @@ export function grade(typed, expected, lemma, forms) {
   return { result: 'wrong' }
 }
 
+const ARTICLE_GENDER = { le: 'm', un: 'm', la: 'f', une: 'f', "l'": null }
+
+/** Grading for English -> French recall: nouns must come with an article of the right gender. */
+export function gradeProduce(typed, word, forms) {
+  if (word.pos !== 'noun' || !word.gender) return grade(typed, word.lemma, word.lemma, forms)
+  const m = /^(une |un |le |la |l')\s*(.+)$/.exec(norm(typed)) // the space keeps "une" from parsing as "un" + "e…"
+  const g = grade(m ? m[2] : typed, word.lemma, word.lemma, forms)
+  if (g.result === 'wrong') return g
+  if (!m) return { result: 'almost', why: 'article' }
+  const gender = ARTICLE_GENDER[m[1].trim()]
+  if (gender && gender !== word.gender) return { result: 'almost', why: 'gender' }
+  return g
+}
+
+/** What a production card expects: "la maison" for nouns, the lemma otherwise. */
+export const produceAnswer = (w) => (w.pos === 'noun' && w.gender ? w.display : w.lemma)
+
+/** The first `n` senses of a Wiktionary gloss: "to have; to own; to possess; …" -> "to have; to own". */
+export const brief = (gloss, n = 2) => gloss.split('; ').slice(0, n).join('; ')
+
+/** First letter, then a dot per letter: "maison" -> "m•••••". */
+export const hintOf = (w) => w.lemma[0] + w.lemma.slice(1).replace(/\p{L}/gu, '•')
+
+const PRODUCE_POS = new Set(['noun', 'verb', 'adj', 'adv'])
+
+/** Exercise for a card's next review: fill the gap, then listen, then (every third rep, once the word has
+ *  graduated from learning steps) recall from English with no sentence to lean on. */
+export function modeFor(card, word) {
+  if (card.reps % 3 === 2 && card.state === State.Review && PRODUCE_POS.has(word.pos) && word.gloss) return 'produce'
+  return card.reps % 2 ? 'dictation' : 'cloze'
+}
+
 export const RATING = { right: Rating.Good, almost: Rating.Hard, wrong: Rating.Again }
 
 /** Points for one answer. `combo` is the streak before this answer. */
@@ -104,6 +136,14 @@ export function points(result, combo, ms, revenge) {
 }
 
 export const nextCombo = (result, combo) => (result === 'right' ? combo + 1 : result === 'almost' ? combo : 0)
+
+/** Level from lifetime points. Level n+1 starts at 50·n·(n+1): 100, 300, 600, 1000, … (a run is ~150–300). */
+export function levelFor(points) {
+  let n = 1
+  while (50 * n * (n + 1) <= points) n++
+  const from = 50 * (n - 1) * n, to = 50 * n * (n + 1)
+  return { level: n, into: points - from, span: to - from }
+}
 
 /** [before, match, after] around the first whole-word occurrence of `form`. */
 export function blank(sentence, form) {
@@ -139,11 +179,16 @@ export function requeue(queue, it, now, rnd = Math.random) {
 
 export const dayOf = (d) => d.toLocaleDateString('sv') // local YYYY-MM-DD
 
+const daysBetween = (a, b) => (Date.parse(b) - Date.parse(a)) / 864e5
+
 /** Streak after finishing a run today. One missed day is forgiven. */
 export function nextStreak(streak, lastDay, today) {
   if (lastDay === today) return streak
-  return (Date.parse(today) - Date.parse(lastDay)) / 864e5 <= 2 ? streak + 1 : 1
+  return daysBetween(lastDay, today) <= 2 ? streak + 1 : 1
 }
+
+/** The streak as it stands today: still alive until more than one day has been missed. */
+export const liveStreak = (streak, lastDay, today) => (daysBetween(lastDay, today) <= 2 ? streak : 0)
 
 // --- reader helpers ---
 /** Plain text from .srt/.vtt: drops cue numbers, timestamps, header and tags. */

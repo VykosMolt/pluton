@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { tokenize, coverage, unlockList, grade, points, nextCombo, blank, buildRun, requeue, nextStreak,
+import { tokenize, coverage, unlockList, grade, gradeProduce, produceAnswer, hintOf, modeFor, levelFor, brief, liveStreak, points, nextCombo, blank, buildRun, requeue, nextStreak,
   fromSubtitles, sentenceAt, status, createEmptyCard, LEARN_AHEAD_MS, MAX_SEEN_PER_RUN, NEW_PER_RUN } from './logic.js'
 
 const forms = new Map(Object.entries({ homme: 'homme', il: 'il', voit: 'voir', "aujourd'hui": "aujourd'hui", dit: 'dire',
@@ -55,6 +55,42 @@ test('grade', () => {
   assert.equal(grade('', 'chat', 'chat', forms).result, 'wrong')
 })
 
+test('production: article gender, hint, answer', () => {
+  const maison = { lemma: 'maison', pos: 'noun', gender: 'f', display: 'la maison' }
+  const homme = { lemma: 'homme', pos: 'noun', gender: 'm', display: "l'homme" }
+  const f = new Map([...forms, ['maison', 'maison']])
+  assert.equal(gradeProduce('la maison', maison, f).result, 'right')
+  assert.equal(gradeProduce('une Maison', maison, f).result, 'right')
+  assert.deepEqual(gradeProduce('le maison', maison, f), { result: 'almost', why: 'gender' })
+  assert.deepEqual(gradeProduce('maison', maison, f), { result: 'almost', why: 'article' })
+  assert.equal(gradeProduce('la chat', maison, f).result, 'wrong')
+  assert.equal(gradeProduce("l’homme", homme, f).result, 'right') // l' hides gender: accepted
+  assert.equal(gradeProduce('un homme', homme, f).result, 'right')
+  assert.equal(gradeProduce('une homme', homme, f).why, 'gender')
+  assert.equal(gradeProduce('parler', { lemma: 'parler', pos: 'verb' }, f).result, 'right')
+  assert.equal(gradeProduce('parle', { lemma: 'parler', pos: 'verb' }, f).why, 'form')
+  assert.equal(produceAnswer(maison), 'la maison')
+  assert.equal(produceAnswer({ lemma: 'parler', pos: 'verb' }), 'parler')
+  assert.equal(hintOf({ lemma: "aujourd'hui" }), "a••••••'•••")
+})
+
+test('mode rotation', () => {
+  const noun = { pos: 'noun', gloss: 'house' }
+  const review = (reps) => ({ reps, state: 2 })
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map((reps) => modeFor(review(reps), noun)),
+    ['cloze', 'dictation', 'produce', 'dictation', 'cloze', 'produce'])
+  assert.equal(modeFor({ reps: 2, state: 1 }, noun), 'cloze') // still in learning steps: keep the sentence
+  assert.equal(modeFor(review(2), { pos: 'article', gloss: 'the' }), 'cloze') // function words stay in context
+  assert.equal(modeFor(review(2), { pos: 'noun', gloss: '' }), 'cloze') // no gloss, nothing to recall from
+})
+
+test('levels', () => {
+  assert.deepEqual(levelFor(0), { level: 1, into: 0, span: 100 })
+  assert.deepEqual(levelFor(99).level, 1)
+  assert.deepEqual(levelFor(100), { level: 2, into: 0, span: 200 })
+  assert.deepEqual(levelFor(650), { level: 4, into: 50, span: 400 })
+})
+
 test('points and combo', () => {
   assert.equal(points('wrong', 9, 1000, true), 0)
   assert.equal(points('almost', 9, 1000, true), 4)
@@ -97,6 +133,14 @@ test('streak', () => {
   assert.equal(nextStreak(4, '2026-10-15', '2026-10-18'), 1)
   assert.equal(nextStreak(4, '2026-10-18', '2026-10-18'), 4)
   assert.equal(nextStreak(0, undefined, '2026-10-18'), 1)
+  assert.equal(liveStreak(4, '2026-10-16', '2026-10-18'), 4)
+  assert.equal(liveStreak(4, '2026-10-15', '2026-10-18'), 0)
+  assert.equal(liveStreak(0, null, '2026-10-18'), 0)
+})
+
+test('brief gloss', () => {
+  assert.equal(brief('to have; to own; to possess'), 'to have; to own')
+  assert.equal(brief('dog', 1), 'dog')
 })
 
 test('subtitles and sentence extraction', () => {

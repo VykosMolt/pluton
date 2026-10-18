@@ -1,7 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte'
   import * as db from './lib/db.js'
-  import { buildRun, grade, RATING, points, nextCombo, blank, requeue, scheduler } from './lib/logic.js'
+  import { buildRun, grade, gradeProduce, produceAnswer, hintOf, brief, modeFor, RATING, points, nextCombo, blank, requeue, scheduler } from './lib/logic.js'
   import { say, sfx, stop } from './lib/sound.js'
   import { LANG } from './lib/lang.js'
   import Cat from './Cat.svelte'
@@ -9,6 +9,9 @@
   let { words, forms, cards, newToday, onexit } = $props()
 
   const COLORS = ['var(--blue)', 'var(--red)', 'var(--gold)', 'var(--green)', 'var(--orange)']
+  const TAGS = { cloze: '✍️ Fill the gap', dictation: '🎧 Listen, type the missing word', produce: '💬 Say it in French' }
+  const PROMPTS = { cloze: 'Quel mot manque ? (which word is missing?)', dictation: 'Écoute bien… (listen closely)',
+    produce: 'Comment dit-on… ? (how do you say…?)' }
 
   let queue = $state(buildRun([...cards.values()], words.values(), new Date(), newToday))
   let done = $state(0)
@@ -20,6 +23,7 @@
   let score = $state(0)
   const tally = $state({ right: 0, almost: 0, wrong: 0 })
   let introduced = 0
+  const seen = new Map() // lemma -> last result, for the end-of-run recap
   let shownAt = 0
   let saveError = $state('')
   let burst = $state(0)
@@ -29,6 +33,7 @@
   const cur = $derived(queue[0])
   const w = $derived(cur && content(cur.lemma))
   const parts = $derived(w ? blank(w.sentence, w.form) : ['', '', ''])
+  const expected = $derived(w && mode === 'produce' ? produceAnswer(w) : parts[1])
   const progress = $derived(done / (done + queue.length || 1))
   const catMood = $derived(
     fb?.result === 'wrong' ? 'sad' : combo >= 5 && fb?.result !== 'almost' ? 'fire' : fb?.result === 'right' ? 'happy' : 'idle')
@@ -40,13 +45,14 @@
   }
 
   const sentenceClip = () => [w.audio_sentence, w.sentence]
-  const replay = () => (cur.phase === 'intro' ? say([w.audio_word, w.display], sentenceClip()) : say(sentenceClip()))
+  const wordFirst = () => cur.phase === 'intro' || (mode === 'produce' && fb)
+  const replay = () => (wordFirst() ? say([w.audio_word, w.display], sentenceClip()) : say(sentenceClip()))
 
   async function show() {
     answer = ''
     fb = null
     if (!cur) return finish(done > 0)
-    mode = cur.card.reps % 2 ? 'dictation' : 'cloze'
+    mode = modeFor(cur.card, w)
     shownAt = Date.now()
     if (cur.phase === 'intro' || mode === 'dictation') replay()
     else stop()
@@ -58,7 +64,8 @@
   function finish(completed) {
     stop()
     if (completed) sfx('done')
-    onexit({ completed, points: score, best, introduced, ...tally, total: tally.right + tally.almost + tally.wrong })
+    onexit({ completed, points: score, best, introduced, ...tally, total: tally.right + tally.almost + tally.wrong,
+      words: [...seen].map(([lemma, result]) => ({ lemma, result })) })
   }
 
   function submit(e) {
@@ -77,7 +84,7 @@
   }
 
   function check(typed) {
-    const g = grade(typed, parts[1], cur.lemma, forms)
+    const g = mode === 'produce' ? gradeProduce(typed, w, forms) : grade(typed, parts[1], cur.lemma, forms)
     const revenge = cur.missed && g.result === 'right'
     const gained = points(g.result, combo, Date.now() - shownAt, revenge)
     combo = nextCombo(g.result, combo)
@@ -85,10 +92,13 @@
     score += gained
     tally[g.result]++
     sfx(g.result)
+    if (g.result === 'wrong') navigator.vibrate?.([40, 30, 40])
     if (g.result === 'right' && combo % 5 === 0) {
       sfx('combo')
       burst++
+      navigator.vibrate?.([15, 30, 15])
     }
+    seen.set(cur.lemma, g.result)
     const now = new Date()
     const card = scheduler.next($state.snapshot(cur.card), now, RATING[g.result]).card
     const stored = { ...(cards.get(cur.lemma) ?? { lemma: cur.lemma, added: now.getTime() }), fsrs: card }
@@ -99,7 +109,7 @@
     cur.seen++
     cur.missed ||= g.result === 'wrong'
     fb = { ...g, gained, revenge, typed, praise: LANG.praise[Math.floor(Math.random() * LANG.praise.length)] }
-    say(sentenceClip())
+    replay()
   }
 
   function next() {
@@ -148,36 +158,46 @@
         <button class="btn wide" bind:this={gotBtn}>Got it →</button>
       {:else}
         <div class="panel card enter" class:shake={fb?.result === 'wrong'} class:glow={fb?.result === 'right'}>
-          <span class="tag">{mode === 'dictation' ? '🎧 Listen, type the missing word' : '✍️ Fill the gap'}</span>
-          <p class="sentence">
-            {parts[0]}{#if fb}<mark class={fb.result}>{parts[1]}</mark>{:else}<span class="gap" style="min-width:{parts[1].length + 1}ch"></span>{/if}{parts[2]}
-          </p>
-          {#if w.translation && (mode === 'cloze' || fb)}<p class="muted">{w.translation}</p>{/if}
-          {#if fb}
-            <p class="wordline"><b class={w.gender}>{w.display}</b> — {w.gloss}</p>
-          {:else if mode === 'cloze'}
-            <p class="hint">{w.pos} · {w.gloss}</p>
+          <span class="tag">{TAGS[mode]}</span>
+          {#if mode === 'produce' && !fb}
+            <p class="prompt">{brief(w.gloss)}</p>
+            <p class="hint">{w.pos}{w.pos === 'noun' && w.gender ? ' · with its article (le / la)' : ''}</p>
+            <p class="letters" aria-label="Hint: first letter">{w.pos === 'noun' && w.gender ? '__ ' : ''}{hintOf(w)}</p>
+          {:else}
+            <p class="sentence">
+              {parts[0]}{#if fb}<mark class={fb.result}>{parts[1]}</mark>{:else}<span class="gap" style="min-width:{parts[1].length + 1}ch"></span>{/if}{parts[2]}
+            </p>
+            {#if w.translation && (mode === 'cloze' || fb)}<p class="muted">{w.translation}</p>{/if}
+            {#if fb}
+              <p class="wordline"><b class={w.gender}>{w.display}</b> — {w.gloss}</p>
+            {:else if mode === 'cloze'}
+              <p class="hint">{w.pos} · {w.gloss}</p>
+            {/if}
           {/if}
-          <button type="button" class="btn ghost replay" onclick={replay} aria-label="Play audio">🔊</button>
+          {#if mode !== 'produce' || fb}
+            <button type="button" class="btn ghost replay" onclick={replay} aria-label="Play audio">🔊</button>
+          {/if}
           {#if fb?.gained}<span class="plus">+{fb.gained}</span>{/if}
         </div>
 
         <div class="react">
           <Cat mood={catMood} size={60} />
           <p class="msg {fb?.result ?? ''}">
-            {#if !fb}<span class="muted">{mode === 'dictation' ? 'Écoute bien… (listen closely)' : 'Quel mot manque ? (which word is missing?)'}</span>
+            {#if !fb}<span class="muted">{PROMPTS[mode]}</span>
             {:else if fb.result === 'right'}{fb.revenge ? 'Revanche ! 💥' : fb.praise}
-            {:else if fb.why === 'accent'}Watch the accent: <b>{parts[1]}</b>
-            {:else if fb.why === 'form'}Right word, wrong form: <b>{parts[1]}</b>
-            {:else if fb.why === 'typo'}Typo, it's <b>{parts[1]}</b>
-            {:else if fb.why === 'other'}“{fb.typed}” is a different word ({words.get(fb.other)?.gloss || fb.other}). Here: <b>{parts[1]}</b>
-            {:else}It's <b>{parts[1]}</b>{/if}
+            {:else if fb.why === 'gender'}Right word, wrong gender: <b class={w.gender}>{expected}</b> ({w.gender === 'f' ? 'feminine' : 'masculine'})
+            {:else if fb.why === 'article'}Add the article: <b class={w.gender}>{expected}</b>
+            {:else if fb.why === 'accent'}Watch the accent: <b>{expected}</b>
+            {:else if fb.why === 'form'}Right word, wrong form: <b>{expected}</b>
+            {:else if fb.why === 'typo'}Typo, it's <b>{expected}</b>
+            {:else if fb.why === 'other'}“{fb.typed}” is a different word ({words.get(fb.other)?.gloss || fb.other}). Here: <b>{expected}</b>
+            {:else}It's <b>{expected}</b>{/if}
           </p>
         </div>
 
         <div class="answer">
           <input bind:this={input} bind:value={answer} class:wrong={fb?.result === 'wrong'} lang="fr" autocomplete="off" autocapitalize="none"
-            autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="Type the word…" aria-label="Your answer" />
+            autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder={mode === 'produce' && w.gender ? 'le / la …' : 'Type the word…'} aria-label="Your answer" />
           <button class="btn">{fb ? 'Next →' : 'Check'}</button>
         </div>
         {#if !fb}
@@ -225,6 +245,8 @@
   mark.almost { background: color-mix(in srgb, var(--orange) 30%, transparent); }
   mark.wrong { background: color-mix(in srgb, var(--red) 30%, transparent); }
   .hint, .wordline { margin: 12px 0 0; }
+  .prompt { font-size: 28px; font-weight: 800; margin: 14px 0 4px; padding-right: 44px; line-height: 1.2; }
+  .letters { font: 700 26px ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: 0.12em; margin: 14px 0 0; color: var(--blue); }
   .hint { color: var(--muted); font-style: italic; }
   .replay { position: absolute; top: 12px; right: 12px; padding: 8px 10px; font-size: 18px; }
   .plus { position: absolute; right: 18px; bottom: 14px; font-weight: 900; font-size: 26px; color: var(--gold); animation: float 0.9s ease-out forwards; }

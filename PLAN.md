@@ -25,6 +25,9 @@ content unlocks, short runs). One local-first PWA for Linux, Android, iOS.
 - **Grading**: exact → good; accent-only / one-char typo that isn't a real word / right lemma wrong form → "almost" (Hard);
   anything else → Again. Typo leniency only for non-words, because French endings (-e/-es/-ent) differ by one char.
 - **In-run requeue** for cards due within 20 min (same idea as Anki's learn-ahead limit).
+- **Exercise rotation**: cloze → dictation → English→French recall (every 3rd rep, graduated content words only,
+  first-letter hint). Nouns must come with an article; wrong gender = "almost" (French's classic weak spot).
+- **Name**: Pluton (user approved 2026-10-18). Repo: github.com/VykosMolt/pluton, private (free plan: Pages needs public).
 
 ## MVP checklist
 - [x] data/fr/build.py → words.json (10k lemmas, 9816 glossed; 1930 with sentence+translation+audio), forms.json, 3.7k mp3s
@@ -39,4 +42,6 @@ Sync server (replay `log`), LLM story campaign + roleplay, speaking (Whisper), h
 language picker, precache all audio for full offline, Tauri wrap, settings (new words/day).
 
 ## Progress log
-- 2026-10-18: MVP built and verified end to end (see checklist). Not deployed, not committed.
+- 2026-10-18: MVP built and verified end to end (see checklist).
+- 2026-10-18: renamed to Pluton, pushed (private). Added recall mode with gender grading, levels, run recap,
+  live streak, About/credits, iOS audio session, audio-fallback warnings. Smoke now fakes +3 days for a review run.
