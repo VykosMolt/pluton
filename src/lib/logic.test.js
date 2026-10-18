@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { tokenize, coverage, unlockList, grade, gradeProduce, produceAnswer, hintOf, modeFor, levelFor, brief, liveStreak, playable, gradeDictee, gradeConj, newConj, conjKey, parseConj, isWord, points, nextCombo, blank, buildRun, requeue, nextStreak,
+import { tokenize, coverage, unlockList, grade, gradeProduce, produceAnswer, hintOf, modeFor, levelFor, brief, liveStreak, playable, gradeDictee, gradeGram, newGrammar, gramKey, fixCard, firstChange, gradeConj, newConj, conjKey, parseConj, isWord, points, nextCombo, blank, buildRun, requeue, nextStreak,
   fromSubtitles, sentenceAt, wordDiff, enLookup, englishTokens, parseCues, cueAt, listenGoal, status, createEmptyCard, LEARN_AHEAD_MS, MAX_SEEN_PER_RUN, NEW_PER_RUN } from './logic.js'
 
 const forms = new Map(Object.entries({ homme: 'homme', il: 'il', voit: 'voir', "aujourd'hui": "aujourd'hui", dit: 'dire',
@@ -143,6 +143,15 @@ test('conjugation unlocks', () => {
   assert.equal(isWord({ lemma: conjKey('aller', 'pc') }), false)
 })
 
+test('buildRun introduces a grammar topic when the vocabulary is there', () => {
+  const now = new Date()
+  const learned = Array.from({ length: 160 }, (_, i) => ({ lemma: `w${i}`, fsrs: { ...createEmptyCard(now), state: 2, due: new Date(+now + 864e5) } }))
+  const words = new Map(learned.map((c) => [c.lemma, { lemma: c.lemma, sentence: '…' }]).concat([['x', { lemma: 'x', sentence: '…' }]]))
+  const grammar = [{ id: 'objets', level: 'A2' }]
+  const intros = buildRun(learned, words, now, 0, { grammar }).filter((i) => i.phase === 'intro').map((i) => i.lemma)
+  assert.deepEqual(intros, ['x', gramKey('objets')])
+})
+
 test('buildRun adds conjugation tables within the daily budget', () => {
   const now = new Date()
   const cards = [{ lemma: 'être', fsrs: { ...createEmptyCard(now), state: 2, due: new Date(+now + 864e5) } }]
@@ -192,6 +201,36 @@ test('playable', () => {
   assert.equal(playable({ lemma: conjKey('aller', 'ind:pre') }, words, conj), true)
   assert.equal(playable({ lemma: conjKey('souvenir', 'ind:pre') }, words, conj), false)
   assert.equal(playable({ lemma: conjKey('aller', 'pc') }, words, null), false)
+})
+
+test('grammar: grading, introduction order, playability', () => {
+  assert.equal(gradeGram('Le lui', ['le lui']).result, 'right')
+  assert.equal(gradeGram('étiez arrivée', ['étiez arrivés', 'étiez arrivée']).result, 'right')
+  assert.equal(gradeGram('ou', ['où']).why, 'accent')
+  assert.equal(gradeGram('l', ["l'"]).result, 'almost') // lost apostrophe
+  assert.equal(gradeGram('lui', ['leur']).result, 'wrong')
+  const G = [{ id: 'a', level: 'A2' }, { id: 'b', level: 'A2' }, { id: 'c', level: 'B1' }]
+  const word = (i) => ({ lemma: `w${i}`, fsrs: { ...createEmptyCard(), state: 2 } })
+  const words = (n) => Array.from({ length: n }, (_, i) => word(i))
+  assert.deepEqual(newGrammar(words(100), G, 1), []) // not enough vocabulary yet
+  assert.deepEqual(newGrammar(words(200), G, 1), [gramKey('a')])
+  const learningA = [...words(200), { lemma: gramKey('a'), fsrs: { ...createEmptyCard(), state: 1 } }]
+  assert.deepEqual(newGrammar(learningA, G, 2), []) // b waits until a has graduated
+  const doneA = [...words(200), { lemma: gramKey('a'), fsrs: { ...createEmptyCard(), state: 2 } }]
+  assert.deepEqual(newGrammar(doneA, G, 2), [gramKey('b')]) // c needs B1 vocabulary
+  const w = new Map()
+  assert.equal(playable({ lemma: gramKey('a') }, w, null, G), true)
+  assert.equal(playable({ lemma: gramKey('zzz') }, w, null, G), false)
+  assert.equal(playable({ lemma: 'fix/x', fix: { sentence: 's' } }, w, null, G), true)
+})
+
+test('corrections become practice cards', () => {
+  assert.deepEqual(firstChange("Je suis allé a la plage", "Je suis allée à la plage."), { answer: 'allée à', wrong: 'allé a' })
+  assert.deepEqual(firstChange('Il mange', 'Il mange bien.'), { answer: 'bien', wrong: '' })
+  assert.equal(firstChange('Pareil.', 'Pareil.'), null)
+  const c = fixCard("J'habite à Paris.", 'à', 'a', 'Accent on the preposition.', 0)
+  assert.ok(c.lemma.startsWith('fix/') && c.fix.answer === 'à' && c.fsrs.state === 0)
+  assert.equal(fixCard('Bonjour.', 'absent', '', ''), null) // the answer must be in the sentence
 })
 
 test('requeue: only soon-due cards, capped per run', () => {

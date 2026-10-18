@@ -15,14 +15,17 @@ export const MAX_SEEN_PER_RUN = 5 // per card, so a run always ends even if you 
 export const CONJ_PER_RUN = 2
 export const UNLOCK_NEXT_TENSE = 8 // tables of a tense in long-term review before the next tense opens
 
-// Conjugation cards live in the same store as words, keyed "conj/<verb>/<tense>" (French words never contain "/").
-export const CONJ = 'conj/'
+// Non-word cards live in the same store as words, keyed with a "/" (French words never contain one):
+// conj/<verb>/<tense>, gram/<topic> (a grammar topic), fix/<id> (a correction from your own writing).
+export const CONJ = 'conj/', GRAM = 'gram/', FIX = 'fix/'
 export const conjKey = (verb, tense) => `${CONJ}${verb}/${tense}`
 export const parseConj = (key) => {
   const [, verb, tense] = key.split('/')
   return { verb, tense }
 }
-export const isWord = (c) => !c.lemma.startsWith(CONJ)
+export const gramKey = (id) => `${GRAM}${id}`
+export const isWord = (c) => !c.lemma.includes('/')
+const graduated = (c) => c.known || c.fsrs.state === State.Review || c.fsrs.state === State.Relearning
 
 // --- tokenizer: keep in sync with data/fr/build.py ---
 const WORD = /\p{L}+(?:['-]\p{L}+)*'?/gu
@@ -243,11 +246,57 @@ export function newConj(cards, conj, order, n) {
   return out
 }
 
-/** Whether a stored card can be shown with the current data: a rebuild can drop a sentence or a table. */
-export function playable(c, words, conj) {
+/** Whether a stored card can be shown with the current data: a rebuild can drop a sentence, a table or a topic. */
+export function playable(c, words, conj, grammar) {
   if (isWord(c)) return !!(c.mined || words.get(c.lemma)?.sentence)
+  if (c.lemma.startsWith(FIX)) return !!c.fix
+  if (c.lemma.startsWith(GRAM)) return !!grammar?.some((t) => gramKey(t.id) === c.lemma)
   const { verb, tense } = parseConj(c.lemma)
   return !!conj?.[verb]?.t[tense]
+}
+
+// Grammar topics start once the vocabulary can carry them, one level at a time.
+export const GRAMMAR_FROM = { A2: 150, B1: 600, B2: 1500, C1: 3000 }
+
+/** The next grammar topics to introduce (in order): its level's vocabulary reached, the previous topic graduated. */
+export function newGrammar(cards, grammar, n) {
+  const have = new Map(cards.map((c) => [c.lemma, c]))
+  const learned = cards.filter((c) => isWord(c) && graduated(c)).length
+  const out = []
+  for (const [i, t] of (grammar ?? []).entries()) {
+    if (out.length >= n || learned < (GRAMMAR_FROM[t.level] ?? Infinity)) break
+    const prev = i && have.get(gramKey(grammar[i - 1].id))
+    if (i && !(prev && graduated(prev))) break
+    if (!have.has(gramKey(t.id))) out.push(gramKey(t.id))
+  }
+  return out
+}
+
+/** Grading for a grammar gap or a correction: any accepted answer is right; accents or a lost apostrophe, almost. */
+export function gradeGram(typed, answers) {
+  const t = norm(typed), loose = (s) => strip(s).replace(/'/g, '')
+  if (answers.some((a) => norm(a) === t)) return { result: 'right' }
+  if (t && answers.some((a) => loose(norm(a)) === loose(t))) return { result: 'almost', why: 'accent' }
+  return { result: 'wrong' }
+}
+
+/** A practice card from a correction: the corrected sentence with the fixed words to type back. */
+export function fixCard(sentence, answer, wrong, why, now = Date.now()) {
+  if (!sentence || !answer || !sentence.includes(answer)) return null
+  return { lemma: `${FIX}${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`, fsrs: createEmptyCard(new Date(now)),
+    added: now, fix: { sentence, answer, wrong, why } }
+}
+
+/** The first change a correction made: the words added (answer) and the ones they replaced (wrong). */
+export function firstChange(from, to) {
+  const d = wordDiff(from, to)
+  const i = d.findIndex((x) => x.op !== 'same')
+  if (i < 0) return null
+  let j = i
+  while (j < d.length && d[j].op !== 'same') j++
+  const run = d.slice(i, j)
+  const answer = run.filter((x) => x.op === 'add').map((x) => x.text).join(' ').replace(/[.,!?;:…]+$/, '')
+  return answer ? { answer, wrong: run.filter((x) => x.op === 'del').map((x) => x.text).join(' ') } : null
 }
 
 // --- runs ---
@@ -255,8 +304,9 @@ const item = (card, isNew) => ({ lemma: card.lemma, card: card.fsrs, phase: isNe
 
 /** Due reviews (oldest first) with up to perRun new words spread through them (mined cards first), then up to
  *  CONJ_PER_RUN new conjugation tables. New words and tables share the perDay budget. */
-export function buildRun(cards, words, now, newToday, { conj = null, tenses = [], perRun = NEW_PER_RUN, perDay = NEW_PER_DAY } = {}) {
-  cards = cards.filter((c) => playable(c, words, conj))
+export function buildRun(cards, words, now, newToday,
+  { conj = null, tenses = [], grammar = null, perRun = NEW_PER_RUN, perDay = NEW_PER_DAY } = {}) {
+  cards = cards.filter((c) => playable(c, words, conj, grammar))
   const due = cards.filter((c) => !c.known && c.fsrs.state !== State.New && c.fsrs.due <= now)
     .sort((a, b) => a.fsrs.due - b.fsrs.due).slice(0, MAX_REVIEWS_PER_RUN).map((c) => item(c, false))
   const have = new Set(cards.map((c) => c.lemma))
@@ -269,8 +319,10 @@ export function buildRun(cards, words, now, newToday, { conj = null, tenses = []
   const queue = [...due]
   fresh.slice(0, n).forEach((c, i) => queue.splice(Math.min(queue.length, i * 5), 0, item(c, true)))
   const room = Math.max(0, Math.min(CONJ_PER_RUN, perDay - newToday - Math.min(n, fresh.length)))
-  if (conj) newConj(cards, conj, tenses, room)
-    .forEach((key, i) => queue.splice(Math.min(queue.length, 3 + i * 6), 0, item({ lemma: key, fsrs: createEmptyCard(now) }, true)))
+  const tables = conj ? newConj(cards, conj, tenses, room) : []
+  tables.forEach((key, i) => queue.splice(Math.min(queue.length, 3 + i * 6), 0, item({ lemma: key, fsrs: createEmptyCard(now) }, true)))
+  if (room > tables.length) newGrammar(cards, grammar, 1)
+    .forEach((key) => queue.splice(Math.min(queue.length, 8), 0, item({ lemma: key, fsrs: createEmptyCard(now) }, true)))
   return queue
 }
 

@@ -90,6 +90,36 @@ per-skill level estimate from real performance.
 - Not verified yet: real phones (iOS audio, install), real AI keys (mock only), Safari/WebKit engine (can't run on
   Arch), native-speaker review of the story.
 
+## In progress (2026-10-18, stopped at the usage limit) — resume here
+User asked for: grammar beyond verbs, writing mistakes → cards, and accounts/login with sync.
+Done (tested, not yet wired into the UI):
+- `data/fr/grammar.json`: 15 topics A2→C1 × 10 hand-written items (objets, negation, partitifs, lieux, y-en,
+  comparer, relatifs, si, subjonctif, accord, ordre, gerondif, lequel, passe-simple, indirect).
+- `src/lib/logic.js`: gram/ and fix/ card keys, `gradeGram`, `newGrammar` (A2 from 150 learned words, B1 600,
+  B2 1500, C1 3000; one at a time, previous topic graduated), `fixCard`, `firstChange`, buildRun `grammar` option,
+  `playable` for gram/fix. 32 unit tests pass.
+- Accounts backend: Supabase chosen (hosted Postgres + email-code auth, free tier, no server to run).
+  `supabase/config.toml` (code-based sign-in emails, unused services off), `supabase/migrations/…_sync.sql`
+  (records table, RLS, `push` last-write-wins RPC, `delete_account`). Local stack runs via `npx supabase start
+  -x studio,storage-api,imgproxy,realtime,edge-runtime,logflare,vector,supavisor,postgres-meta`; migration applies.
+Left to do:
+1. build.py: validate + copy grammar.json to public/data/fr (and add it to the SW precache list).
+2. Run.svelte: 'gram' mode (random item, intro with the explanation + two solved examples) and 'fix' mode;
+   App passes `grammar` to buildRun; Words tab gets a Grammar section (all topics open, Practice button).
+3. path.js: grammar goal per stage ([0,0,1,4,6,8,10,12,13,15] topics in review) + tests.
+4. Talk: "Practice this" on writing errors (fixCard from the corrected sentence) and on chat corrections
+   (firstChange between the learner's message and the ✏️ line).
+5. Sync: `src/lib/sync.js` with @supabase/supabase-js: email code sign-in (signInWithOtp + verifyOtp), pull pages by
+   synced_at (60 s overlap), push dirty records via `push` RPC; cards/texts LWW by an `updated` stamp; log keyed
+   `${device}:${n}`; texts need string ids (uuid) to avoid cross-device collisions; tombstones for deletes; stats
+   split per device (`stats:<device>`; points/listened/talked/written summed, bestCombo/stage max, read union,
+   streak from the union of run days). Never sync meta 'ai'. Settings → Account (send code, verify, sync now,
+   sign out, delete account). Config via VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY; UI hidden when unset.
+6. Smoke: grammar + fix flows; accounts against the local stack (code from Mailpit at :54324), two devices sync,
+   delete account removes server rows.
+7. Hosted project: needs the user's Supabase account (`npx supabase login`, then link + `db push`), set the site
+   URL to https://vykosmolt.github.io/pluton/, and real SMTP for production email volume.
+
 ## Progress log
 - 2026-10-18: MVP built and verified end to end (see checklist).
 - 2026-10-18: renamed to Pluton, pushed (private). Added recall mode with gender grading, levels, run recap,
