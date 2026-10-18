@@ -239,14 +239,14 @@ export function playable(c, words, conj) {
 // --- runs ---
 const item = (card, isNew) => ({ lemma: card.lemma, card: card.fsrs, phase: isNew ? 'intro' : 'quiz', seen: 0, missed: false })
 
-/** Due reviews (oldest first) with up to NEW_PER_RUN new words spread through them (mined cards first), then up to
- *  CONJ_PER_RUN new conjugation tables. New words and tables share the NEW_PER_DAY budget. */
-export function buildRun(cards, words, now, newToday, conj = null, tenses = []) {
+/** Due reviews (oldest first) with up to perRun new words spread through them (mined cards first), then up to
+ *  CONJ_PER_RUN new conjugation tables. New words and tables share the perDay budget. */
+export function buildRun(cards, words, now, newToday, { conj = null, tenses = [], perRun = NEW_PER_RUN, perDay = NEW_PER_DAY } = {}) {
   cards = cards.filter((c) => playable(c, words, conj))
   const due = cards.filter((c) => !c.known && c.fsrs.state !== State.New && c.fsrs.due <= now)
     .sort((a, b) => a.fsrs.due - b.fsrs.due).slice(0, MAX_REVIEWS_PER_RUN).map((c) => item(c, false))
   const have = new Set(cards.map((c) => c.lemma))
-  const n = Math.max(0, Math.min(NEW_PER_RUN, NEW_PER_DAY - newToday))
+  const n = Math.max(0, Math.min(perRun, perDay - newToday))
   const fresh = [...cards.filter((c) => !c.known && c.fsrs.state === State.New)]
   for (const w of words.values()) {
     if (fresh.length >= n) break
@@ -254,7 +254,7 @@ export function buildRun(cards, words, now, newToday, conj = null, tenses = []) 
   }
   const queue = [...due]
   fresh.slice(0, n).forEach((c, i) => queue.splice(Math.min(queue.length, i * 5), 0, item(c, true)))
-  const room = Math.max(0, Math.min(CONJ_PER_RUN, NEW_PER_DAY - newToday - Math.min(n, fresh.length)))
+  const room = Math.max(0, Math.min(CONJ_PER_RUN, perDay - newToday - Math.min(n, fresh.length)))
   if (conj) newConj(cards, conj, tenses, room)
     .forEach((key, i) => queue.splice(Math.min(queue.length, 3 + i * 6), 0, item({ lemma: key, fsrs: createEmptyCard(now) }, true)))
   return queue
@@ -279,6 +279,24 @@ export function nextStreak(streak, lastDay, today) {
 
 /** The streak as it stands today: still alive until more than one day has been missed. */
 export const liveStreak = (streak, lastDay, today) => (daysBetween(lastDay, today) <= 2 ? streak : 0)
+
+/** Word-level diff of `from` -> `to` as [{text, op: 'same'|'del'|'add'}], to show what a correction changed. */
+export function wordDiff(from, to) {
+  const a = from.split(/\s+/).filter(Boolean), b = to.split(/\s+/).filter(Boolean)
+  const L = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0))
+  for (let i = a.length - 1; i >= 0; i--)
+    for (let j = b.length - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1])
+  const out = []
+  let i = 0, j = 0
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) out.push({ text: a[i++], op: 'same' }), j++
+    else if (L[i + 1][j] >= L[i][j + 1]) out.push({ text: a[i++], op: 'del' })
+    else out.push({ text: b[j++], op: 'add' })
+  }
+  while (i < a.length) out.push({ text: a[i++], op: 'del' })
+  while (j < b.length) out.push({ text: b[j++], op: 'add' })
+  return out
+}
 
 // --- reader helpers ---
 /** Plain text from .srt/.vtt: drops cue numbers, timestamps, header and tags. */
@@ -313,8 +331,9 @@ export function cueAt(cues, t) {
   return found
 }
 
-/** Next listening milestone (hours) above `h`, for a progress bar that always has somewhere to go. */
-export const listenGoal = (h) => [10, 50, 100, 250, 500, 1000, 2000].find((g) => g > h) ?? Math.floor(h / 1000 + 1) * 1000
+/** Next milestone above n, for progress bars that always have somewhere to go; past the list, the next multiple of its last step. */
+export const milestone = (n, steps) => steps.find((g) => g > n) ?? (Math.floor(n / steps.at(-1)) + 1) * steps.at(-1)
+export const listenGoal = (h) => milestone(h, [10, 50, 100, 250, 500, 1000])
 
 /** The sentence around offset `at`, cropped to ~160 chars so a mined card stays readable. */
 export function sentenceAt(text, at) {

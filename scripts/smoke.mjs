@@ -6,6 +6,7 @@ import { spawn, execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { chromium } from 'playwright'
 import { produceAnswer, brief } from '../src/lib/logic.js'
+import { startMockAI } from './mock-ai.mjs'
 
 const OUT = process.argv[2] ?? 'smoke-out'
 mkdirSync(OUT, { recursive: true })
@@ -217,10 +218,58 @@ const listenedSec = await ear.page.evaluate(() => new Promise((ok) => {
   r.onsuccess = () => { const g = r.result.transaction('meta').objectStore('meta').get('stats'); g.onsuccess = () => ok(g.result?.listened ?? 0) }
 }))
 await ear.ctx.close()
+
+// AI: talk and writing through a mock OpenAI-compatible provider, then Claude through the Anthropic SDK.
+const mock = await startMockAI(4180)
+const MOCK = 'http://localhost:4180'
+const tutor = await open('light')
+const tp = tutor.page
+await tp.getByRole('button', { name: 'Settings' }).click()
+await tp.getByLabel('Provider').selectOption('custom')
+await tp.getByLabel('Server URL').fill(`${MOCK}/openai/v1`)
+await tp.getByRole('button', { name: 'Load list' }).click()
+await tp.locator('select option[value="mock-tutor"]').waitFor({ state: 'attached' })
+await tp.getByRole('button', { name: 'Test & save' }).click()
+await tp.locator('.note', { hasText: '✓' }).waitFor()
+await tp.locator('nav').getByRole('button', { name: /Talk/ }).click()
+await tp.getByLabel('Your message').fill('Je suis allé au marché')
+await tp.getByRole('button', { name: 'Send' }).click()
+await tp.locator('.fix').waitFor()
+await tp.locator('.pluton .bubble .w').last().waitFor()
+const talkFix = await tp.locator('.fix').textContent()
+await tp.screenshot({ path: `${OUT}/8-talk.png` })
+await tp.locator('.pluton .bubble .w').first().click()
+await tp.getByRole('button', { name: 'Close' }).click()
+await tp.getByRole('tab', { name: /Writing/ }).click()
+await tp.locator('.topic').first().click()
+await tp.getByLabel('Your text').fill("Je m'appelle Léa. J'habite a Paris et j'aime lire.")
+await tp.getByRole('button', { name: 'Correct it' }).click()
+await tp.locator('.result .diff').waitFor()
+const writeAdds = await tp.locator('.diff .add').allTextContents()
+await tp.screenshot({ path: `${OUT}/8-writing.png`, fullPage: true })
+
+await tp.getByRole('button', { name: 'Settings' }).click()
+await tp.getByLabel('Provider').selectOption('anthropic')
+await tp.getByLabel('API key').fill('sk-test')
+await tp.locator('details.adv summary').click()
+await tp.getByLabel(/Server URL/).fill(`${MOCK}/anthropic`)
+await tp.getByRole('button', { name: 'Load list' }).click()
+await tp.locator('select option[value="claude-haiku-5-5"]').waitFor({ state: 'attached' })
+await tp.getByRole('button', { name: 'Test & save' }).click()
+await tp.locator('.note', { hasText: '✓' }).waitFor()
+await tp.screenshot({ path: `${OUT}/8-settings.png`, fullPage: true })
+const claude = mock.requests.findLast((r) => r.path.startsWith('/anthropic/v1/messages'))
+const [download] = await Promise.all([tp.waitForEvent('download'), tp.getByRole('button', { name: 'Download backup' }).click()])
+const backup = readFileSync(await download.path(), 'utf8')
+await tutor.ctx.close()
+mock.close()
+
 await browser.close()
 server.kill()
 
-const report = { dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
+const claudeSent = { model: claude?.body.model, fallbacks: claude?.body.fallbacks, effort: claude?.body.output_config?.effort,
+  beta: claude?.headers['anthropic-beta'], browser: claude?.headers['anthropic-dangerous-direct-browser-access'] }
+const report = { talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
 console.log(JSON.stringify(report, null, 2))
 const checks = {
   'no errors': !errors.length,
@@ -245,6 +294,12 @@ const checks = {
   'dictée for a well-known word, graded word by word': dicteeMarks === [...etre.sentence.matchAll(/[\p{L}\p{N}'’-]+/gu)].length,
   'listen shows the playing line, tappable': lineWords > 0,
   'listening time saved': listenedSec > 2,
+  'talk: streamed reply with its correction line': talkFix.includes('Je suis allée au marché'),
+  'writing: correction shown as a diff': writeAdds.includes('à'),
+  'claude: SDK call from the browser with key, default model, effort, fallbacks': claudeSent.model === 'claude-opus-5-5'
+    && claudeSent.fallbacks === 'default' && claudeSent.effort === 'low' && claudeSent.browser === 'true'
+    && (claudeSent.beta ?? '').includes('server-side-fallback-2026-07-01'),
+  'backup never contains the API key': !backup.includes('sk-test') && backup.includes('"talk"'),
 }
 for (const [name, ok] of Object.entries(checks)) console.log(`${ok ? '✔' : '✖'} ${name}`)
 process.exit(Object.values(checks).every(Boolean) ? 0 : 1)

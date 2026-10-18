@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
   import * as db from './lib/db.js'
-  import { status, buildRun, dayOf, nextStreak, liveStreak, brief, tokenize, coverage, unlockList, levelFor, isWord, parseConj, listenGoal, UNLOCK } from './lib/logic.js'
+  import { status, buildRun, dayOf, nextStreak, liveStreak, brief, tokenize, coverage, unlockList, levelFor, isWord, parseConj, listenGoal, milestone, NEW_PER_RUN, NEW_PER_DAY, UNLOCK } from './lib/logic.js'
   import { unlock, say } from './lib/sound.js'
   import { DATA, LANG } from './lib/lang.js'
   import Cat from './Cat.svelte'
@@ -10,6 +10,9 @@
   import Reader from './Reader.svelte'
   import Words from './Words.svelte'
   import Listen from './Listen.svelte'
+  import Talk from './Talk.svelte'
+  import Settings from './Settings.svelte'
+  import { setActive } from './lib/ai.js'
 
   let words = $state.raw(null) // lemma -> entry, frequency order
   let forms = $state.raw(null) // form -> lemma
@@ -22,6 +25,9 @@
   let now = $state(new Date())
   let error = $state('')
   let summary = $state(null)
+  let ai = $state(null) // AI provider config incl. the user's key (this device only)
+  let pace = $state({ perRun: NEW_PER_RUN, perDay: NEW_PER_DAY })
+  $effect(() => setActive(ai))
 
   onMount(async () => {
     try {
@@ -32,6 +38,8 @@
         fetch(`${DATA}shelf.json`).then((r) => r.json()),
         db.getAll('cards'), db.get('meta', 'stats'), db.getAll('texts'),
       ])
+      ai = (await db.get('meta', 'ai')) ?? null
+      pace = { ...pace, ...(await db.get('meta', 'settings')) }
       words = new Map(w.map((x) => [x.lemma, x]))
       forms = new Map(Object.entries(f))
       conj = cj
@@ -48,7 +56,7 @@
   const newToday = $derived(stats.newDay === today ? stats.newCount : 0)
   const statusOf = (l) => status(cards.get(l), words.get(l))
   const TENSES = LANG.tenses.map((t) => t.id)
-  const plan = $derived(buildRun([...cards.values()], words ?? new Map(), now, newToday, conj, TENSES))
+  const plan = $derived(buildRun([...cards.values()], words ?? new Map(), now, newToday, { conj, tenses: TENSES, ...pace }))
   const counts = $derived.by(() => {
     let known = 0, learning = 0
     for (const c of cards.values()) {
@@ -70,6 +78,7 @@
     : summary ? { fr: 'Bien joué ! À demain !', en: 'Well done! See you tomorrow.' }
     : waiting ? { fr: 'On y va ?', en: `Shall we? ${waiting} cards are waiting.` }
     : { fr: 'Zzz… À demain !', en: 'All done. See you tomorrow!' })
+  const TALK = [25, 100, 250, 500, 1000], WRITE = [3, 10, 25, 50, 100]
   const reading = $derived.by(() => {
     if (!forms) return { next: null, unlocked: 0 }
     let next = null, unlocked = 0
@@ -125,6 +134,11 @@
   }
   const hours = $derived((stats.listened ?? 0) / 3600)
 
+  async function count(kind) {
+    stats[kind] = (stats[kind] ?? 0) + 1
+    await db.put('meta', $state.snapshot(stats), 'stats')
+  }
+
   async function backup() {
     const blob = new Blob([JSON.stringify(await db.exportAll())], { type: 'application/json' })
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `pluton-backup-${today}.json` })
@@ -149,7 +163,7 @@
 {:else if !words}
   <p class="muted loading">Chargement…</p>
 {:else if view === 'run'}
-  <Run {words} {forms} {cards} {conj} {newToday} onexit={finish} />
+  <Run {words} {forms} {cards} {conj} {newToday} {pace} onexit={finish} />
 {:else}
   <header>
     <h1>Pluton<span class="dot">.</span></h1>
@@ -158,6 +172,7 @@
         Niv. {lvl.level}<i style="width:{(100 * lvl.into) / lvl.span}%"></i>
       </div>
       <div class="streak" class:cold={stats.lastDay !== today} title="Day streak">🔥 {liveStreak(stats.streak, stats.lastDay, today)}</div>
+      <button class="gear" class:on={view === 'settings'} onclick={() => (view = 'settings')} aria-label="Settings">⚙️</button>
     </div>
   </header>
 
@@ -236,31 +251,28 @@
         <span>🎧 Listening</span><span class="bar"><i style="width:{(100 * hours) / listenGoal(hours)}%"></i></span>
         <small>{hours < 10 ? hours.toFixed(1) : Math.round(hours)} h listened · next milestone {listenGoal(hours)} h</small>
       </div>
-      <p class="soon">🗣️ Speaking · ✍️ Writing: not in the app yet</p>
+      <div class="track">
+        <span>🗣️ Talking</span><span class="bar"><i style="width:{(100 * (stats.talked ?? 0)) / milestone(stats.talked ?? 0, TALK)}%"></i></span>
+        <small>{stats.talked ?? 0} messages in French · next milestone {milestone(stats.talked ?? 0, TALK)}</small>
+      </div>
+      <div class="track">
+        <span>✍️ Writing</span><span class="bar"><i style="width:{(100 * (stats.written ?? 0)) / milestone(stats.written ?? 0, WRITE)}%"></i></span>
+        <small>{stats.written ?? 0} texts corrected · next milestone {milestone(stats.written ?? 0, WRITE)}</small>
+      </div>
+      {#if !ai}<button class="link" onclick={() => (view = 'settings')}>Talking and writing need an AI: connect one</button>{/if}
     </section>
 
     <footer class="muted">
       <span>⭐ {stats.points} pts · best combo ×{stats.bestCombo}</span>
-      <span>
-        <button class="link" onclick={backup}>Backup</button> ·
-        <label class="link">Restore<input type="file" accept="application/json" onchange={restore} hidden /></label>
-      </span>
-      <details class="about">
-        <summary class="link">About</summary>
-        <p>Pluton is the black cat from Edgar Allan Poe's “The Black Cat” (1843), named as in Baudelaire's French translation, “Le Chat noir”.</p>
-        <p>
-          Word frequencies and lemmas: Lexique 3.83 (New &amp; Pallier), CC BY-SA 4.0.
-          Example sentences: Tatoeba contributors, CC BY 2.0 FR.
-          Definitions: English Wiktionary via kaikki.org, CC BY-SA 4.0.
-          Voice: Piper TTS, SIWIS dataset (CC BY 4.0). Scheduling: FSRS via ts-fsrs.
-          Classics shelf: public-domain texts via French Wikisource.
-        </p>
-      </details>
     </footer>
   {:else if view === 'read'}
     <Reader {words} {forms} {cards} {statusOf} {shelf} bind:texts />
   {:else if view === 'listen'}
     <Listen {words} {forms} {cards} {statusOf} onlisten={listened} />
+  {:else if view === 'talk'}
+    <Talk {ai} {words} {forms} {cards} {statusOf} vocab={counts.known + counts.learning} onsettings={() => (view = 'settings')} oncount={count} />
+  {:else if view === 'settings'}
+    <Settings bind:ai bind:pace onbackup={backup} onrestore={restore} />
   {:else}
     <Words {words} {cards} {now} />
   {/if}
@@ -269,6 +281,7 @@
     <button class:on={view === 'home'} onclick={() => { view = 'home'; now = new Date() }}><i>🏠</i>Home</button>
     <button class:on={view === 'read'} onclick={() => (view = 'read')}><i>📖</i>Library</button>
     <button class:on={view === 'listen'} onclick={() => (view = 'listen')}><i>🎧</i>Listen</button>
+    <button class:on={view === 'talk'} onclick={() => (view = 'talk')}><i>💬</i>Talk</button>
     <button class:on={view === 'words'} onclick={() => { view = 'words'; now = new Date() }}><i>📚</i>Words</button>
   </nav>
 {/if}
@@ -278,6 +291,8 @@
   h1 { font-size: 34px; font-weight: 900; letter-spacing: -0.03em; }
   .dot { color: var(--red); }
   .chips { display: flex; gap: 8px; align-items: center; }
+  .gear { border: 0; background: none; font-size: 22px; cursor: pointer; padding: 4px; border-radius: 10px; filter: grayscale(0.4); }
+  .gear.on { background: color-mix(in srgb, var(--blue) 14%, transparent); filter: none; }
   .level {
     position: relative; overflow: hidden; font-weight: 900; font-size: 16px; padding: 7px 12px; border-radius: 99px;
     background: color-mix(in srgb, var(--gold) 20%, transparent);
@@ -299,9 +314,6 @@
   .chip small { color: var(--muted); }
   .chip.almost { border-color: var(--orange); }
   .chip.wrong { border-color: var(--red); }
-  .about { flex-basis: 100%; }
-  .about summary { display: inline; list-style: none; }
-  .about p { margin: 8px 0 0; }
   .streak { font-weight: 900; font-size: 20px; padding: 6px 14px; border-radius: 99px; background: color-mix(in srgb, var(--orange) 18%, transparent); }
   .streak.cold { filter: grayscale(1); opacity: 0.7; }
   .loading { text-align: center; margin-top: 40vh; }
@@ -333,7 +345,7 @@
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); text-align: center; gap: 8px; }
   .grid b { display: block; font-size: 24px; }
   .grid span { font-size: 13px; color: var(--muted); }
-  footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 14px; padding-bottom: 90px; }
+  footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 14px; }
   .link { background: none; border: 0; padding: 0; color: var(--blue); cursor: pointer; text-decoration: underline; font-size: inherit; }
   nav {
     position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; gap: 8px;

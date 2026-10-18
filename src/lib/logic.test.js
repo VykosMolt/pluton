@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { tokenize, coverage, unlockList, grade, gradeProduce, produceAnswer, hintOf, modeFor, levelFor, brief, liveStreak, playable, gradeDictee, gradeConj, newConj, conjKey, parseConj, isWord, points, nextCombo, blank, buildRun, requeue, nextStreak,
-  fromSubtitles, sentenceAt, parseCues, cueAt, listenGoal, status, createEmptyCard, LEARN_AHEAD_MS, MAX_SEEN_PER_RUN, NEW_PER_RUN } from './logic.js'
+  fromSubtitles, sentenceAt, wordDiff, parseCues, cueAt, listenGoal, status, createEmptyCard, LEARN_AHEAD_MS, MAX_SEEN_PER_RUN, NEW_PER_RUN } from './logic.js'
 
 const forms = new Map(Object.entries({ homme: 'homme', il: 'il', voit: 'voir', "aujourd'hui": "aujourd'hui", dit: 'dire',
   a: 'avoir', 'à': 'à', ou: 'ou', 'où': 'où', es: 'être', est: 'être', suis: 'être', parle: 'parler', parles: 'parler',
@@ -144,8 +144,8 @@ test('buildRun adds conjugation tables within the daily budget', () => {
   const words = new Map([['x', { lemma: 'x', sentence: '…' }], ['être', { lemma: 'être', sentence: '…' }]])
   const conj = { être: { t: { 'ind:pre': [] } } }
   const intros = (q) => q.filter((i) => i.phase === 'intro').map((i) => i.lemma)
-  assert.deepEqual(intros(buildRun(cards, words, now, 0, conj, ['ind:pre'])), ['x', conjKey('être', 'ind:pre')])
-  assert.deepEqual(intros(buildRun(cards, words, now, 19, conj, ['ind:pre'])), ['x']) // budget spent on the word
+  assert.deepEqual(intros(buildRun(cards, words, now, 0, { conj, tenses: ['ind:pre'] })), ['x', conjKey('être', 'ind:pre')])
+  assert.deepEqual(intros(buildRun(cards, words, now, 19, { conj, tenses: ['ind:pre'] })), ['x']) // budget spent on the word
 })
 
 test('points and combo', () => {
@@ -174,6 +174,8 @@ test('buildRun: due oldest first, new words spread, mined first, daily cap', () 
   assert.deepEqual(q.filter((i) => i.phase === 'intro').map((i) => i.lemma), ['mined', 'x', 'y', 'z', 'w'].slice(0, NEW_PER_RUN))
   assert.equal(q[0].phase, 'intro')
   assert.equal(buildRun(cards, words, now, 19).filter((i) => i.phase === 'intro').length, 1)
+  assert.equal(buildRun(cards, words, now, 0, { perRun: 2 }).filter((i) => i.phase === 'intro').length, 2) // pace setting
+  assert.equal(buildRun(cards, words, now, 8, { perDay: 10 }).filter((i) => i.phase === 'intro').length, 2)
 })
 
 test('playable', () => {
@@ -222,6 +224,14 @@ test('timed cues', () => {
   assert.deepEqual([0, 2, 2.5, 4, 5.5, 99].map((t) => cueAt(cues, t)), [-1, 0, 0, 0, 1, 1])
   assert.equal(cueAt([], 3), -1)
   assert.deepEqual([0, 9.9, 10, 600, 2500].map(listenGoal), [10, 10, 50, 1000, 3000])
+})
+
+test('word diff', () => {
+  const d = wordDiff("Je suis allé a la plage hier", "Je suis allée à la plage hier.")
+  assert.deepEqual(d.filter((x) => x.op !== 'same').map((x) => `${x.op}:${x.text}`),
+    ['del:allé', 'del:a', 'add:allée', 'add:à', 'del:hier', 'add:hier.'])
+  assert.deepEqual(wordDiff('a b', 'a b').map((x) => x.op), ['same', 'same'])
+  assert.deepEqual(wordDiff('', 'Bonjour').map((x) => x.op), ['add'])
 })
 
 test('subtitles and sentence extraction', () => {

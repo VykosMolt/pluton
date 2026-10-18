@@ -133,5 +133,5 @@
   .controls { display: flex; gap: 8px; align-items: center; }
   .controls .btn { padding: 10px 16px; font-size: 18px; }
   select { margin-left: auto; padding: 10px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel); }
-  .auto { display: block; margin: 12px 0 100px; color: var(--muted); }
+  .auto { display: block; margin: 12px 0 0; color: var(--muted); }
 </style>

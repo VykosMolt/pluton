@@ -38,6 +38,7 @@ export async function review(card, entry) {
 }
 
 const STORES = ['cards', 'log', 'texts', 'meta']
+const SECRET = 'ai' // meta key holding the AI provider config and API key: never in backups
 
 export async function exportAll() {
   const t = (await db).transaction(STORES)
@@ -45,7 +46,7 @@ export async function exportAll() {
   for (const s of STORES) {
     const os = t.objectStore(s)
     const [keys, values] = await Promise.all([result(os.getAllKeys()), result(os.getAll())])
-    out[s] = keys.map((k, i) => [k, values[i]])
+    out[s] = keys.map((k, i) => [k, values[i]]).filter(([k]) => !(s === 'meta' && k === SECRET))
   }
   return out
 }
@@ -58,11 +59,13 @@ const reviveDates = (c) => {
 /** Replaces everything with a backup from exportAll(). All-or-nothing. */
 export async function importAll(data) {
   if (data?.version !== 1 || !STORES.every((s) => Array.isArray(data[s]))) throw new Error('Not a Pluton backup')
+  const keep = await get('meta', SECRET) // this device's AI key survives a restore
   const t = (await db).transaction(STORES, 'readwrite')
   for (const s of STORES) {
     const os = t.objectStore(s)
     os.clear()
-    for (const [k, v] of data[s]) os.keyPath ? os.put(s === 'cards' ? reviveDates(v) : v) : os.put(v, k)
+    for (const [k, v] of data[s]) if (!(s === 'meta' && k === SECRET)) os.keyPath ? os.put(s === 'cards' ? reviveDates(v) : v) : os.put(v, k)
   }
+  if (keep) t.objectStore('meta').put(keep, SECRET)
   return done(t)
 }

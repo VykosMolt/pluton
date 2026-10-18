@@ -36,7 +36,8 @@
       }
       #app {
         max-width: 560px; margin: 0 auto; min-height: 100dvh;
-        padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+        /* bottom: room for the fixed tab bar, so nothing ends up underneath it */
+        padding: max(16px, env(safe-area-inset-top)) 16px calc(96px + env(safe-area-inset-bottom));
       }
       h1, h2, h3 { margin: 0; line-height: 1.15; }
       button, input, textarea { font: inherit; color: inherit; }

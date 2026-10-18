@@ -65,7 +65,6 @@
     width: 100%; display: flex; justify-content: space-between; gap: 10px; align-items: center; text-align: left;
     padding: 10px 2px; border: 0; border-bottom: 1px solid var(--line); background: none; cursor: pointer;
   }
-  .row:last-of-type { margin-bottom: 90px; }
   .word { min-width: 0; display: flex; flex-direction: column; }
   .word b { font-size: 18px; }
   .word small, .meta small { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

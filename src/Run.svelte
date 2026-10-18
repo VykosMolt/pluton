@@ -5,8 +5,9 @@
   import { say, sfx, stop } from './lib/sound.js'
   import { LANG } from './lib/lang.js'
   import Cat from './Cat.svelte'
+  import AccentBar from './AccentBar.svelte'
 
-  let { words, forms, cards, conj, newToday, onexit } = $props()
+  let { words, forms, cards, conj, newToday, pace, onexit } = $props()
 
   const COLORS = ['var(--blue)', 'var(--red)', 'var(--gold)', 'var(--green)', 'var(--orange)']
   const TAGS = { cloze: '✍️ Fill the gap', dictation: '🎧 Listen, type the missing word', produce: '💬 Say it in French',
@@ -15,7 +16,7 @@
     produce: 'Comment dit-on… ? (how do you say…?)', conj: 'Conjugue ! (conjugate it)',
     dictee: 'Écris tout ce que tu entends. (write everything you hear)' }
 
-  let queue = $state(buildRun([...cards.values()], words, new Date(), newToday, conj, LANG.tenses.map((t) => t.id)))
+  let queue = $state(buildRun([...cards.values()], words, new Date(), newToday, { conj, tenses: LANG.tenses.map((t) => t.id), ...pace }))
   let done = $state(0)
   let mode = $state('cloze') // fixed per card when shown; the card's reps change on answer
   let person = $state(0) // conjugation cell being asked
@@ -161,14 +162,6 @@
     show()
   }
 
-  async function insert(ch) {
-    const s = input.selectionStart ?? answer.length, e = input.selectionEnd ?? s
-    answer = answer.slice(0, s) + ch + answer.slice(e)
-    await tick()
-    input.focus()
-    input.setSelectionRange(s + 1, s + 1)
-  }
-
   const pieces = () => Array.from({ length: 26 }, (_, i) => ({
     x: Math.round((Math.random() - 0.5) * 420), y: Math.round(-80 - Math.random() * 260),
     r: Math.round(Math.random() * 720), c: COLORS[i % COLORS.length],
@@ -284,11 +277,7 @@
           <button class="btn">{fb ? 'Next →' : 'Check'}</button>
         </div>
         {#if !fb}
-          <div class="accents">
-            {#each LANG.accents as ch}
-              <button type="button" onpointerdown={(e) => e.preventDefault()} onclick={() => insert(ch)}>{ch}</button>
-            {/each}
-          </div>
+          <AccentBar target={input} bind:value={answer} />
           <button type="button" class="dunno" onclick={() => check('')}>🤷 Show me</button>
         {/if}
       {/if}
@@ -358,11 +347,6 @@
   }
   .answer input:focus { outline: none; border-color: var(--blue); }
   .answer input.wrong { color: var(--red); text-decoration: line-through; }
-  .accents { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
-  .accents button {
-    min-width: 40px; padding: 8px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel);
-    font-size: 18px; cursor: pointer;
-  }
   .override {
     display: block; margin-top: 4px; border: 0; background: none; padding: 0; font-size: 14px; font-weight: 600;
     color: var(--muted); text-decoration: underline; cursor: pointer;
