@@ -298,6 +298,31 @@ export function wordDiff(from, to) {
   return out
 }
 
+// --- Norman Bridge: English text with its French-derived words ---
+const EN_WORD = /[A-Za-z]+(?:['’][a-z]+)?/g
+const EN_FORMS = [(w) => w, (w) => w.replace(/ies$/, 'y'), (w) => w.replace(/es$/, ''), (w) => w.replace(/s$/, ''),
+  (w) => w.replace(/ed$/, ''), (w) => w.replace(/ed$/, 'e'), (w) => w.replace(/d$/, ''), (w) => w.replace(/ing$/, ''),
+  (w) => w.replace(/ing$/, 'e'), (w) => w.replace(/ily$/, 'y'), (w) => w.replace(/ly$/, ''), (w) => w.replace(/ness$/, '')]
+
+/** [french, clue, base English form] for an English word via the cognate map, trying common inflections. */
+export function enLookup(word, cognates) {
+  const w = word.toLowerCase().replace(/['’]s$/, '')
+  for (const f of EN_FORMS) {
+    const base = f(w)
+    if (base.length >= 4 && cognates.has(base)) return [...cognates.get(base), base]
+  }
+  return null
+}
+
+/** English tokens with offsets and, where English got the word from French, its French counterpart. */
+export function englishTokens(text, cognates) {
+  return [...text.matchAll(EN_WORD)].map((m) => {
+    const hit = enLookup(m[0], cognates)
+    return { start: m.index, end: m.index + m[0].length, text: m[0], fr: hit?.[0] ?? null,
+      clue: hit?.[1] ?? '', base: hit?.[2] ?? '', faux: !!hit?.[1].startsWith('faux:') }
+  })
+}
+
 // --- reader helpers ---
 /** Plain text from .srt/.vtt: drops cue numbers, timestamps, header and tags. */
 export const fromSubtitles = (s) =>

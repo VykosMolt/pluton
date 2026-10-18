@@ -5,6 +5,7 @@
   import { addWord } from './lib/deck.js'
   import Tokens from './Tokens.svelte'
   import WordSheet from './WordSheet.svelte'
+  import Bridge from './Bridge.svelte'
 
   let { words, forms, cards, statusOf, texts = $bindable(), shelf = [] } = $props()
 
@@ -29,8 +30,9 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
     return { t, ...coverage(toks, statusOf), need: unlockList(toks, statusOf).length }
   }
   const library = $derived(texts.map(rate))
-  const classics = $derived(shelf.map(rate).sort((a, b) => b.pct - a.pct)) // closest to unlocking first
-  const toks = $derived(open ? tokenize(open.body, forms) : [])
+  const classics = $derived(shelf.filter((t) => t.lang !== 'en').map(rate).sort((a, b) => b.pct - a.pct)) // closest first
+  const bridge = $derived(shelf.filter((t) => t.lang === 'en'))
+  const toks = $derived(open && open.lang !== 'en' ? tokenize(open.body, forms) : [])
   const cov = $derived(coverage(toks, statusOf))
   const need = $derived(unlockList(toks, statusOf))
   const addable = $derived(need.filter((l) => statusOf(l) === 'new'))
@@ -93,6 +95,9 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
   </div>
   <h2>{open.title}</h2>
   {#if open.author}<p class="byline">{open.author}, {open.year} · <a href={open.source} target="_blank" rel="noopener">source</a></p>{/if}
+  {#if open.lang === 'en'}
+    <Bridge text={open} {words} {cards} {statusOf} />
+  {:else}
   <div class="stack" title="known · learning · new">
     <i class="k" style="flex:{cov.known}"></i><i class="l" style="flex:{cov.learning}"></i><i class="q" style="flex:{cov.queued}"></i><i class="n" style="flex:{cov.new}"></i>
   </div>
@@ -107,6 +112,7 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
   <div class="panel text" lang="fr">
     <Tokens text={open.body} {toks} {statusOf} {sel} onpick={(t) => (sel = t)} />
   </div>
+  {/if}
 {:else}
   <div class="row head">
     <h2>Library</h2>
@@ -127,7 +133,7 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
     <h3 class="shelf">📜 Classics shelf</h3>
     <p class="muted">Real French literature, public domain. Closest to unlocking first.</p>
     {#each classics as x (x.t.id)}
-      <button class="panel item" onclick={() => (openId = x.t.id)}>
+      <button class="panel item classic" onclick={() => (openId = x.t.id)}>
         <span class="row"><b>{x.t.title}</b>{#if x.pct >= UNLOCK}<span class="ready">🔓 Ready</span>{:else}<span class="muted">🔒 {x.need} to go</span>{/if}</span>
         <span class="muted">{x.t.author}, {x.t.year}</span>
         <span class="bar"><i class:full={x.pct >= UNLOCK} style="width:{Math.min(100, (100 * x.pct) / UNLOCK)}%"></i></span>
@@ -135,9 +141,19 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
       </button>
     {/each}
   {/if}
+
+  {#if bridge.length}
+    <h3 class="shelf">🏰 Norman Bridge</h3>
+    <p class="muted">English Gothic classics, read through the French hiding inside them. Weave in the French you know.</p>
+    {#each bridge as t (t.id)}
+      <button class="panel item english" onclick={() => (openId = t.id)}>
+        <b>{t.title}</b><span class="muted">{t.author}, {t.year} · in English</span>
+      </button>
+    {/each}
+  {/if}
 {/if}
 
-{#if sel && open}
+{#if sel && open && open.lang !== 'en'}
   <WordSheet tok={sel} sentence={sentenceAt(open.body, sel.start)} {words} {cards} {statusOf} onclose={() => (sel = null)} />
 {/if}
 

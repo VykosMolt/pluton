@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { tokenize, coverage, unlockList, grade, gradeProduce, produceAnswer, hintOf, modeFor, levelFor, brief, liveStreak, playable, gradeDictee, gradeConj, newConj, conjKey, parseConj, isWord, points, nextCombo, blank, buildRun, requeue, nextStreak,
-  fromSubtitles, sentenceAt, wordDiff, parseCues, cueAt, listenGoal, status, createEmptyCard, LEARN_AHEAD_MS, MAX_SEEN_PER_RUN, NEW_PER_RUN } from './logic.js'
+  fromSubtitles, sentenceAt, wordDiff, enLookup, englishTokens, parseCues, cueAt, listenGoal, status, createEmptyCard, LEARN_AHEAD_MS, MAX_SEEN_PER_RUN, NEW_PER_RUN } from './logic.js'
 
 const forms = new Map(Object.entries({ homme: 'homme', il: 'il', voit: 'voir', "aujourd'hui": "aujourd'hui", dit: 'dire',
   a: 'avoir', 'à': 'à', ou: 'ou', 'où': 'où', es: 'être', est: 'être', suis: 'être', parle: 'parler', parles: 'parler',
@@ -224,6 +224,20 @@ test('timed cues', () => {
   assert.deepEqual([0, 2, 2.5, 4, 5.5, 99].map((t) => cueAt(cues, t)), [-1, 0, 0, 0, 1, 1])
   assert.equal(cueAt([], 3), -1)
   assert.deepEqual([0, 9.9, 10, 600, 2500].map(listenGoal), [10, 10, 50, 1000, 3000])
+})
+
+test('norman bridge lookup', () => {
+  const cog = new Map(Object.entries({ chamber: ['chambre', ''], melancholy: ['mélancolie', 'ie>y'], study: ['étude', 'es'],
+    library: ['librairie', 'faux:bookshop'], arrive: ['arriver', 'er>'] }))
+  assert.deepEqual(enLookup('Chambers', cog), ['chambre', '', 'chamber'])
+  assert.deepEqual(enLookup('studies', cog)?.[0], 'étude')
+  assert.deepEqual(enLookup('arrived', cog)?.[0], 'arriver') // -ed on a word ending in e
+  assert.deepEqual(enLookup('arriving', cog)?.[0], 'arriver')
+  assert.equal(enLookup('the', cog), null)
+  const toks = englishTokens('The melancholy library’s chambers.', cog)
+  assert.deepEqual(toks.map((t) => t.fr), [null, 'mélancolie', 'librairie', 'chambre'])
+  assert.deepEqual(toks.map((t) => t.faux), [false, false, true, false])
+  assert.equal(toks[2].text, 'library’s')
 })
 
 test('word diff', () => {

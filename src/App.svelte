@@ -19,7 +19,8 @@
   let conj = $state.raw(null) // verb -> conjugation tables
   const cards = new SvelteMap() // lemma -> stored card
   let texts = $state([])
-  let shelf = $state.raw([]) // built-in public-domain classics
+  let shelf = $state.raw([]) // built-in public-domain classics (French) and Norman Bridge texts (English)
+  const french = $derived(shelf.filter((t) => t.lang !== 'en'))
   let stats = $state({ streak: 0, lastDay: null, points: 0, bestCombo: 0, newDay: null, newCount: 0 })
   let view = $state('home')
   let now = $state(new Date())
@@ -82,7 +83,7 @@
   const reading = $derived.by(() => {
     if (!forms) return { next: null, unlocked: 0 }
     let next = null, unlocked = 0
-    for (const t of [...texts, ...shelf]) {
+    for (const t of [...texts, ...french]) {
       const toks = tokenize(t.body, forms)
       const c = coverage(toks, statusOf)
       if (c.pct >= UNLOCK) unlocked++
@@ -244,8 +245,8 @@
         <small>{road.tablesKnown} / {road.tables} tables known</small>
       </div>
       <div class="track">
-        <span>📖 Reading</span><span class="bar"><i style="width:{(100 * reading.unlocked) / (texts.length + shelf.length || 1)}%"></i></span>
-        <small>{reading.unlocked} / {texts.length + shelf.length} texts unlocked (incl. {shelf.length} classics)</small>
+        <span>📖 Reading</span><span class="bar"><i style="width:{(100 * reading.unlocked) / (texts.length + french.length || 1)}%"></i></span>
+        <small>{reading.unlocked} / {texts.length + french.length} texts unlocked (incl. {french.length} classics)</small>
       </div>
       <div class="track">
         <span>🎧 Listening</span><span class="bar"><i style="width:{(100 * hours) / listenGoal(hours)}%"></i></span>

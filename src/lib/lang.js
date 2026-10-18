@@ -27,6 +27,14 @@ export const LANG = {
     { id: 'sub:pre', name: 'subjonctif', en: 'subjunctive: that … (after il faut que, vouloir que, bien que…)',
       how: 'je, tu, il, ils: stem of the present ils form (ils prennent → prenn-) + -e, -es, -e, -ent. nous, vous: same as the imparfait. Irregular: sois, aie, aille, fasse, puisse, sache, veuille.' },
   ],
+  /** Why an English word looks like its French twin, for the Norman Bridge (clue codes from data/fr/build.py). */
+  clue(code, fr, en) {
+    if (code === 'circumflex') return `The circumflex in ${fr} marks an s French later dropped and English kept: ${fr} → ${en}.`
+    if (code === 'es') return `Old French words in es- lost the s and gained é-; English kept the old form: ${fr} → ${en}.`
+    const [a, b] = code.split('>')
+    if (b) return `French -${a} often became English -${b}: ${fr} → ${en}.`
+    return ''
+  },
   /** What precedes the verb in a table row: "que je", "qu'il", "nous". */
   subject: (i, tense) => (tense === 'sub:pre' ? (i === 2 || i === 5 ? "qu'" : 'que ') : '') + LANG_PRONOUNS[i],
 }

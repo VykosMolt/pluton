@@ -2,8 +2,9 @@
   import { addWord, markKnown, unmark } from './lib/deck.js'
   import { say } from './lib/sound.js'
 
-  /** tok: the tapped token; sentence: where it was found (used if the word has no built-in sentence). */
-  let { tok, sentence, words, cards, statusOf, onclose } = $props()
+  /** tok: the tapped token; sentence: where it was found (used if the word has no built-in sentence; without either,
+   *  the word can't become a card); note: an extra line, e.g. a Norman Bridge clue. */
+  let { tok, sentence, words, cards, statusOf, onclose, note = '' } = $props()
 
   const w = $derived(words.get(tok.lemma))
   const st = $derived(statusOf(tok.lemma))
@@ -14,10 +15,11 @@
   <h3 class={w?.gender}>{w?.display ?? tok.lemma}</h3>
   <p class="muted">{w?.pos ?? 'not in the dictionary'}{tok.text.toLowerCase() !== tok.lemma ? ` · from “${tok.text}”` : ''}</p>
   <p>{w?.gloss || 'No gloss for this one. The sentence will have to teach it.'}</p>
+  {#if note}<p class="note">{note}</p>{/if}
   <div class="row">
     <button class="btn ghost" onclick={() => say([w?.audio_word, w?.display ?? tok.lemma])} aria-label="Play audio">🔊</button>
     {#if st === 'new'}
-      <button class="btn" onclick={() => addWord(cards, words, tok, sentence)}>+ Add to deck</button>
+      {#if w?.sentence || sentence}<button class="btn" onclick={() => addWord(cards, words, tok, sentence)}>+ Add to deck</button>{/if}
       <button class="btn ghost" onclick={() => markKnown(cards, tok.lemma)}>I know it</button>
     {:else if cards.get(tok.lemma)?.known}
       <span class="muted">Marked known</span><button class="btn ghost" onclick={() => unmark(cards, tok.lemma)}>Undo</button>
@@ -38,6 +40,7 @@
   }
   h3 { font-size: 28px; padding-right: 30px; }
   p { margin: 6px 0 12px; }
+  .note { font-size: 15px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--gold) 16%, transparent); }
   .row { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
   .close { position: absolute; top: 10px; right: 12px; border: 0; background: none; font-size: 18px; cursor: pointer; color: var(--muted); }
   @keyframes up { from { transform: translate(-50%, 20px); opacity: 0; } }

@@ -13,6 +13,7 @@ import io
 import json
 import re
 import subprocess
+import unicodedata
 import sys
 import wave
 from collections import defaultdict
@@ -172,8 +173,9 @@ def load_lexique():
 
 
 def load_glosses(wanted):
-    """lemma -> short English gloss, preferring the kaikki entry whose POS matches Lexique's."""
-    best = {}
+    """(lemma -> short English gloss, preferring the kaikki entry whose POS matches Lexique's;
+        lemma -> English words in its first glosses, for cognates; lemmas French borrowed from English)."""
+    best, gloss_words, from_english = {}, defaultdict(set), set()
     with open(RAW / "kaikki.org-dictionary-French.jsonl", encoding="utf-8") as f:
         for line in f:
             d = json.loads(line)
@@ -183,13 +185,90 @@ def load_glosses(wanted):
             senses = [s for s in d.get("senses", []) if s.get("glosses") and not SKIP_TAGS & set(s.get("tags", []))]
             if not senses:
                 continue
+            ety = d.get("etymology_text") or ""
+            if re.match(r"(?:(?:Partly )?[Bb]orrowed|Unadapted borrowing|Semantic loan|Calque) from English|From English", ety) or any(
+                    t.get("name") in ("bor", "bor+", "ubor", "lbor") and t.get("args", {}).get("2") == "en"
+                    for t in d.get("etymology_templates", [])):
+                from_english.add(w)  # came from English: the wrong direction for the Norman Bridge
+            for s in senses[:6]:
+                gloss_words[w].update(x.lower() for x in re.findall(r"[A-Za-z]{4,}", s["glosses"][0]))
             gloss = "; ".join(dict.fromkeys(s["glosses"][0] for s in senses[:2]))
             if len(gloss) > 80:
                 gloss = gloss[:80].rsplit(" ", 1)[0] + "…"
             score = (KAIKKI_POS.get(wanted[w], wanted[w]) != d.get("pos"), "spelling of" in gloss)
             if w not in best or score < best[w][0]:
                 best[w] = (score, gloss)
-    return {w: g for w, (_, g) in best.items()}
+    return {w: g for w, (_, g) in best.items()}, gloss_words, from_english
+
+
+# --- Norman Bridge: English words that came from (Old/Norman) French, and the French word they map to ---
+# Spelling correspondences English kept from Old French. Each variant of the French word is tried against the
+# English words in its own definition, so false friends can't match ("large" is defined as "wide").
+SUFFIXES = [("eux", "ous"), ("euse", "ous"), ("té", "ty"), ("ie", "y"), ("eur", "or"), ("eur", "our"), ("ique", "ic"),
+            ("ier", "er"), ("aire", "ary"), ("oire", "ory"), ("isme", "ism"), ("iste", "ist"), ("er", ""), ("ir", ""),
+            ("re", ""), ("é", "ed"), ("e", "")]
+# Classic faux amis: English word -> (French look-alike, what it really means). Taught, not mapped.
+FALSE_FRIENDS = {
+    "library": ("librairie", "bookshop"), "actually": ("actuellement", "currently"),
+    "eventually": ("éventuellement", "possibly"), "sensible": ("sensible", "sensitive"), "large": ("large", "wide"),
+    "lecture": ("lecture", "reading"), "location": ("location", "rental"), "deception": ("déception", "disappointment"),
+    "sympathetic": ("sympathique", "nice, friendly"), "journey": ("journée", "day"), "rest": ("rester", "to stay"),
+    "attend": ("attendre", "to wait"), "assist": ("assister", "to attend"), "demand": ("demander", "to ask"),
+    "chance": ("chance", "luck"), "coin": ("coin", "corner"), "pain": ("pain", "bread"), "chair": ("chair", "flesh"),
+    "sale": ("sale", "dirty"), "bless": ("blesser", "to injure"), "injure": ("injurier", "to insult"),
+    "achieve": ("achever", "to finish"), "resume": ("résumer", "to summarize"), "crayon": ("crayon", "pencil"),
+    "petrol": ("pétrole", "crude oil"), "figure": ("figure", "face"), "rude": ("rude", "harsh, rough"),
+    "college": ("collège", "middle school"), "raisin": ("raisin", "grape"), "money": ("monnaie", "change, currency"),
+    "vacancy": ("vacances", "holidays"), "envy": ("envie", "desire, wish"), "habit": ("habit", "garment"),
+    "patron": ("patron", "boss"), "prejudice": ("préjudice", "harm"), "comprehensive": ("compréhensif", "understanding"),
+    "luxury": ("luxure", "lust"), "preservative": ("préservatif", "condom"), "grape": ("grappe", "bunch"),
+}
+
+
+def plain(s):
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn").replace("œ", "oe")
+
+
+def lev(a, b):
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def spellings(fr):
+    """[(English-looking spelling of a French word, clue)]: as is, lost s under a circumflex, é- for es-, suffixes."""
+    out = [(plain(fr), "")]
+    if re.search("[âêîôû]", fr):
+        out.append((plain(re.sub("([âêîôû])", lambda m: plain(m.group(1)) + "s", fr)), "circumflex"))
+    if re.match("[ée][spct]", fr):
+        out += [("s" + plain(fr[1:]), "es"), ("es" + plain(fr[1:]), "es")]
+    for a, b in SUFFIXES:
+        for v, clue in list(out):
+            if v.endswith(plain(a)) and len(v) > len(a) + 2:
+                out.append((v[: -len(plain(a))] + b, clue or f"{a}>{b}"))
+    return out
+
+
+def cognates(rank, gloss_words, from_english, deck):
+    """english -> [french, clue]: English words found in a French word's definition that look like it. Identical
+    spellings must be common French (in the deck): rare ones are mostly unflagged English loans ("house")."""
+    best = {}
+    for fr, ens in gloss_words.items():
+        if len(fr) < 4 or fr in from_english or fr not in rank:
+            continue
+        for en in ens - FALSE_FRIENDS.keys():
+            if en == plain(fr) and fr not in deck:
+                continue
+            for v, clue in spellings(fr):
+                sim = 1 - lev(v, en) / max(len(v), len(en))
+                if sim >= 0.75 and (en not in best or (sim, -rank[fr]) > best[en][0]):
+                    best[en] = ((sim, -rank[fr]), fr, clue)
+    out = {en: [fr, clue] for en, (_, fr, clue) in sorted(best.items())}
+    return out | {en: [fr, "faux:" + meaning] for en, (fr, meaning) in FALSE_FRIENDS.items()}
 
 
 def phrase(i, tense, form):
@@ -357,7 +436,8 @@ def main():
     ranked = [l for l in ranked if pos[l] != "other"][:N_GLOSS]
     rank = {l: i for i, l in enumerate(ranked)}
     print(f"lexique: {len(forms)} forms, top lemmas: {ranked[:12]}", flush=True)
-    glosses = load_glosses({l: pos[l] for l in ranked}) | GLOSS
+    glosses, gloss_words, from_english = load_glosses({l: pos[l] for l in ranked})
+    glosses |= GLOSS
     deck_lemmas = [l for l in ranked[:N_DECK] if pos[l] != "interj" and not (pos[l] == "noun" and len(l) < 2)]
     sentences = pick_sentences(rank, forms, common)
     words, tts = [], []
@@ -381,16 +461,19 @@ def main():
     conj = load_conjugations(set(verbs))
     conj = {v: conj[v] for v in verbs if v in conj}  # frequency order
     (OUT / "conj.json").write_text(json.dumps(conj, ensure_ascii=False, separators=(",", ":")))
+    cog = cognates(rank, gloss_words, from_english, {w["lemma"] for w in deck})
+    (OUT / "cognates.json").write_text(json.dumps(cog, ensure_ascii=False, separators=(",", ":")))
+    print(f"cognates: {len(cog)} English words with a French counterpart")
     shelf = json.loads((Path(__file__).parent / "shelf.json").read_text())  # from data/fr/shelf.py
     (OUT / "shelf.json").write_text(json.dumps(shelf, ensure_ascii=False, separators=(",", ":")))
     tts += [phrase(i, tense, f) for c in conj.values() for tense, forms in c["t"].items() for i, f in enumerate(forms) if f]
     print(f"conj: {len(conj)} verbs, {sum(len(c['t']) for c in conj.values())} tables")
     if "--no-audio" not in sys.argv:
         synth_all(tts)
-    check(words, forms, conj)
+    check(words, forms, conj, cog)
 
 
-def check(words, forms, conj):
+def check(words, forms, conj, cog):
     deck = [w for w in words if "sentence" in w]
     assert len(deck) >= 0.75 * N_DECK, len(deck)  # most deck lemmas find a usable Tatoeba sentence
     assert sum(bool(w["gloss"]) for w in words[:N_DECK]) >= 0.9 * N_DECK
@@ -418,6 +501,11 @@ def check(words, forms, conj):
     assert phrase(0, "ind:fut", "irai") == "j'irai" and phrase(2, "sub:pre", "aille") == "qu'il aille"
     assert phrase(3, "sub:pre", "soyons") == "que nous soyons" and "falloir" not in conj and "souvenir" not in conj
     assert "pc" not in conj["passer"]["t"] and "pc" in conj["parler"]["t"]
+    # Norman Bridge spot checks: plain cognates, the two sound-change clues, loanwords out, faux amis taught
+    assert cog["melancholy"][0] == "mélancolie" and cog["horror"][0] == "horreur" and cog["chamber"][0] == "chambre"
+    assert cog["forest"] == ["forêt", "circumflex"] and cog["strange"] == ["étrange", "es"]
+    assert "house" not in cog and cog["library"] == ["librairie", "faux:bookshop"]
+    assert "door" not in cog and "window" not in cog  # Germanic, not Norman
     if "--no-audio" not in sys.argv:
         clips = [a for c in conj.values() for ids in c["audio"].values() for a in ids if a]
         assert all((OUT / "audio" / f"{a}.mp3").stat().st_size > 0 for a in clips), "conjugation clip missing"

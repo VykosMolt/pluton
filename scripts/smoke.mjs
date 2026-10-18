@@ -120,10 +120,21 @@ await page.getByRole('button', { name: /Queue the \d+ words/ }).waitFor({ state:
 await page.screenshot({ path: `${OUT}/2-library-queued.png` })
 const unlockAfter = await page.getByText(/learn \d+ words to unlock/).textContent()
 await page.getByRole('button', { name: '← Library' }).click()
-const shelfItems = await page.locator('.shelf ~ .item').count()
+const shelfItems = await page.locator('.item.classic').count()
 await page.screenshot({ path: `${OUT}/2-shelf.png`, fullPage: true })
 await page.getByText('La Parure').click()
 const byline = await page.locator('.byline').textContent()
+await page.getByRole('button', { name: '← Library' }).click()
+// Norman Bridge: Poe in English, French-derived words woven back into French.
+await page.getByRole('button', { name: /The Black Cat/ }).click()
+await page.locator('.intro').waitFor()
+const bridgeIntro = await page.locator('.intro').textContent()
+await page.getByRole('radio', { name: 'Weave everything' }).click()
+const woven = await page.locator('.cog.fr').count()
+await page.screenshot({ path: `${OUT}/2-bridge.png` })
+await page.locator('.cog[title="beast"]').first().click()
+const beastNote = await page.locator('.sheet .note').textContent()
+await page.getByRole('button', { name: 'Close' }).click()
 await page.getByRole('button', { name: '← Library' }).click()
 
 // Persistence: progress survives a reload.
@@ -269,7 +280,7 @@ server.kill()
 
 const claudeSent = { model: claude?.body.model, fallbacks: claude?.body.fallbacks, effort: claude?.body.output_config?.effort,
   beta: claude?.headers['anthropic-beta'], browser: claude?.headers['anthropic-dangerous-direct-browser-access'] }
-const report = { talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
+const report = { bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
 console.log(JSON.stringify(report, null, 2))
 const checks = {
   'no errors': !errors.length,
@@ -291,6 +302,9 @@ const checks = {
   'words search by English': searchHits.length === 1 && searchHits[0].includes('avoir'),
   'classics shelf lists 7 texts': shelfItems === 7,
   'shelf text shows author': byline.includes('Maupassant'),
+  'bridge counts the French in Poe': /\d+ words here \(\d+%\) came that way/.test(bridgeIntro),
+  'bridge weaves French into the English': woven > 100,
+  'bridge explains the lost s (bête → beast)': beastNote.includes('circumflex') && beastNote.includes('bête'),
   'dictée for a well-known word, graded word by word': dicteeMarks === [...etre.sentence.matchAll(/[\p{L}\p{N}'’-]+/gu)].length,
   'listen shows the playing line, tappable': lineWords > 0,
   'listening time saved': listenedSec > 2,
