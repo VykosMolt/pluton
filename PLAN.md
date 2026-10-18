@@ -37,8 +37,9 @@ current from the map. Nothing is gated: chapters, classics, verbs (Verbs tab: Pr
 - **In-run requeue** for cards due within 20 min (same idea as Anki's learn-ahead limit).
 - **Exercise rotation**: cloze → dictation → English→French recall (every 3rd rep, graduated content words only,
   first-letter hint). Nouns must come with an article; wrong gender = "almost" (French's classic weak spot).
-- **Name**: Pluton (user approved 2026-10-18). Repo: github.com/VykosMolt/pluton, going public (user, 2026-10-18) after the
-  commit-email rewrite (user chose noreply); deploy = `npm run deploy` → gh-pages (appends, never force-pushes).
+- **Name**: Pluton (user approved 2026-10-18). Repo: github.com/VykosMolt/pluton, public since 2026-10-18 after the
+  commit-email rewrite (user chose noreply); live at https://vykosmolt.github.io/pluton/; deploy = `npm run deploy`
+  → gh-pages (appends, never force-pushes).
 - **AI = bring your own key, no server** (user wants Claude/ChatGPT/DeepSeek): subscriptions can't be used by other apps,
   so API keys; Anthropic via the official SDK (default claude-opus-5-5, effort low for chat / medium for marking,
   server-side refusal fallback where supported), others via the OpenAI chat format. Key never in backups.
@@ -92,3 +93,7 @@ Tauri wrap, settings (new words/day).
 - 2026-10-18: Le Chemin (path.js, Path.svelte), Pluton's story (10 chapters), read-along audio for the story and
   classics (1019 sentence clips), "I read it", stage celebration, Verbs browser, tokenizer: mid-sentence capitals
   are names ("Paris" ≠ pari), euphonic -t- skipped. Checks: 29 unit tests, 34 smoke checks.
+- 2026-10-18: history rewritten to noreply (user force-pushed), repo PUBLIC, live at https://vykosmolt.github.io/pluton/
+  (gh-pages via `npm run deploy`). Live check found offline broken on first visit; fixed (precache on install,
+  ignoreVary, no redundant fetches). Live site verified: SW, manifest/icons, audio, read-along, offline reload.
+  Smoke: 35 checks.
