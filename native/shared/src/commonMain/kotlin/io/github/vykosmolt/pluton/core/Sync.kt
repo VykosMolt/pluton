@@ -206,7 +206,7 @@ class SyncEngine(private val store: Store, private val api: SyncApi) {
         }
         store.applySync(ops)
 
-        val started = System.currentTimeMillis()
+        val started = nowMillis()
         val collected = collect(
             state.device,
             state.pushedAt,

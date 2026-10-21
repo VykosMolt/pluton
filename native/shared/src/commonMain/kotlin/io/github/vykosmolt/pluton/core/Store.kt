@@ -117,7 +117,7 @@ class Store(private val db: PlutonDb) {
         }
     }
 
-    fun deleteCard(lemma: String, now: Long = System.currentTimeMillis()) {
+    fun deleteCard(lemma: String, now: Long = nowMillis()) {
         db.transaction {
             db.plutonQueries.insertTombstone("cards", lemma, now)
             db.plutonQueries.deleteCard(lemma)
@@ -165,7 +165,7 @@ class Store(private val db: PlutonDb) {
         }
     }
 
-    fun deleteText(id: Long, now: Long = System.currentTimeMillis()) {
+    fun deleteText(id: Long, now: Long = nowMillis()) {
         val text = db.plutonQueries.selectTextById(id).executeAsOneOrNull()
         db.transaction {
             db.plutonQueries.insertTombstone("texts", text?.remote_key ?: id.toString(), now)
