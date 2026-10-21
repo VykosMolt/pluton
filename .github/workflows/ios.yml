@@ -140,21 +140,21 @@ jobs:
           xcodebuild \
             -project Pluton.xcodeproj \
             -scheme Pluton \
-            -configuration Debug \
+            -configuration Release \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.device }}" \
             -derivedDataPath build-sim \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
             FRAMEWORK_SEARCH_PATHS="$PWD/../shared/build/bin/iosSimulatorArm64/debugFramework" \
             PLUTON_SKIP_GRADLE=1 \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=YES \
             build
 
       - name: Inspect the simulator app
         working-directory: native/iosApp
         run: |
-          APP=build-sim/Build/Products/Debug-iphonesimulator/Pluton.app
+          APP=build-sim/Build/Products/Release-iphonesimulator/Pluton.app
           ls -la "$APP"
           plutil -p "$APP/Info.plist" | head -40 || true
           file "$APP/Pluton" || true
@@ -166,7 +166,7 @@ jobs:
           DEVICE="${{ steps.sim.outputs.device }}"
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
-          APP=build-sim/Build/Products/Debug-iphonesimulator/Pluton.app
+          APP=build-sim/Build/Products/Release-iphonesimulator/Pluton.app
           test -d "$APP"
           xcrun simctl install "$DEVICE" "$APP"
           xcrun simctl launch "$DEVICE" io.github.vykosmolt.pluton
