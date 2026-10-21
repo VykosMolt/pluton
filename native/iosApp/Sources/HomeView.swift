@@ -3,9 +3,9 @@ import PlutonCore
 
 struct HomeView: View {
     @EnvironmentObject var model: AppModel
-    @State private var running = false
-    @State private var run: IosRun?
-    @State private var summary: String?
+    @SwiftUI.State private var running = false
+    @SwiftUI.State private var run: IosRun?
+    @SwiftUI.State private var summary: String?
 
     private var preview: [RunItem] {
         model.bridge.previewRun(
@@ -19,8 +19,8 @@ struct HomeView: View {
 
     private var due: Int { preview.filter { $0.phase == "quiz" }.count }
     private var fresh: Int { preview.filter { $0.phase == "intro" }.count }
-    private var known: Int { model.cards.values.filter { model.status(for: $0.lemma) == WordStatus.known }.count }
-    private var learning: Int { model.cards.values.filter { model.status(for: $0.lemma) == WordStatus.learning }.count }
+    private var known: Int { model.cards.values.filter { model.status(for: $0.lemma) == WordStatus.known() }.count }
+    private var learning: Int { model.cards.values.filter { model.status(for: $0.lemma) == WordStatus.learning() }.count }
 
     var body: some View {
         NavigationStack {

@@ -3,7 +3,7 @@ import PlutonCore
 
 struct SpeakView: View {
     @EnvironmentObject var model: AppModel
-    @State private var mode = 0
+    @SwiftUI.State private var mode = 0
 
     var body: some View {
         NavigationStack {
@@ -30,11 +30,11 @@ private struct PracticeView: View {
     @EnvironmentObject var model: AppModel
     @StateObject private var speaker = Speaker()
     @StateObject private var practice = SpeechPractice()
-    @State private var pool: [String] = []
-    @State private var index = 0
-    @State private var transcript = ""
-    @State private var result: DicteeResult?
-    @State private var busy = false
+    @SwiftUI.State private var pool: [String] = []
+    @SwiftUI.State private var index = 0
+    @SwiftUI.State private var transcript = ""
+    @SwiftUI.State private var result: DicteeResult?
+    @SwiftUI.State private var busy = false
 
     private var sentence: String { pool.isEmpty ? "Bonjour !" : pool[index % pool.count] }
 
@@ -113,10 +113,10 @@ private struct PracticeView: View {
 
 private struct TalkView: View {
     @EnvironmentObject var model: AppModel
-    @State private var turns: [ChatTurn] = []
-    @State private var draft = ""
-    @State private var busy = false
-    @State private var error = ""
+    @SwiftUI.State private var turns: [ChatTurn] = []
+    @SwiftUI.State private var draft = ""
+    @SwiftUI.State private var busy = false
+    @SwiftUI.State private var error = ""
     @StateObject private var speaker = Speaker()
 
     var body: some View {

@@ -9,11 +9,16 @@ struct RunView: View {
     let run: IosRun
     let onDone: (Int, Int) -> Void
 
-    @State private var item: RunItem?
-    @State private var typed = ""
-    @State private var detail: Detail?
-    @State private var done = 0
-    @State private var finished = false
+    init(run: IosRun, onDone: @escaping (Int, Int) -> Void) {
+        self.run = run
+        self.onDone = onDone
+    }
+
+    @SwiftUI.State private var item: RunItem?
+    @SwiftUI.State private var typed = ""
+    @SwiftUI.State private var detail: Detail?
+    @SwiftUI.State private var done = 0
+    @SwiftUI.State private var finished = false
 
     private struct Detail {
         let mode: String
@@ -230,7 +235,7 @@ struct RunView: View {
     }
 
     private func finish() {
-        onDone(run.introduced, done)
+        onDone(Int(run.introduced), done)
         dismiss()
     }
 }

@@ -72,7 +72,7 @@ private struct PathView: View {
 
 private struct WordsView: View {
     @EnvironmentObject var model: AppModel
-    @State private var query = ""
+    @SwiftUI.State private var query = ""
 
     private var rows: [CardState] {
         model.cards.values
@@ -99,7 +99,7 @@ private struct WordsView: View {
                 Spacer()
                 Text(statusLabel(status))
                     .font(.caption.bold())
-                    .foregroundStyle(status == WordStatus.known ? .green : status == WordStatus.learning ? .orange : .blue)
+                    .foregroundStyle(status == WordStatus.known() ? .green : status == WordStatus.learning() ? .orange : .blue)
             }
         }
         .searchable(text: $query, prompt: "Search French or English…")
@@ -107,8 +107,8 @@ private struct WordsView: View {
     }
 
     private func statusLabel(_ status: WordStatus) -> String {
-        if status == WordStatus.known { return "known" }
-        if status == WordStatus.learning { return "learning" }
+        if status == WordStatus.known() { return "known" }
+        if status == WordStatus.learning() { return "learning" }
         return "queued"
     }
 }
@@ -196,9 +196,9 @@ private struct GrammarView: View {
 
 private struct SettingsView: View {
     @EnvironmentObject var model: AppModel
-    @State private var config = AIClient.config()
-    @State private var key = AIClient.key
-    @State private var note = ""
+    @SwiftUI.State private var config = AIClient.config()
+    @SwiftUI.State private var key = AIClient.key
+    @SwiftUI.State private var note = ""
 
 
     var body: some View {

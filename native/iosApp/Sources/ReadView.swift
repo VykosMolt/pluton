@@ -21,8 +21,8 @@ private struct Reading: Identifiable {
 
 struct ReadView: View {
     @EnvironmentObject var model: AppModel
-    @State private var reading: Reading?
-    @State private var addOpen = false
+    @SwiftUI.State private var reading: Reading?
+    @SwiftUI.State private var addOpen = false
 
     var body: some View {
         NavigationStack {
@@ -106,8 +106,8 @@ private struct ReadingView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @StateObject private var speaker = Speaker()
-    @State private var selected: String?
-    @State private var confirmDelete = false
+    @SwiftUI.State private var selected: String?
+    @SwiftUI.State private var confirmDelete = false
     let reading: Reading
 
     private var annotated: AttributedString {
@@ -126,11 +126,11 @@ private struct ReadingView: View {
             let escaped = token.lemma.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? token.lemma
             piece.link = URL(string: "pluton://word/\(escaped)")
             let status = model.status(for: token.lemma)
-            if status == WordStatus.learning {
+            if status == WordStatus.learning() {
                 piece.backgroundColor = Color.orange.opacity(0.22)
-            } else if status == WordStatus.queued {
+            } else if status == WordStatus.queued() {
                 piece.backgroundColor = Color.blue.opacity(0.14)
-            } else if status == WordStatus.new {
+            } else if status == WordStatus.new() {
                 piece.backgroundColor = Color.red.opacity(0.16)
             }
             result += piece
@@ -212,8 +212,8 @@ private struct QuizView: View {
     @EnvironmentObject var model: AppModel
     let questions: [StoryQuestion]
     let onPass: () -> Void
-    @State private var answers: [Int: Int] = [:]
-    @State private var result: (right: Int, total: Int, pass: Bool)?
+    @SwiftUI.State private var answers: [Int: Int] = [:]
+    @SwiftUI.State private var result: (right: Int, total: Int, pass: Bool)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -260,7 +260,7 @@ private struct WordDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let lemma: String
     let sentence: String
-    @State private var tappedSentence = ""
+    @SwiftUI.State private var tappedSentence = ""
 
     var body: some View {
         let word = model.words[lemma]
@@ -274,7 +274,7 @@ private struct WordDetailView: View {
                 .foregroundStyle(.secondary)
             Text(word?.gloss ?? "No gloss for this one. The sentence will have to teach it.")
             Text(sentence).italic().foregroundStyle(.secondary)
-            if status == WordStatus.new {
+            if status == WordStatus.new() {
                 HStack {
                     Button("+ Add to deck") {
                         let token = Token(start: 0, end: Int32(lemma.count), text: word?.form ?? lemma, lemma: lemma, name: false)
@@ -293,7 +293,7 @@ private struct WordDetailView: View {
                     model.unmark(lemma)
                     dismiss()
                 }
-            } else if status == WordStatus.learning {
+            } else if status == WordStatus.learning() {
                 Text("In your deck ✓").foregroundStyle(.green)
             } else {
                 Text("Queued for your next runs ✓").foregroundStyle(.blue)
@@ -309,17 +309,17 @@ private struct WordDetailView: View {
 private struct AddTextView: View {
     @Environment(\.dismiss) private var dismiss
     let onSave: (String, String) -> Void
-    @State private var title = ""
-    @State private var body = ""
+    @SwiftUI.State private var title = ""
+    @SwiftUI.State private var text = ""
 
     var body: some View {
         NavigationStack {
             Form {
                 TextField("Title (optional)", text: $title)
-                TextEditor(text: $body)
+                TextEditor(text: $text)
                     .frame(minHeight: 180)
                     .overlay(alignment: .topLeading) {
-                        if body.isEmpty {
+                        if text.isEmpty {
                             Text("Text in French").foregroundStyle(.secondary).padding(.top, 8)
                         }
                     }
@@ -328,8 +328,8 @@ private struct AddTextView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { onSave(title, body) }
-                        .disabled(body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button("Save") { onSave(title, text) }
+                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }

@@ -42,6 +42,11 @@ jobs:
         working-directory: native
         run: ./gradlew :shared:linkReleaseFrameworkIosArm64 --stacktrace
 
+      - name: Show the exported Kotlin API
+        run: |
+          HEADER=native/shared/build/bin/iosArm64/releaseFramework/PlutonCore.framework/Headers/PlutonCore.h
+          grep -nE "IosBridge|IosRun|newRun|previewRun" "$HEADER" | head -40
+
       - name: Generate the Xcode project
         working-directory: native/iosApp
         run: xcodegen generate

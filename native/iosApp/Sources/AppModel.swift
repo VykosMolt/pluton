@@ -83,7 +83,7 @@ final class AppModel: ObservableObject {
     func vocab() -> Int {
         cards.values.filter {
             let status = status(for: $0.lemma)
-            return status == WordStatus.known || status == WordStatus.learning
+            return status == WordStatus.known() || status == WordStatus.learning()
         }.count
     }
 
@@ -91,8 +91,8 @@ final class AppModel: ObservableObject {
 
     func learningWords() -> [String] {
         cards.values
-            .filter { status(for: $0.lemma) == WordStatus.learning }
-            .sorted { ($0.fsrs.lastReview ?? 0) > ($1.fsrs.lastReview ?? 0) }
+            .filter { status(for: $0.lemma) == WordStatus.learning() }
+            .sorted { (($0.fsrs.lastReview?.int64Value ?? 0) > ($1.fsrs.lastReview?.int64Value ?? 0)) }
             .prefix(40)
             .map { $0.lemma }
     }
@@ -113,7 +113,7 @@ final class AppModel: ObservableObject {
     }
 
     func newRun() -> IosRun {
-        bridge.newRun(store: store, words: words, now: Self.now(), newToday: newToday, pace: pace)
+        IosRun(store: store, words: words, now: Self.now(), newToday: newToday, pace: pace)
     }
 
     func addWord(token: Token, word: Word?, sentence: String) {
