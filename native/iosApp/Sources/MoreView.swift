@@ -77,18 +77,19 @@ private struct WordsView: View {
     private var rows: [CardState] {
         model.cards.values
             .filter { model.bridge.isWord(card: $0) }
-            .filter {
+            .filter { card in
                 query.isEmpty ||
-                    $0.lemma.localizedCaseInsensitiveContains(query) ||
-                    (model.words[$0.lemma]?.gloss.localizedCaseInsensitiveContains(query) ?? false)
+                    card.lemma.localizedCaseInsensitiveContains(query) ||
+                    (model.words[card.lemma]?.gloss.localizedCaseInsensitiveContains(query) ?? false)
             }
             .sorted { $0.added > $1.added }
     }
 
     var body: some View {
-        List(rows, id: \.lemma) { card in
+        List {
+            ForEach(rows, id: \.lemma) { card in
             let word = model.words[card.lemma]
-            let status = model.status(for: card.lemma)
+            let status = model.statusCode(for: card.lemma)
             HStack {
                 VStack(alignment: .leading) {
                     Text(word?.display ?? card.lemma).font(.headline)
@@ -99,16 +100,17 @@ private struct WordsView: View {
                 Spacer()
                 Text(statusLabel(status))
                     .font(.caption.bold())
-                    .foregroundStyle(status == WordStatus.known() ? .green : status == WordStatus.learning() ? .orange : .blue)
+                    .foregroundStyle(status == 0 ? Color.green : (status == 1 ? Color.orange : Color.blue))
+            }
             }
         }
         .searchable(text: $query, prompt: "Search French or English…")
         .navigationTitle("Words")
     }
 
-    private func statusLabel(_ status: WordStatus) -> String {
-        if status == WordStatus.known() { return "known" }
-        if status == WordStatus.learning() { return "learning" }
+    private func statusLabel(_ status: Int32) -> String {
+        if status == 0 { return "known" }
+        if status == 1 { return "learning" }
         return "queued"
     }
 }

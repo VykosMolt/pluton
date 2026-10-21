@@ -68,8 +68,8 @@ final class AppModel: ObservableObject {
 
     static func now() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
-    func status(for lemma: String) -> WordStatus {
-        bridge.status(card: cards[lemma], word: words[lemma])
+    func statusCode(for lemma: String) -> Int32 {
+        bridge.statusCode(card: cards[lemma], word: words[lemma])
     }
 
     func coverage(_ body: String) -> Coverage {
@@ -82,8 +82,8 @@ final class AppModel: ObservableObject {
 
     func vocab() -> Int {
         cards.values.filter {
-            let status = status(for: $0.lemma)
-            return status == WordStatus.known() || status == WordStatus.learning()
+            let status = statusCode(for: $0.lemma)
+            return status == 0 || status == 1
         }.count
     }
 
@@ -91,7 +91,7 @@ final class AppModel: ObservableObject {
 
     func learningWords() -> [String] {
         cards.values
-            .filter { status(for: $0.lemma) == WordStatus.learning() }
+            .filter { statusCode(for: $0.lemma) == 1 }
             .sorted { (($0.fsrs.lastReview?.int64Value ?? 0) > ($1.fsrs.lastReview?.int64Value ?? 0)) }
             .prefix(40)
             .map { $0.lemma }
@@ -113,7 +113,7 @@ final class AppModel: ObservableObject {
     }
 
     func newRun() -> IosRun {
-        IosRun(store: store, words: words, now: Self.now(), newToday: newToday, pace: pace)
+        bridge.doNewRun(store: store, words: words, now: Self.now(), newToday: newToday, pace: pace)
     }
 
     func addWord(token: Token, word: Word?, sentence: String) {

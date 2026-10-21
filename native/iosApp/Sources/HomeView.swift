@@ -19,8 +19,8 @@ struct HomeView: View {
 
     private var due: Int { preview.filter { $0.phase == "quiz" }.count }
     private var fresh: Int { preview.filter { $0.phase == "intro" }.count }
-    private var known: Int { model.cards.values.filter { model.status(for: $0.lemma) == WordStatus.known() }.count }
-    private var learning: Int { model.cards.values.filter { model.status(for: $0.lemma) == WordStatus.learning() }.count }
+    private var known: Int { model.cards.values.filter { model.statusCode(for: $0.lemma) == 0 }.count }
+    private var learning: Int { model.cards.values.filter { model.statusCode(for: $0.lemma) == 1 }.count }
 
     var body: some View {
         NavigationStack {

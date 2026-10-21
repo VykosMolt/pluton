@@ -125,12 +125,12 @@ private struct ReadingView: View {
             var piece = AttributedString(ns.substring(with: NSRange(location: start, length: end - start)))
             let escaped = token.lemma.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? token.lemma
             piece.link = URL(string: "pluton://word/\(escaped)")
-            let status = model.status(for: token.lemma)
-            if status == WordStatus.learning() {
+            let status = model.statusCode(for: token.lemma)
+            if status == 1 {
                 piece.backgroundColor = Color.orange.opacity(0.22)
-            } else if status == WordStatus.queued() {
+            } else if status == 2 {
                 piece.backgroundColor = Color.blue.opacity(0.14)
-            } else if status == WordStatus.new() {
+            } else if status == 3 {
                 piece.backgroundColor = Color.red.opacity(0.16)
             }
             result += piece
@@ -265,7 +265,7 @@ private struct WordDetailView: View {
     var body: some View {
         let word = model.words[lemma]
         let card = model.cards[lemma]
-        let status = model.status(for: lemma)
+        let status = model.statusCode(for: lemma)
         VStack(alignment: .leading, spacing: 10) {
             Text(word?.display ?? lemma)
                 .font(.system(size: 28, weight: .black))
@@ -274,7 +274,7 @@ private struct WordDetailView: View {
                 .foregroundStyle(.secondary)
             Text(word?.gloss ?? "No gloss for this one. The sentence will have to teach it.")
             Text(sentence).italic().foregroundStyle(.secondary)
-            if status == WordStatus.new() {
+            if status == 3 {
                 HStack {
                     Button("+ Add to deck") {
                         let token = Token(start: 0, end: Int32(lemma.count), text: word?.form ?? lemma, lemma: lemma, name: false)
@@ -293,7 +293,7 @@ private struct WordDetailView: View {
                     model.unmark(lemma)
                     dismiss()
                 }
-            } else if status == WordStatus.learning() {
+            } else if status == 1 {
                 Text("In your deck ✓").foregroundStyle(.green)
             } else {
                 Text("Queued for your next runs ✓").foregroundStyle(.blue)

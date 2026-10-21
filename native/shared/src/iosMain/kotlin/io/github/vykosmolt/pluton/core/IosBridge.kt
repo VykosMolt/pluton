@@ -51,6 +51,14 @@ class IosBridge {
     fun unlockList(tokens: List<Token>, cards: Map<String, CardState>, words: Map<String, Word>): List<String> =
         io.github.vykosmolt.pluton.core.unlockList(tokens, { io.github.vykosmolt.pluton.core.status(cards[it], words[it]) })
     fun status(card: CardState?, word: Word?): WordStatus = io.github.vykosmolt.pluton.core.status(card, word)
+
+    /** Swift-friendly status: 0 known, 1 learning, 2 queued, 3 new (avoids Kotlin enum interop). */
+    fun statusCode(card: CardState?, word: Word?): Int = when (io.github.vykosmolt.pluton.core.status(card, word)) {
+        WordStatus.Known -> 0
+        WordStatus.Learning -> 1
+        WordStatus.Queued -> 2
+        WordStatus.New -> 3
+    }
     fun isWord(card: CardState): Boolean = io.github.vykosmolt.pluton.core.isWord(card)
     fun blank(sentence: String, form: String): List<String> = io.github.vykosmolt.pluton.core.blank(sentence, form).toList()
     fun sentenceAt(text: String, at: Int): String = io.github.vykosmolt.pluton.core.sentenceAt(text, at)

@@ -43,15 +43,24 @@ struct RunView: View {
         model.bridge.modeFor(card: item.card, word: word(for: item))
     }
 
+    private var progressText: String {
+        guard item != nil else { return "" }
+        return "\(done + 1) / \(done + Int(run.remaining()))"
+    }
+
+    private var completeView: some View {
+        VStack(spacing: 12) {
+            Text("Run complete").font(.title.bold())
+            Text("\(run.introduced) new words introduced")
+            Button("Close") { finish() }.buttonStyle(.borderedProminent)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Group {
                 if finished || item == nil {
-                    VStack(spacing: 12) {
-                        Text("Run complete").font(.title.bold())
-                        Text("\(run.introduced) new words introduced")
-                        Button("Close") { finish() }.buttonStyle(.borderedProminent)
-                    }
+                    completeView
                 } else if let item {
                     content(for: item)
                 }
@@ -64,7 +73,7 @@ struct RunView: View {
                     Button("✕") { finish() }
                 }
                 ToolbarItem(placement: .principal) {
-                    Text(item.map { "\(done + 1) / \(done + run.remaining())" } ?? "")
+                    Text(progressText)
                         .font(.footnote.bold())
                         .foregroundStyle(.secondary)
                 }
