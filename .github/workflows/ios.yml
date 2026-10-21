@@ -27,6 +27,17 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Fetch the French data from the gh-pages deployment
+        # public/data is generated and not committed; the deployed branch carries the exact JSON the web app uses.
+        run: |
+          set -e
+          git fetch --depth=1 origin gh-pages
+          mkdir -p public/data/fr
+          for name in words forms story shelf conj grammar; do
+            git show "origin/gh-pages:data/fr/$name.json" > "public/data/fr/$name.json"
+          done
+          ls -lh public/data/fr
+
       - name: Build the shared Kotlin framework (device, release)
         working-directory: native
         run: ./gradlew :shared:linkReleaseFrameworkIosArm64 --stacktrace
