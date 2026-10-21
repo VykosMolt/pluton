@@ -16,7 +16,7 @@ targets:
     platform: iOS
     sources:
       - path: Sources
-      - path: Resources
+      - path: Data
         type: folder
         buildPhase: resources
     settings:

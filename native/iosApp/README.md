@@ -15,7 +15,7 @@ from Linux with iloader (free Apple ID) — or use TrollStore on supported iOS v
 The `Pluton` scheme runs two pre-build scripts:
 
 1. `sync-resources.sh` copies `public/data/fr/{words,forms,story,shelf,conj,grammar}.json` into
-   `Resources/fr` (run `uv run data/fr/build.py` first if those files are missing).
+   `Data/fr` (run `uv run data/fr/build.py` first if those files are missing).
 2. `./gradlew :shared:embedAndSignAppleFrameworkForXcode` builds and embeds `PlutonCore` from the shared module.
    The Xcode process needs `JAVA_HOME` pointing at JDK 21 and network access for Gradle's first run.
 

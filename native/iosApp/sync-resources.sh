@@ -4,7 +4,7 @@
 set -e
 ROOT="$(cd "$SRCROOT/.." && pwd)"
 DATA="$ROOT/../public/data/fr"
-OUT="$SRCROOT/Resources/fr"
+OUT="$SRCROOT/Data/fr"
 mkdir -p "$OUT"
 for name in words forms story shelf conj grammar; do
     if [ ! -f "$DATA/$name.json" ]; then

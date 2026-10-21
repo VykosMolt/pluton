@@ -45,8 +45,9 @@ final class AppModel: ObservableObject {
     }
 
     private func json(_ name: String) throws -> String {
-        // The Resources folder reference lands as Resources/fr in the bundle; an app group would land as fr.
-        let url = Bundle.main.url(forResource: name, withExtension: "json", subdirectory: "Resources/fr")
+        // A top-level "Resources" directory makes CoreFoundation treat the bundle as a macOS layout and
+        // simctl/installd reject it as "Missing bundle ID"; the data lives under Data/fr instead.
+        let url = Bundle.main.url(forResource: name, withExtension: "json", subdirectory: "Data/fr")
             ?? Bundle.main.url(forResource: name, withExtension: "json", subdirectory: "fr")
         guard let url else {
             throw NSError(domain: "Pluton", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing fr/\(name).json"])
