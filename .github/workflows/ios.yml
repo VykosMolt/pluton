@@ -151,6 +151,14 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             build
 
+      - name: Inspect the simulator app
+        working-directory: native/iosApp
+        run: |
+          APP=build-sim/Build/Products/Debug-iphonesimulator/Pluton.app
+          ls -la "$APP"
+          plutil -p "$APP/Info.plist" | head -40 || true
+          file "$APP/Pluton" || true
+
       - name: Launch in the simulator
         working-directory: native/iosApp
         run: |
