@@ -84,3 +84,88 @@ jobs:
           path: native/iosApp/Pluton-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
+
+  smoke:
+    # Boots the simulator build and checks the app stays alive with its data and database loaded.
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Fetch the French data from the gh-pages deployment
+        run: |
+          set -e
+          git fetch --depth=1 origin gh-pages
+          mkdir -p public/data/fr
+          for name in words forms story shelf conj grammar; do
+            git show "origin/gh-pages:data/fr/$name.json" > "public/data/fr/$name.json"
+          done
+
+      - name: Build the shared Kotlin framework (simulator)
+        working-directory: native
+        run: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
+
+      - name: Generate the Xcode project
+        working-directory: native/iosApp
+        run: xcodegen generate
+
+      - name: Build for the simulator
+        working-directory: native/iosApp
+        run: |
+          xcodebuild \
+            -project Pluton.xcodeproj \
+            -scheme Pluton \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-sim \
+            FRAMEWORK_SEARCH_PATHS="$PWD/../shared/build/bin/iosSimulatorArm64/debugFramework" \
+            PLUTON_SKIP_GRADLE=1 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Launch in the simulator
+        working-directory: native/iosApp
+        run: |
+          set -euo pipefail
+          DEVICE=$(python3 - <<'PY'
+          import json, subprocess
+          data = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
+          for runtime in data["devices"].values():
+              for device in runtime:
+                  if device["name"].startswith("iPhone"):
+                      print(device["udid"])
+                      raise SystemExit
+          raise SystemExit("no iPhone simulator runtime installed")
+          PY
+          )
+          echo "simulator: $DEVICE"
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+          APP=build-sim/Build/Products/Debug-iphonesimulator/Pluton.app
+          test -d "$APP"
+          xcrun simctl install "$DEVICE" "$APP"
+          xcrun simctl launch "$DEVICE" io.github.vykosmolt.pluton
+          sleep 10
+          if ! xcrun simctl spawn "$DEVICE" launchctl list | grep -q "io.github.vykosmolt.pluton"; then
+            echo "Pluton is not running; recent log:"
+            xcrun simctl spawn "$DEVICE" log show --last 60s --predicate 'process == "Pluton"' | tail -80 || true
+            exit 1
+          fi
+          xcrun simctl io "$DEVICE" screenshot /tmp/pluton-simulator.png
+          xcrun simctl spawn "$DEVICE" log show --last 30s --predicate 'process == "Pluton"' | tail -40 || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pluton-simulator-screenshot
+          path: /tmp/pluton-simulator.png
+          if-no-files-found: ignore
