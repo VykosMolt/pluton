@@ -45,7 +45,10 @@ final class AppModel: ObservableObject {
     }
 
     private func json(_ name: String) throws -> String {
-        guard let url = Bundle.main.url(forResource: name, withExtension: "json", subdirectory: "fr") else {
+        // The Resources folder reference lands as Resources/fr in the bundle; an app group would land as fr.
+        let url = Bundle.main.url(forResource: name, withExtension: "json", subdirectory: "Resources/fr")
+            ?? Bundle.main.url(forResource: name, withExtension: "json", subdirectory: "fr")
+        guard let url else {
             throw NSError(domain: "Pluton", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing fr/\(name).json"])
         }
         return try String(contentsOf: url, encoding: .utf8)
