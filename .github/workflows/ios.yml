@@ -117,25 +117,9 @@ jobs:
         working-directory: native/iosApp
         run: xcodegen generate
 
-      - name: Build for the simulator
-        working-directory: native/iosApp
+      - name: Pick an iPhone simulator
+        id: sim
         run: |
-          xcodebuild \
-            -project Pluton.xcodeproj \
-            -scheme Pluton \
-            -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build-sim \
-            FRAMEWORK_SEARCH_PATHS="$PWD/../shared/build/bin/iosSimulatorArm64/debugFramework" \
-            PLUTON_SKIP_GRADLE=1 \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            build
-
-      - name: Launch in the simulator
-        working-directory: native/iosApp
-        run: |
-          set -euo pipefail
           DEVICE=$(python3 - <<'PY'
           import json, subprocess
           data = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
@@ -147,7 +131,31 @@ jobs:
           raise SystemExit("no iPhone simulator runtime installed")
           PY
           )
+          echo "device=$DEVICE" >> "$GITHUB_OUTPUT"
           echo "simulator: $DEVICE"
+
+      - name: Build for the simulator
+        working-directory: native/iosApp
+        run: |
+          xcodebuild \
+            -project Pluton.xcodeproj \
+            -scheme Pluton \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.device }}" \
+            -derivedDataPath build-sim \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            FRAMEWORK_SEARCH_PATHS="$PWD/../shared/build/bin/iosSimulatorArm64/debugFramework" \
+            PLUTON_SKIP_GRADLE=1 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Launch in the simulator
+        working-directory: native/iosApp
+        run: |
+          set -euo pipefail
+          DEVICE="${{ steps.sim.outputs.device }}"
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
           APP=build-sim/Build/Products/Debug-iphonesimulator/Pluton.app
