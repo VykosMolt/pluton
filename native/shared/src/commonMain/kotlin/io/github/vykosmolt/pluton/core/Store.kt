@@ -1,0 +1,367 @@
+package io.github.vykosmolt.pluton.core
+
+import io.github.vykosmolt.pluton.core.db.Cards
+import io.github.vykosmolt.pluton.core.db.PlutonDb
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+// SQLite persistence. Cards are derived state; the review table is append-only and will be unioned for sync.
+// Writes are synchronous and tiny; move them to a writer coroutine if UI profiling ever shows jank.
+// ponytail: synchronous SQLite writes on the caller's thread.
+
+@Serializable
+data class Stats(
+    val day: String = "",
+    val newCount: Int = 0,
+    val read: List<String> = emptyList(),
+    val listened: Int = 0,
+    val spoken: Int = 0,
+    val talked: Int = 0,
+    val written: Int = 0,
+)
+
+@Serializable
+data class ReviewEntry(
+    val lemma: String,
+    val rating: Int,
+    val mode: String,
+    val at: Long,
+    val overridden: Boolean = false,
+)
+
+data class TextRecord(
+    val id: Long,
+    val title: String,
+    val body: String,
+    val added: Long,
+    val updated: Long = added,
+    val remoteKey: String? = null,
+)
+
+/** New-word pace; the same JSON shape as the web app's settings meta. */
+@Serializable
+data class Pace(val perRun: Int = NEW_PER_RUN, val perDay: Int = NEW_PER_DAY)
+
+/** Sync bookkeeping: one device id forever, plus the watermarks for pull/push. */
+@Serializable
+data class SyncState(
+    val device: String = "",
+    val pulledAt: Long = 0,
+    val pushedAt: Long = 0,
+    val logPushed: Long = 0,
+)
+
+private const val DEVICE_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+private fun newDeviceId(): String = buildString {
+    repeat(8) { append(DEVICE_ALPHABET[kotlin.random.Random.nextInt(DEVICE_ALPHABET.length)]) }
+}
+
+/** Backup file contents. No credentials are stored on this device, so none can leak into a backup. */
+@Serializable
+data class BackupText(val title: String, val body: String, val added: Long)
+
+@Serializable
+data class Backup(
+    val version: Int = 1,
+    val cards: List<CardState> = emptyList(),
+    val reviews: List<ReviewEntry> = emptyList(),
+    val texts: List<BackupText> = emptyList(),
+    val stats: Stats = Stats(),
+)
+
+class Store(private val db: PlutonDb) {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    fun cards(): List<CardState> = db.plutonQueries.selectAllCards().executeAsList().map { it.toState() }
+
+    fun card(lemma: String): CardState? = db.plutonQueries.selectCard(lemma).executeAsOneOrNull()?.toState()
+
+    /** Card state and its review log entry in one transaction, so they never disagree. */
+    fun saveAnswer(card: CardState, entry: ReviewEntry) {
+        db.transaction {
+            writeCard(card, entry.at)
+            db.plutonQueries.insertReview(entry.lemma, entry.rating.toLong(), entry.mode, entry.at, if (entry.overridden) 1L else 0L)
+        }
+    }
+
+    /** A card change outside a run (add/mark known): no review log entry. */
+    fun saveCard(card: CardState, now: Long) = writeCard(card, now)
+
+    /** Queue a reader word; words without a built-in sentence keep the sentence it was tapped in. */
+    fun addCard(word: Word, form: String, sentence: String?, now: Long): CardState {
+        val mined = if (word.sentence == null && !sentence.isNullOrBlank()) Mined(sentence, form) else null
+        val card = CardState(word.lemma, createEmptyCard(now), added = now, mined = mined)
+        saveCard(card, now)
+        return card
+    }
+
+    fun markKnown(lemma: String, now: Long): CardState {
+        val card = (card(lemma) ?: CardState(lemma, createEmptyCard(now), added = now)).copy(known = true)
+        saveCard(card, now)
+        return card
+    }
+
+    /** Undo markKnown; a never-reviewed card disappears, a reviewed one goes back to learning. */
+    fun unmark(lemma: String, now: Long): CardState? {
+        val card = card(lemma) ?: return null
+        return if (card.fsrs.state == State.New) {
+            deleteCard(lemma)
+            null
+        } else {
+            val next = card.copy(known = false)
+            saveCard(next, now)
+            next
+        }
+    }
+
+    fun deleteCard(lemma: String, now: Long = System.currentTimeMillis()) {
+        db.transaction {
+            db.plutonQueries.insertTombstone("cards", lemma, now)
+            db.plutonQueries.deleteCard(lemma)
+        }
+    }
+
+    private fun writeCard(card: CardState, updated: Long) {
+        db.plutonQueries.upsertCard(
+            lemma = card.lemma,
+            due = card.fsrs.due,
+            stability = card.fsrs.stability,
+            difficulty = card.fsrs.difficulty,
+            elapsed_days = card.fsrs.elapsedDays.toLong(),
+            scheduled_days = card.fsrs.scheduledDays.toLong(),
+            reps = card.fsrs.reps.toLong(),
+            lapses = card.fsrs.lapses.toLong(),
+            learning_steps = card.fsrs.learningSteps.toLong(),
+            state = card.fsrs.state.ordinal.toLong(),
+            last_review = card.fsrs.lastReview,
+            known = if (card.known) 1L else 0L,
+            added = card.added,
+            mined_sentence = card.mined?.sentence,
+            mined_form = card.mined?.form,
+            mined_translation = card.mined?.translation,
+            updated = updated,
+        )
+    }
+
+    fun reviews(): List<ReviewEntry> = db.plutonQueries.selectReviews().executeAsList().map {
+        ReviewEntry(it.lemma, it.rating.toInt(), it.mode, it.at, it.overridden != 0L)
+    }
+
+    fun texts(): List<TextRecord> = db.plutonQueries.selectAllTexts().executeAsList().map {
+        TextRecord(it.id, it.title, it.body, it.added, it.updated, it.remote_key)
+    }
+
+    fun addText(title: String, body: String, now: Long): TextRecord {
+        val clean = body.trim()
+        require(clean.isNotEmpty()) { "A text needs a body" }
+        val name = title.trim().ifBlank { clean.take(40) }
+        return db.transactionWithResult {
+            db.plutonQueries.insertText(name, clean, now, now)
+            val id = db.plutonQueries.lastTextId().executeAsOne()
+            TextRecord(id, name, clean, now, now)
+        }
+    }
+
+    fun deleteText(id: Long, now: Long = System.currentTimeMillis()) {
+        val text = db.plutonQueries.selectTextById(id).executeAsOneOrNull()
+        db.transaction {
+            db.plutonQueries.insertTombstone("texts", text?.remote_key ?: id.toString(), now)
+            db.plutonQueries.deleteText(id)
+        }
+    }
+
+    fun pace(): Pace {
+        val raw = db.plutonQueries.getMeta("settings").executeAsOneOrNull()
+        return raw?.let { runCatching { json.decodeFromString<Pace>(it) }.getOrNull() } ?: Pace()
+    }
+
+    fun savePace(pace: Pace) = db.plutonQueries.putMeta("settings", json.encodeToString(pace))
+
+    /** Everything that matters on this device, as JSON. */
+    fun export(): String = json.encodeToString(
+        Backup(
+            cards = cards(),
+            reviews = reviews(),
+            texts = texts().map { BackupText(it.title, it.body, it.added) },
+            stats = rawStats(),
+        ),
+    )
+
+    /** Replace all progress with a backup, in one transaction: a bad file leaves the store untouched. */
+    fun import(data: String) {
+        val backup = json.decodeFromString<Backup>(data)
+        db.transaction {
+            db.plutonQueries.deleteAllCards()
+            db.plutonQueries.deleteAllReviews()
+            db.plutonQueries.deleteAllTexts()
+            for (c in backup.cards) writeCard(c, c.updated.takeIf { it != 0L } ?: c.added)
+            for (r in backup.reviews) {
+                db.plutonQueries.insertReview(r.lemma, r.rating.toLong(), r.mode, r.at, if (r.overridden) 1L else 0L)
+            }
+            for (t in backup.texts) db.plutonQueries.insertText(t.title, t.body, t.added, t.added)
+            db.plutonQueries.putMeta("stats", json.encodeToString(backup.stats))
+            // A restored device starts from scratch: old deletions must not wipe the account, and pulled records
+            // must be re-fetched. The device identity is kept.
+            db.plutonQueries.deleteAllTombstones()
+            val state = syncState()
+            db.plutonQueries.putMeta("_sync", json.encodeToString(state.copy(pulledAt = 0, pushedAt = 0, logPushed = 0)))
+        }
+    }
+
+    fun syncState(): SyncState {
+        val raw = db.plutonQueries.getMeta("_sync").executeAsOneOrNull()
+        val parsed = raw?.let { runCatching { json.decodeFromString<SyncState>(it) }.getOrNull() }
+        if (parsed != null && parsed.device.isNotBlank()) return parsed
+        val fresh = SyncState(device = newDeviceId())
+        db.plutonQueries.putMeta("_sync", json.encodeToString(fresh))
+        return fresh
+    }
+
+    fun saveSyncState(state: SyncState) = db.plutonQueries.putMeta("_sync", json.encodeToString(state))
+
+    fun syncCards(): List<SyncCard> = cards().map {
+        SyncCard(it.lemma, it.updated, it.known, it.added, it.fsrs, it.mined)
+    }
+
+    fun syncTexts(): List<SyncText> = texts().map {
+        SyncText(it.id, it.remoteKey, it.title, it.body, it.added, it.updated)
+    }
+
+    fun syncTombstones(): Map<String, Long> = db.plutonQueries.selectAllTombstones().executeAsList()
+        .associate { "${it.store}\t${it.key}" to it.at }
+
+    /** This device's own review rows (remote reviews are not pushed back). */
+    fun localLog(): List<Pair<Long, ReviewEntry>> = db.plutonQueries.selectLocalReviews().executeAsList().map {
+        it.id to ReviewEntry(it.lemma, it.rating.toInt(), it.mode, it.at, it.overridden != 0L)
+    }
+
+    /** Every review with its sync key: own rows by local id, pulled rows by their remote key. */
+    fun allLog(): List<Pair<String, ReviewEntry>> = db.plutonQueries.selectReviews().executeAsList().map {
+        val key = it.remote_key ?: it.id.toString()
+        key to ReviewEntry(it.lemma, it.rating.toInt(), it.mode, it.at, it.overridden != 0L)
+    }
+
+    /** Apply pulled ops in one transaction; deletions here are remote, so they don't create local tombstones. */
+    fun applySync(ops: List<SyncOp>) {
+        if (ops.isEmpty()) return
+        db.transaction {
+            for (op in ops) {
+                when (op) {
+                    is SyncOp.PutCard -> writeCard(
+                        CardState(op.card.lemma, op.card.fsrs, op.card.known, op.card.added, op.card.mined, op.card.updated),
+                        op.card.updated,
+                    )
+                    is SyncOp.DeleteCard -> db.plutonQueries.deleteCardSilent(op.lemma)
+                    is SyncOp.PutText -> {
+                        val t = op.text
+                        val existing = if (t.id != 0L) {
+                            db.plutonQueries.selectTextById(t.id).executeAsOneOrNull()
+                        } else {
+                            t.remoteKey?.let { db.plutonQueries.selectTextByRemote(it).executeAsOneOrNull() }
+                        }
+                        if (existing != null) {
+                            db.plutonQueries.updateRemoteText(t.title, t.body, t.updated, t.remoteKey, existing.id)
+                        } else {
+                            db.plutonQueries.insertRemoteText(t.title, t.body, t.added, t.updated, t.remoteKey)
+                        }
+                    }
+                    is SyncOp.DeleteText -> {
+                        if (op.localId != null) db.plutonQueries.deleteTextSilent(op.localId)
+                        else op.remoteKey?.let { db.plutonQueries.deleteTextByRemote(it) }
+                    }
+                    is SyncOp.PutLog -> db.plutonQueries.insertPulledReview(
+                        op.entry.lemma,
+                        op.entry.rating.toLong(),
+                        op.entry.mode,
+                        op.entry.at,
+                        if (op.entry.overridden) 1L else 0L,
+                        op.remoteKey,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun rawStats(): Stats {
+        val raw = db.plutonQueries.getMeta("stats").executeAsOneOrNull()
+        return raw?.let { runCatching { json.decodeFromString<Stats>(it) }.getOrNull() } ?: Stats()
+    }
+
+    /** New-word budget for a local day; yesterday's count does not carry over. Read/listening history is not daily. */
+    fun stats(today: String): Stats {
+        val s = rawStats()
+        return if (s.day == today) s else s.copy(day = today, newCount = 0)
+    }
+
+    /** Cumulative listening seconds, independent of the day boundary. */
+    fun addListened(seconds: Int): Stats {
+        val current = rawStats()
+        val next = current.copy(listened = current.listened + seconds)
+        putStats(next)
+        return next
+    }
+
+    /** Cumulative read-aloud attempts, independent of the day boundary. */
+    fun addSpoken(n: Int = 1): Stats {
+        val current = rawStats()
+        val next = current.copy(spoken = current.spoken + n)
+        putStats(next)
+        return next
+    }
+
+    /** Cumulative AI conversation messages, independent of the day boundary. */
+    fun addTalked(n: Int = 1): Stats {
+        val current = rawStats()
+        val next = current.copy(talked = current.talked + n)
+        putStats(next)
+        return next
+    }
+
+    /** Cumulative AI-corrected texts, independent of the day boundary. */
+    fun addWritten(n: Int = 1): Stats {
+        val current = rawStats()
+        val next = current.copy(written = current.written + n)
+        putStats(next)
+        return next
+    }
+
+    fun addIntroduced(today: String, n: Int): Stats {
+        val current = stats(today)
+        val next = current.copy(newCount = current.newCount + n)
+        putStats(next)
+        return next
+    }
+
+    fun addRead(today: String, id: String): Stats {
+        val current = stats(today)
+        if (id in current.read) return current
+        val next = current.copy(read = current.read + id)
+        putStats(next)
+        return next
+    }
+
+    private fun putStats(s: Stats) = db.plutonQueries.putMeta("stats", json.encodeToString(s))
+}
+
+private fun Cards.toState() = CardState(
+    lemma = lemma,
+    fsrs = Card(
+        due = due,
+        stability = stability,
+        difficulty = difficulty,
+        elapsedDays = elapsed_days.toInt(),
+        scheduledDays = scheduled_days.toInt(),
+        reps = reps.toInt(),
+        lapses = lapses.toInt(),
+        learningSteps = learning_steps.toInt(),
+        state = State.entries[state.toInt()],
+        lastReview = last_review,
+    ),
+    known = known != 0L,
+    added = added,
+    mined = mined_sentence?.let { Mined(it, mined_form.orEmpty(), mined_translation.orEmpty()) },
+    updated = updated,
+)

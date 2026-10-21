@@ -1,0 +1,252 @@
+package io.github.vykosmolt.pluton.core
+
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import io.github.vykosmolt.pluton.core.db.PlutonDb
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class StoreTest {
+    private fun store(): Store {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        PlutonDb.Schema.create(driver).value
+        return Store(PlutonDb(driver))
+    }
+
+    @Test
+    fun savesCardAndReviewTogetherAndReloads() {
+        val store = store()
+        val now = 1_000_000L
+        val card = CardState(
+            lemma = "chat",
+            fsrs = createEmptyCard(now).copy(state = State.Review, stability = 3.0, difficulty = 5.0, reps = 2, due = now + 86_400_000),
+            added = now - 10_000,
+        )
+        store.saveAnswer(card, ReviewEntry("chat", 3, "cloze", now))
+
+        val loaded = store.card("chat")
+        assertEquals(card.lemma, loaded?.lemma)
+        assertEquals(card.fsrs.state, loaded?.fsrs?.state)
+        assertEquals(card.fsrs.due, loaded?.fsrs?.due)
+        assertEquals(card.fsrs.stability, loaded?.fsrs?.stability)
+        assertEquals(card.added, loaded?.added)
+        assertEquals(listOf(ReviewEntry("chat", 3, "cloze", now, false)), store.reviews())
+        assertNull(store.card("chien"))
+    }
+
+    @Test
+    fun upsertKeepsOneRowAndAppendsReviews() {
+        val store = store()
+        val first = CardState("chat", createEmptyCard(1000).copy(due = 2000))
+        store.saveAnswer(first, ReviewEntry("chat", 3, "cloze", 1000))
+        val second = first.copy(fsrs = first.fsrs.copy(due = 5000, reps = 1))
+        store.saveAnswer(second, ReviewEntry("chat", 2, "cloze", 2000, overridden = true))
+        assertEquals(1, store.cards().size)
+        assertEquals(5000, store.card("chat")?.fsrs?.due)
+        assertEquals(2, store.reviews().size)
+        assertEquals(true, store.reviews().last().overridden)
+    }
+
+    @Test
+    fun newWordBudgetResetsOnANewDayButReadHistoryDoesNot() {
+        val store = store()
+        assertEquals(Stats("2026-10-21", 5), store.addIntroduced("2026-10-21", 5))
+        assertEquals(Stats("2026-10-21", 8), store.addIntroduced("2026-10-21", 3))
+        assertEquals(Stats("2026-10-21", 8, listOf("story-0")), store.addRead("2026-10-21", "story-0"))
+        assertEquals(Stats("2026-10-22", 0, listOf("story-0")), store.stats("2026-10-22"))
+        assertEquals(Stats("2026-10-22", 2, listOf("story-0")), store.addIntroduced("2026-10-22", 2))
+        assertEquals(Stats("2026-10-22", 2, listOf("story-0")), store.addRead("2026-10-22", "story-0")) // once
+    }
+
+    @Test
+    fun readerCardsCanBeAddedKnownAndUndone() {
+        val store = store()
+        val word = Word("maison", pos = "noun", display = "la maison", sentence = "La maison est grande.", form = "maison")
+        store.addCard(word, "maison", null, 1000)
+        assertEquals(WordStatus.Queued, status(store.card("maison"), word))
+        val known = store.markKnown("maison", 2000)
+        assertTrue(known.known)
+        assertTrue(store.card("maison")!!.known)
+        val undone = store.unmark("maison", 3000)
+        assertNull(undone) // never reviewed -> deleted
+        assertNull(store.card("maison"))
+        // The review log is append-only and independent of card deletion.
+        store.addCard(word, "maison", null, 4000)
+        val reviewedCard = store.card("maison")!!.copy(fsrs = store.card("maison")!!.fsrs.copy(state = State.Review, stability = 3.0))
+        store.saveAnswer(reviewedCard, ReviewEntry("maison", 3, "cloze", 5000))
+        val reviewed = store.unmark("maison", 6000)
+        assertTrue(reviewed != null && !reviewed.known && store.card("maison") != null)
+        assertEquals(1, store.reviews().size)
+    }
+
+    @Test
+    fun textsRoundTripAndDelete() {
+        val store = store()
+        val first = store.addText("Titre", "Un corps", 1000)
+        val second = store.addText("", "Un texte sans titre", 2000)
+        assertEquals("Un texte sans titre", second.title) // falls back to the body
+        assertEquals(listOf(second.id, first.id), store.texts().map { it.id }) // newest first
+        assertEquals("Un corps", store.texts().last().body)
+        store.deleteText(first.id)
+        assertEquals(listOf(second.id), store.texts().map { it.id })
+    }
+
+    @Test
+    fun paceDefaultsAndPersists() {
+        val store = store()
+        assertEquals(Pace(5, 20), store.pace())
+        store.savePace(Pace(perRun = 8, perDay = 30))
+        assertEquals(Pace(8, 30), store.pace())
+    }
+
+    @Test
+    fun backupRoundTripsCardsReviewsTextsAndStats() {
+        val store = store()
+        val now = 1_000_000L
+        val card = CardState(
+            "chat",
+            createEmptyCard(now).copy(state = State.Review, stability = 3.0, difficulty = 5.0, due = now + 86_400_000),
+            added = now - 5000,
+        )
+        store.saveAnswer(card, ReviewEntry("chat", 3, "cloze", now))
+        store.addText("Titre", "Bonjour", now)
+        store.addIntroduced("2026-10-21", 5)
+        store.addListened(30)
+        val copy = store()
+        copy.import(store.export())
+        assertEquals(store.cards(), copy.cards())
+        assertEquals(store.reviews(), copy.reviews())
+        assertEquals(store.texts().map { it.title to it.body }, copy.texts().map { it.title to it.body })
+        assertEquals(store.stats("2026-10-21"), copy.stats("2026-10-21"))
+    }
+
+    @Test
+    fun restoreReplacesEverythingAndABadFileChangesNothing() {
+        val store = store()
+        store.addText("Keep", "Corps", 1)
+        assertTrue(runCatching { store.import("{oops") }.isFailure)
+        assertEquals(listOf("Keep"), store.texts().map { it.title })
+        val source = store()
+        source.addText("New", "Nouveau", 2)
+        store.import(source.export())
+        assertEquals(listOf("New"), store.texts().map { it.title })
+    }
+
+    @Test
+    fun version1DatabaseMigratesToTheCurrentSchema() {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val v1 = listOf(
+            """CREATE TABLE cards (
+                lemma TEXT NOT NULL PRIMARY KEY, due INTEGER NOT NULL, stability REAL NOT NULL,
+                difficulty REAL NOT NULL, elapsed_days INTEGER NOT NULL, scheduled_days INTEGER NOT NULL,
+                reps INTEGER NOT NULL, lapses INTEGER NOT NULL, learning_steps INTEGER NOT NULL,
+                state INTEGER NOT NULL, last_review INTEGER, known INTEGER NOT NULL DEFAULT 0,
+                added INTEGER NOT NULL, mined_sentence TEXT, mined_form TEXT, mined_translation TEXT,
+                updated INTEGER NOT NULL)""",
+            "CREATE TABLE reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, lemma TEXT NOT NULL, rating INTEGER NOT NULL, mode TEXT NOT NULL, at INTEGER NOT NULL, overridden INTEGER NOT NULL DEFAULT 0)",
+            "CREATE INDEX reviews_lemma ON reviews(lemma)",
+            "CREATE TABLE meta (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL)",
+        )
+        for (sql in v1) driver.execute(null, sql, 0)
+        PlutonDb.Schema.migrate(driver, 1, 3).value
+        val store = Store(PlutonDb(driver))
+        store.markKnown("chat", 2000) // old tables still work
+        store.addText("Titre", "Bonjour", 1000)
+        assertEquals(listOf("Titre"), store.texts().map { it.title })
+        store.saveAnswer(
+            CardState("chat", createEmptyCard(3000).copy(state = State.Review)),
+            ReviewEntry("chat", 3, "cloze", 3000),
+        )
+        assertEquals(1, store.localLog().size) // the new remote_key column is usable
+        store.deleteText(store.texts().single().id, 4000)
+        assertEquals(setOf("texts\t1"), store.syncTombstones().keys)
+    }
+
+    @Test
+    fun syncTombstonesLogsAndStateRoundTrip() {
+        val store = store()
+        val state = store.syncState()
+        assertEquals(8, state.device.length)
+        assertEquals(state.device, store.syncState().device) // stable across calls
+        store.saveAnswer(
+            CardState("chat", createEmptyCard(1000).copy(state = State.Review), added = 1000),
+            ReviewEntry("chat", 3, "cloze", 1000),
+        )
+        store.addCard(Word("chien", pos = "noun", sentence = "Le chien dort.", form = "chien"), "chien", null, 2000)
+        val text = store.addText("Titre", "Corps", 3000)
+        store.deleteCard("chien", 4000)
+        store.deleteText(text.id, 5000)
+        assertEquals(mapOf("cards\tchien" to 4000L, "texts\t${text.id}" to 5000L), store.syncTombstones())
+        assertEquals(listOf("1"), store.localLog().map { it.first.toString() })
+        assertEquals(1, store.allLog().size)
+        assertEquals("1", store.allLog().single().first)
+    }
+
+    @Test
+    fun pulledOpsApplyWithoutLocalTombstones() {
+        val store = store()
+        store.applySync(
+            listOf(
+                SyncOp.PutCard(SyncCard("chat", 5000, added = 1000, fsrs = createEmptyCard(0).copy(reps = 2))),
+                SyncOp.PutText(SyncText(0, "dev2:7", "Theirs", "Texte", 1000, 7000)),
+                SyncOp.PutLog("dev2:1", ReviewEntry("chat", 3, "cloze", 6000)),
+            ),
+        )
+        assertEquals(2, store.card("chat")?.fsrs?.reps)
+        assertEquals(5000, store.card("chat")?.updated)
+        assertEquals(listOf("Theirs"), store.texts().map { it.title })
+        assertEquals("dev2:7", store.texts().single().remoteKey)
+        assertEquals(1, store.allLog().size)
+        // Pulling the same log again is ignored (unique remote key), and the remote text updates in place.
+        store.applySync(
+            listOf(
+                SyncOp.PutLog("dev2:1", ReviewEntry("chat", 3, "cloze", 6000)),
+                SyncOp.PutText(SyncText(0, "dev2:7", "Edited", "Texte", 1000, 8000)),
+            ),
+        )
+        assertEquals(1, store.allLog().size)
+        assertEquals(listOf("Edited"), store.texts().map { it.title })
+        assertEquals(1, store.texts().size)
+        // Remote deletions do not create tombstones of our own.
+        store.applySync(listOf(SyncOp.DeleteText(null, "dev2:7")))
+        assertEquals(emptyMap(), store.syncTombstones())
+        assertEquals(emptyList(), store.texts())
+    }
+
+    @Test
+    fun backupImportResetsSyncWatermarksButKeepsTheDevice() {
+        val store = store()
+        val state = store.syncState().copy(pulledAt = 1000, pushedAt = 2000, logPushed = 3)
+        store.saveSyncState(state)
+        store.addText("Keep", "Corps", 1)
+        store.import(store.export())
+        val reset = store.syncState()
+        assertEquals(state.device, reset.device)
+        assertEquals(0, reset.pulledAt)
+        assertEquals(0, reset.pushedAt)
+        assertEquals(0, reset.logPushed)
+    }
+
+    @Test
+    fun listeningTotalsAccumulateAcrossDays() {
+        val store = store()
+        store.addIntroduced("2026-10-21", 5)
+        store.addRead("2026-10-21", "story-0")
+        assertEquals(Stats("2026-10-21", 5, listOf("story-0"), 30), store.addListened(30))
+        assertEquals(Stats("2026-10-21", 5, listOf("story-0"), 45), store.addListened(15)) // cumulative, day-agnostic
+        assertEquals(Stats("2026-10-21", 5, listOf("story-0"), 45, 2), store.addSpoken(2))
+        assertEquals(Stats("2026-10-21", 5, listOf("story-0"), 45, 2, 3), store.addTalked(3))
+        assertEquals(Stats("2026-10-21", 5, listOf("story-0"), 45, 2, 3, 1), store.addWritten())
+        assertEquals(Stats("2026-10-22", 0, listOf("story-0"), 45, 2, 3, 1), store.stats("2026-10-22"))
+    }
+
+    @Test
+    fun minedWordsKeepTheirSentence() {
+        val store = store()
+        val word = Word("chat", pos = "noun", display = "le chat", gloss = "cat") // no built-in sentence
+        val card = store.addCard(word, "chat", "Le chat dort.", 1000)
+        assertEquals(Mined("Le chat dort.", "chat"), store.card("chat")?.mined)
+        assertEquals("chat", card.lemma)
+    }
+}

@@ -1,0 +1,140 @@
+-- Local-first store: cards (derived state), an append-only review log, and small meta values (stats/settings).
+-- Sync will union the log and replay FSRS; `updated` is the last-write-wins stamp for a future server.
+
+CREATE TABLE cards (
+  lemma TEXT NOT NULL PRIMARY KEY,
+  due INTEGER NOT NULL,
+  stability REAL NOT NULL,
+  difficulty REAL NOT NULL,
+  elapsed_days INTEGER NOT NULL,
+  scheduled_days INTEGER NOT NULL,
+  reps INTEGER NOT NULL,
+  lapses INTEGER NOT NULL,
+  learning_steps INTEGER NOT NULL,
+  state INTEGER NOT NULL,
+  last_review INTEGER,
+  known INTEGER NOT NULL DEFAULT 0,
+  added INTEGER NOT NULL,
+  mined_sentence TEXT,
+  mined_form TEXT,
+  mined_translation TEXT,
+  updated INTEGER NOT NULL
+);
+
+CREATE TABLE reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lemma TEXT NOT NULL,
+  rating INTEGER NOT NULL,
+  mode TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  overridden INTEGER NOT NULL DEFAULT 0,
+  remote_key TEXT -- set on reviews pulled from another device; null for this device's own reviews
+);
+CREATE INDEX reviews_lemma ON reviews(lemma);
+CREATE UNIQUE INDEX reviews_remote ON reviews(remote_key);
+
+CREATE TABLE meta (
+  key TEXT NOT NULL PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE texts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  added INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  remote_key TEXT -- "device:id" once synced; null until pushed or when created locally
+);
+CREATE UNIQUE INDEX texts_remote ON texts(remote_key);
+
+CREATE TABLE tombstones (
+  store TEXT NOT NULL,
+  key TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (store, key)
+);
+
+selectAllCards:
+SELECT * FROM cards;
+
+selectCard:
+SELECT * FROM cards WHERE lemma = ?;
+
+deleteCard:
+DELETE FROM cards WHERE lemma = ?;
+
+-- Full-row upsert; INSERT OR REPLACE keeps the default SQLite 3.18 dialect happy (no UPSERT syntax).
+upsertCard:
+INSERT OR REPLACE INTO cards(lemma, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses,
+  learning_steps, state, last_review, known, added, mined_sentence, mined_form, mined_translation, updated)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+insertReview:
+INSERT INTO reviews(lemma, rating, mode, at, overridden) VALUES (?, ?, ?, ?, ?);
+
+insertPulledReview:
+INSERT OR IGNORE INTO reviews(lemma, rating, mode, at, overridden, remote_key) VALUES (?, ?, ?, ?, ?, ?);
+
+selectReviews:
+SELECT * FROM reviews ORDER BY at, id;
+
+selectLocalReviews:
+SELECT * FROM reviews WHERE remote_key IS NULL ORDER BY id;
+
+selectAllTexts:
+SELECT * FROM texts ORDER BY added DESC;
+
+insertText:
+INSERT INTO texts(title, body, added, updated) VALUES (?, ?, ?, ?);
+
+insertRemoteText:
+INSERT INTO texts(title, body, added, updated, remote_key) VALUES (?, ?, ?, ?, ?);
+
+updateRemoteText:
+UPDATE texts SET title = ?, body = ?, updated = ?, remote_key = ? WHERE id = ?;
+
+selectTextById:
+SELECT * FROM texts WHERE id = ?;
+
+selectTextByRemote:
+SELECT * FROM texts WHERE remote_key = ?;
+
+deleteTextByRemote:
+DELETE FROM texts WHERE remote_key = ?;
+
+deleteTextSilent:
+DELETE FROM texts WHERE id = ?;
+
+lastTextId:
+SELECT last_insert_rowid() AS id;
+
+deleteText:
+DELETE FROM texts WHERE id = ?;
+
+deleteAllCards:
+DELETE FROM cards;
+
+deleteAllReviews:
+DELETE FROM reviews;
+
+deleteAllTexts:
+DELETE FROM texts;
+
+deleteCardSilent:
+DELETE FROM cards WHERE lemma = ?;
+
+insertTombstone:
+INSERT OR REPLACE INTO tombstones(store, key, at) VALUES (?, ?, ?);
+
+selectAllTombstones:
+SELECT * FROM tombstones;
+
+deleteAllTombstones:
+DELETE FROM tombstones;
+
+getMeta:
+SELECT value FROM meta WHERE key = ?;
+
+putMeta:
+INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?);

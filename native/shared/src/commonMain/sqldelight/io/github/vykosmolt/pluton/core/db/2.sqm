@@ -1,0 +1,12 @@
+ALTER TABLE reviews ADD COLUMN remote_key TEXT;
+CREATE UNIQUE INDEX reviews_remote ON reviews(remote_key);
+
+ALTER TABLE texts ADD COLUMN remote_key TEXT;
+CREATE UNIQUE INDEX texts_remote ON texts(remote_key);
+
+CREATE TABLE tombstones (
+  store TEXT NOT NULL,
+  key TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (store, key)
+);
