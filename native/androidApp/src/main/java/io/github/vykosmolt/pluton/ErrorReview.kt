@@ -37,12 +37,15 @@ internal fun ErrorReviewScreen(
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
-    var index by remember(drills) { mutableStateOf(0) }
+    // Snapshot the due list for this session: parent recompositions (the day ticker, deck changes) must not
+    // swap the drill under the learner after it has been scheduled.
+    val sessionDrills = remember { drills }
+    var index by remember { mutableStateOf(0) }
     var typed by remember(index) { mutableStateOf("") }
     var result by remember(index) { mutableStateOf<GradeResult?>(null) }
-    var right by remember(drills) { mutableStateOf(0) }
-    val safeIndex = if (drills.isEmpty()) 0 else index.coerceIn(0, drills.lastIndex)
-    val drill = drills.getOrNull(safeIndex)
+    var right by remember { mutableStateOf(0) }
+    val safeIndex = if (sessionDrills.isEmpty()) 0 else index.coerceIn(0, sessionDrills.lastIndex)
+    val drill = sessionDrills.getOrNull(safeIndex)
 
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -73,7 +76,7 @@ internal fun ErrorReviewScreen(
             }
         } else {
             Text(
-                "${safeIndex + 1} / ${drills.size} · $right right",
+                "${safeIndex + 1} / ${sessionDrills.size} · $right right",
                 color = scheme.onSurfaceVariant,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
@@ -105,12 +108,12 @@ internal fun ErrorReviewScreen(
                         ) { Text("Check") }
                         if (result != null) {
                             TextButton(onClick = {
-                                if (safeIndex + 1 >= drills.size) right = 0
-                                index = (safeIndex + 1) % drills.size
+                                if (safeIndex + 1 >= sessionDrills.size) right = 0
+                                index = (safeIndex + 1) % sessionDrills.size
                                 typed = ""
                                 result = null
                             }) {
-                                Text(if (safeIndex + 1 >= drills.size) "Start over" else "Next")
+                                Text(if (safeIndex + 1 >= sessionDrills.size) "Start over" else "Next")
                             }
                         }
                     }

@@ -538,5 +538,6 @@ emulator/device, so the APK is built but not launched.
   ladder (1/3/7/16/35 days after correct answers, 1 day after almost, now after wrong) and retires a correction
   after six correct reviews. Android More counts only due drills and passes a snapshot to the screen; iOS passes a
   snapshot from MoreView, so scheduling refreshes cannot mutate the drill under the learner. Tests: due/resolved
-  filtering, the full schedule/reset/retire path, migration 1→5, and the existing screen tests updated. Verified:
-  122 shared JVM tests, 28 Android JVM tests, 0 failures; APK builds; Swift parses. Next: adversarial review of P5.
+  filtering, the full schedule/reset/retire path with interval gaps, backup round-trip, migration 1→5 and 4→5, a
+  parent-recomposition snapshot test, and the screen tests updated. Verified:
+  122 shared JVM tests, 29 Android JVM tests, 0 failures; APK builds; Swift parses. Next: adversarial review of P5.

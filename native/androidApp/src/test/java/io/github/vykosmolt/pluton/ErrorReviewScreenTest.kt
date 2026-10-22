@@ -1,6 +1,7 @@
 package io.github.vykosmolt.pluton
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -48,6 +49,21 @@ class ErrorReviewScreenTest {
         rule.onNodeWithText("1 right", substring = true).assertExists()
         rule.onNodeWithText("Start over").performScrollTo().performClick()
         rule.onNodeWithText("0 right", substring = true).assertExists()
+    }
+
+    @Test
+    fun aParentRecompositionDoesNotSwapTheSession() {
+        val upcoming = mutableStateOf(listOf(drills.first()))
+        rule.setContent {
+            MaterialTheme {
+                ErrorReviewScreen(upcoming.value, hasCorrections = true, onGraded = { _, _ -> }, onBack = {})
+            }
+        }
+        rule.onNodeWithText("je suis alle").assertExists()
+        rule.onNodeWithText("1 / 1", substring = true).assertExists()
+        rule.runOnIdle { upcoming.value = drills }
+        rule.onNodeWithText("je suis alle").assertExists()
+        rule.onNodeWithText("1 / 1", substring = true).assertExists()
     }
 
     @Test
