@@ -5,7 +5,7 @@
   let { path, reached, full = false, onaction, onmap, onjump } = $props()
 
   const ICON = { words: '📚', verbs: '📐', grammar: '🧩', read: '📖', listen: '🎧', talk: '💬', write: '✍️' }
-  const finished = $derived(reached >= STAGES.length)
+  const finished = $derived(reached >= STAGES.length && path.current >= STAGES.length)
   const current = $derived(path.stages[Math.min(reached, STAGES.length - 1)])
   let open = $state(null) // stage expanded in the full view
   const n = (x) => x.toLocaleString('en')

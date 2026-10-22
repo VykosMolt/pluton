@@ -577,3 +577,15 @@ emulator/device, so the APK is built but not launched.
   Tests: speechRate word/time/range and report pass-through, sample filtering/cap/median/import clearing. Verified:
   130 shared JVM tests, 30 Android JVM tests, 0 failures; APK builds; data build and checks pass. Next: adversarial
   review of P7, then CI.
+- 2026-10-23: adversarial P7 review (range 256449ba..48e9eed5). No blocking defects in 48e9eed5. The two
+  blocking problems in e029d055 were already fixed by the follow-up: the web Reader indexed STAGES[10]/[11]
+  (out of a 10-entry array) for the epilogues, and Android measured speech through the recognizer's finalize
+  tail. Fixes from the review: the web Path no longer calls the journey finished while the new final-stage read
+  goals are open (Home falls back to the current stage; `finished` now requires `path.current` complete); README
+  says "3+ seconds" to match the code (the code has no upper duration bound); the pre-existing smoke DST failure
+  is fixed by jumping four days instead of three (a 72-hour jump across the autumn DST change is only two
+  calendar days, so the one-day streak grace still applied); the Android launch test now asserts the 12th
+  chapter. Verified: 130 shared JVM tests, 30 Android JVM tests, 0 failures; APK rebuilds with the 12-chapter/
+  184-sentence story; web 46/46 tests, build succeeds, smoke exits 0 with 44 checks. Remaining deployment step:
+  gh-pages still carries the 10-chapter bundle fetched by the iOS workflow; run `npm run deploy` so the web app
+  and iOS CI artifact get story-10/11 and the 28 new clips. The next commit awaits CI.

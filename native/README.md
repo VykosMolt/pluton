@@ -200,7 +200,7 @@ days, drawn as a 14-day bar row). Snapshots live in local meta and are not part 
 P7 broadens the story and measures speaking: two epilogue chapters, “La Lettre” and “Le Chat Noir”, join the series
 (12 chapters, 184 read-along sentences; the final stage now asks for both). Voice Talk measures an approximate
 words-per-minute rate from the first recognised word to the stop tap, keeps the last 20 valid samples in local meta
-(3–300 s, at least 3 words, 40–300 wpm) and shows the upper median in Progress. Speech history is not part of the
+(3+ seconds, at least 3 words, 40–300 wpm) and shows the upper median in Progress. Speech history is not part of the
 JSON backup and is cleared on import, like vocabulary growth.
 
 Next: device polish and a learning-experiment loop.

@@ -71,6 +71,7 @@ class AppLaunchTest {
             rule.onAllNodesWithText("Chapitre 1 · Le Mur", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithText("Chapitre 1 · Le Mur", substring = true).assertExists()
+        rule.onNodeWithText("Chapitre 12 · Le Chat Noir", substring = true).performScrollTo().assertExists()
         rule.onNodeWithText("La Parure", substring = true).assertExists()
         rule.onNodeWithText("Norman Bridge").assertExists()
         rule.onNodeWithText("The Black Cat", substring = true).assertExists()

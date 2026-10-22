@@ -239,8 +239,9 @@ const streak = await page.locator('.streak').textContent()
 const level = await page.locator('.level').textContent()
 const sw = await page.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active))
 
-// Three days later: graduated cards are due, some as English -> French recall.
-await page.clock.setSystemTime(new Date(Date.now() + 3 * 864e5))
+// Four days later: graduated cards are due, some as English -> French recall. Four, not three: a 72-hour jump
+// across the autumn DST change lands on only the second calendar day, where the one-day grace still applies.
+await page.clock.setSystemTime(new Date(Date.now() + 4 * 864e5))
 await page.locator('nav').getByRole('button', { name: /Home/ }).click()
 const due = await page.locator('.tile .due').textContent()
 const streakLater = await page.locator('.streak').textContent()
@@ -524,7 +525,7 @@ const checks = {
   'recap shows run words': recap === run1.modes.intro,
   'reload keeps progress': after.log === before.log && after.cards === before.cards,
   'streak 1': streak.includes('1'),
-  'streak lapses after 3 days away': streakLater.includes('0'),
+  'streak lapses after four days away': streakLater.includes('0'),
   'levelled up': !level.includes('Niv. 1'),
   'service worker': sw,
   'works offline right after the first visit': offlineOk,
