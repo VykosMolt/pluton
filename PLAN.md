@@ -559,3 +559,11 @@ emulator/device, so the APK is built but not launched.
   Android's card-stamp effect and iOS refresh, drawn as a 14-day bar row. Tests: error-kind window/limit, snapshot
   replace/sort/cap, and the Progress cards' presence. Verified: 126 shared JVM tests, 29 Android JVM tests,
   0 failures; APK builds; Swift parses. Next: adversarial review of P6.
+- 2026-10-22: adversarial P6 review (642fb6bc). Blocking: Android keyed the snapshot effect on the sum of in-memory
+  `updated` stamps, but run answers and mark-known do not advance that stamp in the map, so growth missed the day's
+  changes. The effect now keys on the computed known/learning counts; a Robolectric launch test asserts today's
+  snapshot is written. Non-blocking: "pas du tout" was unreachable because the sheet shows only three chunks per
+  lemma (added the `pas` lemma and a reachability test for all 36); restoring a backup now clears the old growth
+  history; error kinds are grouped case-insensitively; the cefrEstimate KDoc is back on its function. Verified:
+  128 shared JVM tests, 30 Android JVM tests, 0 failures; APK builds; Swift parses; CI 642fb6bc green for build and
+  simulator launch. This review-fix commit awaits CI.

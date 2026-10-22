@@ -42,7 +42,7 @@ val CHUNKS: List<Chunk> = listOf(
     Chunk("être d'accord", "to agree", "Je vais être d'accord avec toi.", "I am going to agree with you.", listOf("être", "accord"), "A1"),
     Chunk("en ce moment", "right now", "En ce moment, je lis un livre.", "Right now, I am reading a book.", listOf("moment"), "A1"),
     Chunk("tout à l'heure", "in a moment / earlier", "Je reviens tout à l'heure.", "I will be back in a moment.", listOf("tout", "heure"), "A1"),
-    Chunk("pas du tout", "not at all", "Je ne suis pas du tout fatigué.", "I am not at all tired.", listOf("tout"), "A2"),
+    Chunk("pas du tout", "not at all", "Je ne suis pas du tout fatigué.", "I am not at all tired.", listOf("pas", "tout"), "A2"),
     Chunk("de plus en plus", "more and more", "Il fait de plus en plus froid.", "It is getting colder and colder.", listOf("plus"), "A2"),
     Chunk("au bout du compte", "in the end / all things considered", "Au bout du compte, il est parti.", "In the end, he left.", listOf("bout", "compte"), "B1"),
     Chunk("grâce à", "thanks to", "Grâce à toi, j'ai compris.", "Thanks to you, I understood.", listOf("grâce"), "A2"),

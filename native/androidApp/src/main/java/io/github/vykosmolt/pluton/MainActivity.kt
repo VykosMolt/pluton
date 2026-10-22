@@ -254,10 +254,10 @@ private fun MainScreen(loaded: Loaded, store: Store, aiStore: AiStore) {
     // Listening/speaking write straight to the store, so re-read the stats when the user comes back to a tab.
     var stats by remember { mutableStateOf(Stats(day = day)) }
     LaunchedEffect(tab, running, day) { if (!running) stats = store.stats(day) }
-    val cardStamp = cards.values.sumOf { it.updated }
-    LaunchedEffect(cardStamp, day) {
-        val counts = studyCounts(cards.values.toList(), deck.wordMap)
-        store.saveProgressSnapshot(day, counts.known, counts.learning)
+    // Key on the counts themselves: card mutations do not all advance `updated` in memory.
+    val progressCounts = studyCounts(cards.values.toList(), deck.wordMap)
+    LaunchedEffect(progressCounts.known, progressCounts.learning, day) {
+        store.saveProgressSnapshot(day, progressCounts.known, progressCounts.learning)
     }
     LaunchedEffect(Unit) {
         while (true) {

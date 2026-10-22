@@ -1,5 +1,6 @@
 package io.github.vykosmolt.pluton
 
+import android.content.Context
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.printToString
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -186,6 +188,23 @@ class AppLaunchTest {
         org.junit.Assert.assertNotEquals("checkpoint should update when a can-do is ticked", before, after)
         rule.onNodeWithText("Milestones").performScrollTo().assertExists()
         rule.onNodeWithText("Can you…?", substring = true).assertExists()
+    }
+
+    @Test
+    fun launchWritesATodayProgressSnapshot() {
+        waitForHome()
+        rule.waitForIdle()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = context.openOrCreateDatabase("pluton.db", Context.MODE_PRIVATE, null)
+        try {
+            db.rawQuery("SELECT value FROM meta WHERE key = 'progress_snapshots'", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+                assertTrue(cursor.getString(0).contains(today))
+            }
+        } finally {
+            db.close()
+        }
     }
 
     @Test

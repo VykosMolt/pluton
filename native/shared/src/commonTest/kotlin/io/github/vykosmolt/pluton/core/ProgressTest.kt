@@ -21,7 +21,7 @@ class ProgressTest {
         val rows = listOf(
             row(1, "spelling", 1000),
             row(2, "grammar", 2000),
-            row(3, "grammar", 3000),
+            row(3, "Grammar", 3000),
             row(4, "vocabulary", 4000),
             row(5, "", 5000),
             row(6, "grammar", 100),

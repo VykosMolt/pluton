@@ -438,6 +438,14 @@ class StoreTest {
     }
 
     @Test
+    fun backupImportClearsGrowthHistory() {
+        val target = store()
+        target.saveProgressSnapshot("2026-10-20", 9, 1)
+        target.import(store().export())
+        assertTrue(target.progressSnapshots().isEmpty())
+    }
+
+    @Test
     fun progressSnapshotsReplaceSameDayAndCapAtSixty() {
         val store = store()
         store.saveProgressSnapshot("2026-10-20", 10, 2)

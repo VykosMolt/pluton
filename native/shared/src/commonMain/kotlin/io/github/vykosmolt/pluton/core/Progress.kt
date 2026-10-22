@@ -22,7 +22,7 @@ data class ErrorKindCount(val kind: String, val count: Int)
 fun errorKindCounts(corrections: List<CorrectionRecord>, since: Long, limit: Int = 3): List<ErrorKindCount> =
     corrections.asSequence()
         .filter { it.at >= since && it.kind.isNotBlank() }
-        .groupingBy { it.kind.trim() }
+        .groupingBy { it.kind.trim().lowercase() }
         .eachCount()
         .entries
         .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
@@ -61,7 +61,7 @@ data class ProgressReport(
 /** The id a Bridge text is marked read under; keeps the reader, the milestone and both apps in sync. */
 fun bridgeReadId(title: String): String = "bridge:$title"
 
-/** A deliberately broad receptive vocabulary estimate; the app labels it as an estimate, never a CEFR test. */
+/** Known and learning single words (chunks excluded); the same counts the CEFR estimate and snapshots use. */
 fun studyCounts(cards: List<CardState>, words: Map<String, Word>): StudyCounts {
     var known = 0
     var learning = 0
@@ -76,6 +76,7 @@ fun studyCounts(cards: List<CardState>, words: Map<String, Word>): StudyCounts {
     return StudyCounts(known, learning)
 }
 
+/** A deliberately broad receptive vocabulary estimate; the app labels it as an estimate, never a CEFR test. */
 fun cefrEstimate(knownWords: Int): String = when {
     knownWords < 500 -> "A1"
     knownWords < 1500 -> "A1–A2"

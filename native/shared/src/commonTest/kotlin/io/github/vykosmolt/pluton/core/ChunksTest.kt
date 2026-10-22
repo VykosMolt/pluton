@@ -24,6 +24,14 @@ class ChunksTest {
     }
 
     @Test
+    fun everyChunkIsReachableFromOneOfItsLemmas() {
+        val unreachable = CHUNKS.filter { chunk ->
+            chunk.lemmas.none { lemma -> chunksFor(lemma).take(3).any { it.text == chunk.text } }
+        }.map { it.text }
+        assertEquals(emptyList(), unreachable)
+    }
+
+    @Test
     fun everyChunkBecomesAPlayableClozeCard() {
         for (chunk in CHUNKS) {
             val word = chunkWord(chunk)

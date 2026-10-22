@@ -471,6 +471,8 @@ class Store(private val db: PlutonDb) {
                 db.plutonQueries.putMeta("revision_id", "")
             }
             db.plutonQueries.putMeta("stats", json.encodeToString(backup.stats))
+            // Growth history belongs to the replaced cards, not the incoming backup.
+            db.plutonQueries.putMeta("progress_snapshots", "[]")
             // A v1/v2 file predates the can-do self-assessment, so it must not erase the local ticks.
             if (backup.version >= 3) db.plutonQueries.putMeta("cando", backup.canDo.joinToString(","))
             // A restored device starts from scratch: old deletions must not wipe the account, and pulled records
