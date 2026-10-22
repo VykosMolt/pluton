@@ -12,7 +12,8 @@ data class ErrorDrill(
 
 /** Apostrophe style and whitespace are ignored here, but case is not: a capitalization fix is real. */
 private fun caseSensitiveNormal(s: String): String =
-    s.replace('’', '\'').replace('‘', '\'').trim().replace(Regex("\\s+"), " ")
+    s.replace('’', '\'').replace('‘', '\'').replace("œ", "oe").replace("Œ", "OE")
+        .trim().replace(Regex("\\s+"), " ")
 
 /** Recent corrections as drills: newest first, blank/unchanged pairs dropped, duplicates collapsed. */
 fun errorDrills(corrections: List<CorrectionRecord>, limit: Int = 20): List<ErrorDrill> =

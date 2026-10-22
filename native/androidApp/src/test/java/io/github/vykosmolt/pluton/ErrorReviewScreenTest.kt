@@ -41,6 +41,16 @@ class ErrorReviewScreenTest {
     }
 
     @Test
+    fun startOverResetsTheSessionScoreOnASingleDrill() {
+        rule.setContent { MaterialTheme { ErrorReviewScreen(listOf(drills.first()), onBack = {}) } }
+        rule.onNode(hasSetTextAction()).performScrollTo().performTextInput("je suis allé")
+        rule.onNodeWithText("Check").performScrollTo().performClick()
+        rule.onNodeWithText("1 right", substring = true).assertExists()
+        rule.onNodeWithText("Start over").performScrollTo().performClick()
+        rule.onNodeWithText("0 right", substring = true).assertExists()
+    }
+
+    @Test
     fun emptyStateExplainsHowCorrectionsArrive() {
         rule.setContent { MaterialTheme { ErrorReviewScreen(emptyList(), onBack = {}) } }
         rule.onNodeWithText("Nothing to review yet").assertIsDisplayed()

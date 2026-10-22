@@ -79,6 +79,18 @@ struct ErrorReviewView: View {
         }
         .navigationTitle("Error review")
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: drillRevision) { _, _ in
+            // New corrections can arrive from Write while this pushed view is alive; never grade old text
+            // against a different drill.
+            index = 0
+            typed = ""
+            result = nil
+            right = 0
+        }
+    }
+
+    private var drillRevision: Int64 {
+        model.corrections.map(\.id).max() ?? 0
     }
 
     private func outcome(_ result: GradeResult) -> String {

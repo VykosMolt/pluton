@@ -144,8 +144,11 @@ internal fun MoreScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Error review", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        if (correctionCount == 0) "No corrections yet"
-                        else "$correctionCount corrections from your writing",
+                        when {
+                            correctionCount == 0 -> "No error drills yet"
+                            correctionCount == 1 -> "1 error drill from your writing"
+                            else -> "$correctionCount error drills from your writing"
+                        },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

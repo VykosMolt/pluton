@@ -520,6 +520,15 @@ emulator/device, so the APK is built but not launched.
   platforms: `errorDrills` filters changed non-blank pairs, orders newest first, de-duplicates by normalized pair
   and caps at 20; `gradeError` reuses `grade` for exact/accent/case/typo/wrong feedback. Android More → Error review
   and the iOS More → Practice row render the original, a fix field, the grade, the correction and the reason.
-  Tests: drill filtering/order/dedupe/limit/empty, accent/typo grading, capitalization-only drills and grading, a Compose screen test for check→fix→why→next,
-  an empty-state test, and a Robolectric More navigation test. Verified: 119 shared JVM tests, 27 Android JVM tests,
+  Tests: drill filtering/order/dedupe/limit/empty, accent/case/typo and œ/oe grading, capitalization-only drills and grading, a Compose screen test for check→fix→why→next, a start-over
+  score-reset test, an empty-state test, and a Robolectric More navigation test. Verified: 119 shared JVM tests, 28 Android JVM tests,
   0 failures; APK builds; Swift parses. Next: adversarial review of P4.
+- 2026-10-22: adversarial P4 review (8b8b6d64 plus the 3413200c fixes). Blocking at 8b8b6d64: capitalization-only
+  drills always graded "right" because `grade` lowercases; the case-preserving check in 3413200c fixed it. Confirmed
+  non-blocking: œ/oe pairs were labelled "case" (the normalizer now folds the ligature before comparing), and the
+  copy overclaimed "each correction"/"sentence" and called a drill count "corrections" (fixed to "fragment or
+  sentence" and "error drills"). A suspected iOS state leak when new corrections arrive while ErrorReviewView is
+  pushed is handled by resetting index/input/result/score when the newest correction id changes. Tests strengthened:
+  the duplicate drill asserts the newest why/kind, the limit asserts the newest two, a start-over score-reset UI
+  test, and œ/oe grading. Verified: 119 shared JVM tests, 28 Android JVM tests, 0 failures; APK builds; Swift
+  parses; CI 39754767727 (`3413200c`) green for build and simulator launch. This follow-up commit awaits its own CI.
