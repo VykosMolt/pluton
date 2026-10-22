@@ -38,10 +38,30 @@ struct ProgressView: View {
                 }
 
                 card {
+                    Text("Last 7 days").font(.headline)
+                    if report.week.reviews == 0 {
+                        Text("No reviews yet this week. A short run starts the record.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("\(report.week.reviews) reviews · \(Int(report.week.accuracy * 100))% Good/Easy")
+                            .font(.system(size: 22, weight: .black))
+                            .foregroundStyle(.green)
+                        Text("Only the last seven days; your all-time accuracy is above.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                card {
                     Text("Can you…? · \(report.stageLevel)").font(.headline)
                     Text("Self-assessment for your current stage. Be honest; a tick is not a test result.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    Text(report.checkpoint.complete
+                         ? "All \(report.checkpoint.total) ticked — tell Pluton you're ready for the next stage."
+                         : "\(report.checkpoint.done) of \(report.checkpoint.total) ticked.")
+                        .font(.caption)
+                        .foregroundStyle(report.checkpoint.complete ? Color.green : Color.secondary)
                     ForEach(report.canDos, id: \.id) { item in
                         Button {
                             canDoDone = Set(model.setCanDo(item.id, !canDoDone.contains(item.id)))
@@ -53,6 +73,30 @@ struct ProgressView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                    }
+                }
+
+                card {
+                    Text("Cabinet").font(.headline)
+                    if finishedTexts.isEmpty {
+                        Text("Nothing collected yet — finish a story, a classic or a Bridge text.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("\(finishedTexts.count) finished")
+                            .font(.system(size: 22, weight: .black))
+                            .foregroundStyle(.blue)
+                        ForEach(Array(finishedTexts.prefix(8).enumerated()), id: \.offset) { _, title in
+                            Text("• \(title)").font(.subheadline)
+                        }
+                        if finishedTexts.count > 8 {
+                            Text("+ \(finishedTexts.count - 8) more")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text("Pluton curls up beside \(finishedTexts.count) finished text\(finishedTexts.count == 1 ? "" : "s").")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -79,6 +123,23 @@ struct ProgressView: View {
         }
         .navigationTitle("Progress")
         .onAppear { canDoDone = Set(report.canDoDone) }
+    }
+
+    private var finishedTexts: [String] {
+        var out: [String] = []
+        for (i, chapter) in model.story.enumerated() where model.read.contains("story-\(i)") {
+            out.append("Chapitre \(i + 1) · \(chapter.title)")
+        }
+        for text in model.shelf where model.read.contains(text.title) {
+            out.append(text.title)
+        }
+        for text in model.bridgeShelf where model.read.contains(model.bridgeReadId(text.title)) {
+            out.append(text.title)
+        }
+        for text in model.texts where model.read.contains("text-\(text.id)") {
+            out.append(text.title)
+        }
+        return out
     }
 
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {

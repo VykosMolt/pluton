@@ -456,6 +456,7 @@ private fun MainScreen(loaded: Loaded, store: Store, aiStore: AiStore) {
                     store = store,
                     path = path,
                     shelf = loaded.shelf,
+                    story = loaded.story,
                     pace = pace,
                     onPace = { next ->
                         store.savePace(next)

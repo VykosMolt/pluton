@@ -46,6 +46,7 @@ import io.github.vykosmolt.pluton.core.PathState
 import io.github.vykosmolt.pluton.core.STAGES
 import io.github.vykosmolt.pluton.core.ShelfText
 import io.github.vykosmolt.pluton.core.Store
+import io.github.vykosmolt.pluton.core.StoryChapter
 import io.github.vykosmolt.pluton.core.bridgeReadId
 import io.github.vykosmolt.pluton.core.Word
 import io.github.vykosmolt.pluton.core.conjKey
@@ -73,6 +74,7 @@ internal fun MoreScreen(
     store: Store,
     path: PathState,
     shelf: List<ShelfText>,
+    story: List<StoryChapter>,
     pace: Pace,
     onPace: (Pace) -> Unit,
     ai: AiConfig?,
@@ -94,6 +96,12 @@ internal fun MoreScreen(
             val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
             val stats = store.stats(today)
             val read = stats.read.toSet()
+            val finished = buildList {
+                for (i in story.indices) if ("story-$i" in read) add("Chapitre ${i + 1} · ${story[i].title}")
+                for (t in shelf.filter { it.lang == "fr" }) if (t.title in read) add(t.title)
+                for (t in shelf.filter { it.lang != "fr" }) if (bridgeReadId(t.title) in read) add(t.title)
+                for (t in store.texts()) if ("text-${t.id}" in read) add(t.title)
+            }
             ProgressScreen(
                 report = progressReport(
                     cards = cards.values.toList(),
@@ -103,10 +111,12 @@ internal fun MoreScreen(
                     classicTitles = shelf.filter { it.lang == "fr" }.map { it.title }.toSet(),
                     bridgeTitles = shelf.filter { it.lang != "fr" }.map { bridgeReadId(it.title) }.toSet(),
                     accuracy = store.recentAccuracy(),
+                    week = store.weekActivity(System.currentTimeMillis()),
                     canDoDone = store.canDoDone(),
                     stageLevel = path.stages.getOrNull(path.current)?.stage?.level ?: "C1",
                 ),
                 store = store,
+                finished = finished,
                 onBack = { section = Section.Hub },
                 modifier = modifier,
             )

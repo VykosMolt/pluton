@@ -146,6 +146,7 @@ class IosBridge {
     fun planDone(store: Store, day: String): List<String> = store.planDone(day).toList()
     fun canDoDone(store: Store): List<String> = store.canDoDone().toList()
     fun setCanDo(store: Store, id: String, done: Boolean): List<String> = store.setCanDo(id, done).toList()
+    fun weekActivity(store: Store, now: Long): WeekActivity = store.weekActivity(now)
     fun progressReport(
         cards: List<CardState>,
         words: Map<String, Word>,
@@ -154,6 +155,7 @@ class IosBridge {
         classicTitles: List<String>,
         bridgeTitles: List<String>,
         accuracy: Double,
+        week: WeekActivity,
         canDoDone: List<String>,
         stageLevel: String,
     ): ProgressReport = io.github.vykosmolt.pluton.core.progressReport(
@@ -164,6 +166,7 @@ class IosBridge {
         classicTitles.toSet(),
         bridgeTitles.toSet(),
         accuracy.takeIf { it >= 0.0 },
+        week,
         canDoDone.toSet(),
         stageLevel,
     )

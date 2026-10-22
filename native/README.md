@@ -150,7 +150,7 @@ live in the app's SQLite database; the AI key lives in private prefs (Android ba
 and is excluded from the JSON backup. Speech recognition and text-to-speech are platform services (on-device or
 system-provided, depending on the device); only the recognized transcript is sent to the AI. The only network calls are the AI requests you trigger (and the media files
 you pick in Listen are read locally). The shared `Sync.kt` merge rules remain for reference but nothing in either
-app wires them up. 113 shared JVM tests and 24 Android JVM tests pass (5 AI, 19 Robolectric UI). The APK is 55 MB with 3,053 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
+app wires them up. 115 shared JVM tests and 24 Android JVM tests pass (5 AI, 19 Robolectric UI). The APK is 55 MB with 3,053 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
 core-library desugaring for `java.time` on minSdk 24.
 `AppLaunchTest` launches the real Activity under Robolectric on the JVM and verifies the deck/shelf assets, SQLite,
 Home (with the path stage), all five tabs, the story + classics list, the Your texts section, the Listen pickers, the
@@ -176,9 +176,10 @@ P1 adds the speaking loop: Talk has a microphone (Android SpeechRecognizer / iOS
 
 P2 starts the depth pass: 24 curated French chunks (il y a, avoir besoin de, tout à coup, …) become normal SRS cards from the word sheet, with synthetic `chunk:` lemmas and cloze-only reviews; mined words alternate between the sentence they were tapped in and their dictionary sentence, with the matching inflected form; grammar/conjugation focus is computed from the learner's current card state and passed into Talk, Write and a reading notice; Android Listen has a dictogloss (type the line you hear, word-level feedback); and “Continue this text” asks the AI for a 150–250-word continuation and saves it as a new local text. iOS has chunks, context alternation, focus prompts, reading notices, continuation and the Listen tab (audio/video, subtitles, line controls, dictogloss).
 
-P3 starts assessment and polish: More→Progress shows a broad receptive vocabulary estimate (A1–C1 range,
-explicitly not a test), last-30-review accuracy, a can-do self-assessment for the current stage (saved locally), and
-milestones for words, reading, classics, Bridge texts, listening hours, recordings, AI talk and corrected writing.
-The same screen is in iOS More.
+P3 completes assessment and polish: More→Progress shows a broad receptive vocabulary estimate (A1–C1 range,
+explicitly not a test), last-30-review accuracy, a Last 7 days card (review count and Good/Easy rate), a can-do
+self-assessment for the current stage (saved locally) with a checkpoint line, a Cabinet of finished story chapters,
+classics, Bridge texts and user texts, and milestones for words, reading, classics, Bridge texts, listening hours,
+recordings, AI talk and corrected writing. The same screen is in iOS More.
 
 Next: more curated chunks, a broader story series, and device polish.

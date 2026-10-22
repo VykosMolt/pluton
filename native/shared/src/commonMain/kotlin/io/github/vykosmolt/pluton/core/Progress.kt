@@ -5,6 +5,15 @@ package io.github.vykosmolt.pluton.core
 
 data class CanDo(val id: String, val text: String)
 
+data class Checkpoint(val level: String, val done: Int, val total: Int) {
+    val complete: Boolean get() = total > 0 && done >= total
+}
+
+/** Reviews in the last seven days; accuracy is -1 until there is one. */
+data class WeekActivity(val reviews: Int, val good: Int) {
+    val accuracy: Double get() = if (reviews == 0) -1.0 else good.toDouble() / reviews
+}
+
 data class Milestone(
     val id: String,
     val label: String,
@@ -20,6 +29,8 @@ data class ProgressReport(
     val stageLevel: String,
     /** -1 when there are no reviews yet; avoids a nullable primitive in the Swift bridge. */
     val accuracy: Double,
+    val week: WeekActivity,
+    val checkpoint: Checkpoint,
     val canDos: List<CanDo>,
     val canDoDone: Set<String>,
     val milestones: List<Milestone>,
@@ -81,6 +92,7 @@ fun progressReport(
     classicTitles: Set<String>,
     bridgeTitles: Set<String>,
     accuracy: Double?,
+    week: WeekActivity,
     canDoDone: Set<String>,
     stageLevel: String,
 ): ProgressReport {
@@ -104,13 +116,16 @@ fun progressReport(
         milestone("talk-10", "Talk with Pluton 10 times", stats.talked, 10),
         milestone("write-1", "Get your first text corrected", stats.written, 1),
     )
+    val canDos = canDosFor(stageLevel)
     return ProgressReport(
         knownWords = known,
         learningWords = learning,
         cefr = cefrEstimate(known),
         stageLevel = stageLevel,
         accuracy = accuracy ?: -1.0,
-        canDos = canDosFor(stageLevel),
+        week = week,
+        checkpoint = Checkpoint(stageLevel, canDos.count { it.id in canDoDone }, canDos.size),
+        canDos = canDos,
         canDoDone = canDoDone,
         milestones = milestones,
     )

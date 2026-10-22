@@ -500,3 +500,10 @@ emulator/device, so the APK is built but not launched.
   cue end so Play restarts at the next line instead of mid-line. The same boundary resume fix is in Android Listen.
   Verified: 113 shared JVM tests, 24 Android JVM tests, 0 failures; APK builds; Swift parses; CI for `30e480f8`
   green (build + smoke). This commit awaits its own CI run.
+- 2026-10-22: P3 completion. Progress now has a `WeekActivity` (reviews and Good/Easy count from a new
+  `reviewsSince` SQL query, 7-day window), a `Checkpoint` computed from the current stage's can-do ticks, and a
+  Cabinet listing finished story chapters, classics, Bridge texts and user texts with a small Pluton line. Android
+  More passes `story`/finished titles; iOS builds the same list from its loaded data. Tests: 7-day window and empty
+  accuracy (Store), checkpoint completion, a week-accuracy assertion in the report test, and Robolectric assertions
+  for the new Progress cards. Verified: 115 shared JVM tests, 24 Android JVM tests, 0 failures; APK builds; Swift
+  parses. CI pending. Next: adversarial review of P3.

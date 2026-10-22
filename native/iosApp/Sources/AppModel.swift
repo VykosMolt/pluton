@@ -292,6 +292,7 @@ final class AppModel: ObservableObject {
             // `shelf` is already filtered to French; the English Bridge texts live in `bridgeShelf`.
             bridgeTitles: bridgeShelf.map { bridgeReadId($0.title) },
             accuracy: accuracy,
+            week: bridge.weekActivity(store: store, now: Self.now()),
             canDoDone: Array(Set(bridge.canDoDone(store: store))),
             stageLevel: stageLevel
         )

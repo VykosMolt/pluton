@@ -32,6 +32,7 @@ import io.github.vykosmolt.pluton.core.Store
 internal fun ProgressScreen(
     report: ProgressReport,
     store: Store,
+    finished: List<String>,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -68,9 +69,30 @@ internal fun ProgressScreen(
         }
 
         Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Last 7 days", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                val week = report.week
+                if (week.reviews == 0) {
+                    Text("No reviews yet this week. A short run starts the record.", color = scheme.onSurfaceVariant)
+                } else {
+                    Text("${week.reviews} reviews · ${(week.accuracy * 100).toInt()}% Good/Easy", fontSize = 22.sp, fontWeight = FontWeight.Black, color = scheme.secondary)
+                    Text("Only the last seven days; your all-time accuracy is above.", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+                }
+            }
+        }
+
+        Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Can you…? · ${report.stageLevel}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Text("Self-assessment for your current stage. Be honest; a tick is not a test result.", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+                val checkpoint = report.checkpoint
+                Text(
+                    if (checkpoint.complete) "All ${checkpoint.total} ticked — tell Pluton you're ready for the next stage."
+                    else "${checkpoint.done} of ${checkpoint.total} ticked.",
+                    color = if (checkpoint.complete) scheme.secondary else scheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    fontWeight = if (checkpoint.complete) FontWeight.Bold else FontWeight.Normal,
+                )
                 for (item in report.canDos) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
@@ -79,6 +101,24 @@ internal fun ProgressScreen(
                         )
                         Text(item.text)
                     }
+                }
+            }
+        }
+
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Cabinet", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                if (finished.isEmpty()) {
+                    Text("Nothing collected yet — finish a story, a classic or a Bridge text.", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+                } else {
+                    Text("${finished.size} finished", fontSize = 22.sp, fontWeight = FontWeight.Black, color = scheme.primary)
+                    for (title in finished.take(8)) Text("• $title", fontSize = 14.sp)
+                    if (finished.size > 8) Text("+ ${finished.size - 8} more", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+                    Text(
+                        "Pluton curls up beside ${finished.size} finished text${if (finished.size == 1) "" else "s"}.",
+                        color = scheme.tertiary,
+                        fontSize = 13.sp,
+                    )
                 }
             }
         }

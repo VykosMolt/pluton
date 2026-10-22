@@ -333,6 +333,22 @@ class StoreTest {
     }
 
     @Test
+    fun weekActivityCountsOnlyTheLastSevenDays() {
+        val store = store()
+        val now = 10L * 86_400_000L
+        val base = CardState("chat", createEmptyCard(1000).copy(state = State.Review))
+        store.saveAnswer(base, ReviewEntry("chat", 4, "cloze", now - 86_400_000L))
+        store.saveAnswer(base, ReviewEntry("chat", 2, "cloze", now - 2L * 86_400_000L))
+        store.saveAnswer(base, ReviewEntry("chat", 3, "cloze", now - 8L * 86_400_000L))
+        val week = store.weekActivity(now)
+        assertEquals(2, week.reviews)
+        assertEquals(1, week.good)
+        assertEquals(0.5, week.accuracy)
+        val empty = store().weekActivity(now)
+        assertEquals(-1.0, empty.accuracy)
+    }
+
+    @Test
     fun saveWritingReturnsAUsableIdForEveryRecord() {
         val store = store()
         val result = WritingResult(corrected = "Bonjour.", feedback = "Bien", level = "A1")

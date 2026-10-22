@@ -169,6 +169,9 @@ class AppLaunchTest {
             rule.onAllNodesWithText("Vocabulary estimate").fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithText("Vocabulary estimate").assertExists()
+        rule.onNodeWithText("Last 7 days").assertExists()
+        rule.onNodeWithText("Cabinet").assertExists()
+        rule.onNodeWithText("ticked", substring = true).assertExists()
         rule.onNodeWithText("Milestones").performScrollTo().assertExists()
         rule.onNodeWithText("Can you…?", substring = true).assertExists()
     }

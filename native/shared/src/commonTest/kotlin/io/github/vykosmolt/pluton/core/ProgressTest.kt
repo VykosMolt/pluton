@@ -15,6 +15,27 @@ class ProgressTest {
     }
 
     @Test
+    fun aCheckpointCompletesWhenEveryCanDoIsTicked() {
+        val canDos = canDosFor("A2").map { it.id }.toSet()
+        val report = progressReport(
+            cards = emptyList(),
+            words = emptyMap(),
+            stats = Stats(),
+            read = emptySet(),
+            classicTitles = emptySet(),
+            bridgeTitles = emptySet(),
+            accuracy = null,
+            week = WeekActivity(0, 0),
+            canDoDone = canDos,
+            stageLevel = "A2",
+        )
+        assertEquals(4, report.checkpoint.total)
+        assertEquals(4, report.checkpoint.done)
+        assertTrue(report.checkpoint.complete)
+        assertEquals(-1.0, report.week.accuracy)
+    }
+
+    @Test
     fun reportCountsWordsAndMilestones() {
         val known = CardState("chat", createEmptyCard(1).copy(state = State.Review), known = true)
         val learning = CardState("chien", createEmptyCard(1).copy(state = State.Learning))
@@ -27,6 +48,7 @@ class ProgressTest {
             classicTitles = setOf("La Parure"),
             bridgeTitles = setOf(bridgeReadId("Beowulf")),
             accuracy = 0.9,
+            week = WeekActivity(reviews = 12, good = 9),
             canDoDone = setOf("A1-1"),
             stageLevel = "A1",
         )
@@ -39,5 +61,8 @@ class ProgressTest {
         assertTrue(report.milestones.single { it.id == "words-100" }.done.not())
         assertEquals(4, report.canDos.size)
         assertTrue("A1-1" in report.canDoDone)
+        assertEquals(Checkpoint("A1", 1, 4), report.checkpoint)
+        assertTrue(!report.checkpoint.complete)
+        assertEquals(0.75, report.week.accuracy)
     }
 }
