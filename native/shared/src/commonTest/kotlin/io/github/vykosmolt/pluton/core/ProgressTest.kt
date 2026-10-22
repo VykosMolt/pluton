@@ -18,8 +18,9 @@ class ProgressTest {
     fun reportCountsWordsAndMilestones() {
         val known = CardState("chat", createEmptyCard(1).copy(state = State.Review), known = true)
         val learning = CardState("chien", createEmptyCard(1).copy(state = State.Learning))
+        val chunk = CardState("chunk:il y a", createEmptyCard(1).copy(state = State.Review), known = true)
         val report = progressReport(
-            cards = listOf(known, learning),
+            cards = listOf(known, learning, chunk),
             words = emptyMap(),
             stats = Stats(read = listOf("La Parure"), listened = 3600, spoken = 1, talked = 10, written = 1),
             read = setOf("La Parure", bridgeReadId("Beowulf")),

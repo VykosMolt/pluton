@@ -483,5 +483,6 @@ emulator/device, so the APK is built but not launched.
   8 targets), the built-in sentence clip is only offered when the built-in sentence is displayed, the dictogloss is
   hidden without media, and two chunk lemma links were corrected (`rendez-vous`, `course`). Tests: real
   blankable mined pairs, elisions/curly apostrophes, long continuation endings, exact 24 chunks × all reps cloze,
-  empty/graduated grammar focus, and story parsing. Verified: 113 shared JVM tests, 23 Android JVM tests,
-  0 failures; APK builds; Swift parses; CI for the preceding commit was green (build + simulator launch).
+  empty/graduated grammar focus, story parsing, and a Robolectric word-sheet test that clicks a chunk's Add.
+  Verified: 113 shared JVM tests, 24 Android JVM tests, 0 failures; APK builds; Swift parses; CI for the preceding
+  commit was green (build + simulator launch).

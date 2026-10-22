@@ -32,11 +32,11 @@ struct RunView: View {
     }
 
     private func sentence(for item: RunItem) -> String {
-        model.sentence(for: item.card)
+        model.sentence(for: item.lemma)
     }
 
     private func form(for item: RunItem) -> String {
-        model.form(for: item.card)
+        model.form(for: item.lemma)
     }
 
     private func mode(for item: RunItem) -> String {

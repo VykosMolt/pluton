@@ -84,8 +84,8 @@ fun progressReport(
     canDoDone: Set<String>,
     stageLevel: String,
 ): ProgressReport {
-    val known = cards.count { isWord(it) && status(it, words[it.lemma]) == WordStatus.Known }
-    val learning = cards.count { isWord(it) && status(it, words[it.lemma]) == WordStatus.Learning }
+    val known = cards.count { isWord(it) && !isChunk(it.lemma) && status(it, words[it.lemma]) == WordStatus.Known }
+    val learning = cards.count { isWord(it) && !isChunk(it.lemma) && status(it, words[it.lemma]) == WordStatus.Learning }
     fun milestone(id: String, label: String, have: Int, need: Int) =
         Milestone(id, label, have >= need, have, need)
     val milestones = listOf(

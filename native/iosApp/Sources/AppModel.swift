@@ -320,8 +320,8 @@ final class AppModel: ObservableObject {
         refresh()
     }
 
-    func sentence(for card: CardState?) -> String { bridge.runSentence(card: card, words: words) }
-    func form(for card: CardState?) -> String { bridge.runForm(card: card, words: words) }
+    func sentence(for lemma: String) -> String { bridge.runSentence(card: cards[lemma], words: words) }
+    func form(for lemma: String) -> String { bridge.runForm(card: cards[lemma], words: words) }
 
     func saveOnboarding(minutes: Int) {
         bridge.saveOnboarding(store: store, minutes: Int32(minutes))
