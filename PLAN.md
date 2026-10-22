@@ -588,4 +588,5 @@ emulator/device, so the APK is built but not launched.
   chapter. Verified: 130 shared JVM tests, 30 Android JVM tests, 0 failures; APK rebuilds with the 12-chapter/
   184-sentence story; web 46/46 tests, build succeeds, smoke exits 0 with 44 checks. Remaining deployment step:
   gh-pages still carries the 10-chapter bundle fetched by the iOS workflow; run `npm run deploy` so the web app
-  and iOS CI artifact get story-10/11 and the 28 new clips. The next commit awaits CI.
+  and iOS CI artifact get story-10/11 and the 28 new clips. CI for 40e651d7 (39864608317) is green for build
+  and simulator smoke; the final web-only tweak c49cb8fc passed 46 web tests and the 44-check smoke locally.
