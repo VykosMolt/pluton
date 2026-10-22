@@ -551,3 +551,11 @@ emulator/device, so the APK is built but not launched.
   snapshots the session against parent recomposition. Verified: 124 shared JVM tests, 29 Android JVM tests,
   0 failures; APK builds; Swift parses; CI for 2ab0c225 green. HEAD 12334adf plus this review-fix commit were made
   while GitHub DNS was down; push them when the network returns.
+- 2026-10-22: P6 depth and dashboard. The chunk shelf grows from 24 to 36 (avoir l'air, tout le monde, être
+  d'accord, en ce moment, tout à l'heure, pas du tout, de plus en plus, au bout du compte, grâce à, à cause de,
+  faire semblant de, dès que), each with a valid example and dictionary lemma links; the test asserts 36 and the new
+  lookups. Progress gains an Error log (30-day corrections grouped by kind, top three) and Vocabulary growth: daily
+  known/learning snapshots in local meta (Store.progressSnapshots/saveProgressSnapshot, 60-day cap), written from
+  Android's card-stamp effect and iOS refresh, drawn as a 14-day bar row. Tests: error-kind window/limit, snapshot
+  replace/sort/cap, and the Progress cards' presence. Verified: 126 shared JVM tests, 29 Android JVM tests,
+  0 failures; APK builds; Swift parses. Next: adversarial review of P6.

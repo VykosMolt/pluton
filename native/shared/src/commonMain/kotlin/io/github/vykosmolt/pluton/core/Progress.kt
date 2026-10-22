@@ -1,13 +1,34 @@
 package io.github.vykosmolt.pluton.core
 
+import kotlinx.serialization.Serializable
+
 // A small, honest progress report: vocabulary is a rough CEFR waypoint, not a test; can-do statements are
 // self-assessment; milestones celebrate concrete things the learner has done.
 
 data class CanDo(val id: String, val text: String)
 
+@Serializable
+data class ProgressSnapshot(val day: String, val known: Int, val learning: Int)
+
+data class StudyCounts(val known: Int, val learning: Int)
+
 data class Checkpoint(val level: String, val done: Int, val total: Int) {
     val complete: Boolean get() = total > 0 && done >= total
 }
+
+data class ErrorKindCount(val kind: String, val count: Int)
+
+/** Corrections by kind in a window, most frequent first; blank kinds are ignored. */
+fun errorKindCounts(corrections: List<CorrectionRecord>, since: Long, limit: Int = 3): List<ErrorKindCount> =
+    corrections.asSequence()
+        .filter { it.at >= since && it.kind.isNotBlank() }
+        .groupingBy { it.kind.trim() }
+        .eachCount()
+        .entries
+        .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+        .take(limit.coerceAtLeast(0))
+        .map { ErrorKindCount(it.key, it.value) }
+        .toList()
 
 /** Reviews in the last seven days; accuracy is -1 until there is one. */
 data class WeekActivity(val reviews: Int, val good: Int) {
@@ -31,6 +52,7 @@ data class ProgressReport(
     val accuracy: Double,
     val week: WeekActivity,
     val checkpoint: Checkpoint,
+    val growth: List<ProgressSnapshot>,
     val canDos: List<CanDo>,
     val canDoDone: Set<String>,
     val milestones: List<Milestone>,
@@ -40,6 +62,20 @@ data class ProgressReport(
 fun bridgeReadId(title: String): String = "bridge:$title"
 
 /** A deliberately broad receptive vocabulary estimate; the app labels it as an estimate, never a CEFR test. */
+fun studyCounts(cards: List<CardState>, words: Map<String, Word>): StudyCounts {
+    var known = 0
+    var learning = 0
+    for (card in cards) {
+        if (!isWord(card) || isChunk(card.lemma)) continue
+        when (status(card, words[card.lemma])) {
+            WordStatus.Known -> known++
+            WordStatus.Learning -> learning++
+            else -> Unit
+        }
+    }
+    return StudyCounts(known, learning)
+}
+
 fun cefrEstimate(knownWords: Int): String = when {
     knownWords < 500 -> "A1"
     knownWords < 1500 -> "A1–A2"
@@ -95,9 +131,11 @@ fun progressReport(
     week: WeekActivity,
     canDoDone: Set<String>,
     stageLevel: String,
+    snapshots: List<ProgressSnapshot> = emptyList(),
 ): ProgressReport {
-    val known = cards.count { isWord(it) && !isChunk(it.lemma) && status(it, words[it.lemma]) == WordStatus.Known }
-    val learning = cards.count { isWord(it) && !isChunk(it.lemma) && status(it, words[it.lemma]) == WordStatus.Learning }
+    val counts = studyCounts(cards, words)
+    val known = counts.known
+    val learning = counts.learning
     fun milestone(id: String, label: String, have: Int, need: Int) =
         Milestone(id, label, have >= need, have, need)
     val milestones = listOf(
@@ -125,6 +163,7 @@ fun progressReport(
         accuracy = accuracy ?: -1.0,
         week = week,
         checkpoint = Checkpoint(stageLevel, canDos.count { it.id in canDoDone }, canDos.size),
+        growth = snapshots.sortedBy { it.day }.takeLast(14),
         canDos = canDos,
         canDoDone = canDoDone,
         milestones = milestones,

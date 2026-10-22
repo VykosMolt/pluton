@@ -99,6 +99,8 @@ final class AppModel: ObservableObject {
         accuracy = bridge.recentAccuracy(store: store)
         writings = bridge.writings(store: store)
         corrections = bridge.corrections(store: store)
+        let counts = bridge.studyCounts(cards: Array(cards.values), words: words)
+        bridge.saveProgressSnapshot(store: store, day: Self.today(), known: counts.known, learning: counts.learning)
     }
 
     static func today() -> String {
@@ -294,7 +296,8 @@ final class AppModel: ObservableObject {
             accuracy: accuracy,
             week: bridge.weekActivity(store: store, now: Self.now()),
             canDoDone: Array(Set(bridge.canDoDone(store: store))),
-            stageLevel: stageLevel
+            stageLevel: stageLevel,
+            snapshots: bridge.progressSnapshots(store: store)
         )
     }
 
@@ -327,6 +330,18 @@ final class AppModel: ObservableObject {
     func reviewError(id: Int64, result: String) {
         _ = bridge.reviewError(store: store, id: id, result: result, now: Self.now())
         refresh()
+    }
+
+    private var errorSince: Int64 { Self.now() - Int64(30 * 86_400_000) }
+
+    func errorKinds() -> [ErrorKindCount] {
+        bridge.errorKindCounts(corrections: corrections, since: errorSince, limit: 3)
+    }
+
+    func errorTotal() -> Int {
+        corrections.filter {
+            $0.at >= errorSince && !$0.kind.trimmingCharacters(in: .whitespaces).isEmpty
+        }.count
     }
 
     func addChunk(_ chunk: Chunk) {

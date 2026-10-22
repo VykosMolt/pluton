@@ -53,6 +53,53 @@ struct ProgressView: View {
                 }
 
                 card {
+                    Text("Vocabulary growth").font(.headline)
+                    let growth = report.growth
+                    if growth.count < 2 {
+                        Text("Come back in a few days; Pluton is counting.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        let first = growth[0]
+                        let last = growth[growth.count - 1]
+                        Text("\(first.known) → \(last.known) known · \(first.day) to \(last.day)")
+                            .font(.subheadline)
+                        let maxKnown = max(growth.map { Int($0.known) }.max() ?? 1, 1)
+                        HStack(alignment: .bottom, spacing: 2) {
+                            ForEach(0..<growth.count, id: \.self) { i in
+                                let known = Int(growth[i].known)
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.blue.opacity(0.55))
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: max(2, CGFloat(known) / CGFloat(maxKnown) * 40))
+                            }
+                        }
+                        .frame(height: 40)
+                    }
+                }
+
+                card {
+                    Text("Error log · 30 days").font(.headline)
+                    let total = model.errorTotal()
+                    if total == 0 {
+                        Text("No corrections yet. Write a paragraph and ask for a correction.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("\(total) correction\(total == 1 ? "" : "s") · most common first")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        ForEach(model.errorKinds(), id: \.kind) { item in
+                            HStack {
+                                Text(item.kind).font(.subheadline)
+                                Spacer()
+                                Text("\(item.count)").font(.subheadline.bold())
+                            }
+                        }
+                    }
+                }
+
+                card {
                     Text("Can you…? · \(report.stageLevel)").font(.headline)
                     Text("Self-assessment for your current stage. Be honest; a tick is not a test result.")
                         .font(.footnote)

@@ -1,10 +1,14 @@
 package io.github.vykosmolt.pluton
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -25,6 +29,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.vykosmolt.pluton.core.ErrorKindCount
 import io.github.vykosmolt.pluton.core.ProgressReport
 import io.github.vykosmolt.pluton.core.Store
 
@@ -34,6 +39,8 @@ internal fun ProgressScreen(
     report: ProgressReport,
     store: Store,
     finished: List<String>,
+    errorKinds: List<ErrorKindCount>,
+    errorTotal: Int,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -78,6 +85,55 @@ internal fun ProgressScreen(
                 } else {
                     Text("${week.reviews} reviews · ${(week.accuracy * 100).toInt()}% Good/Easy", fontSize = 22.sp, fontWeight = FontWeight.Black, color = scheme.secondary)
                     Text("Only the last seven days; the 30-review accuracy is above.", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+                }
+            }
+        }
+
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Vocabulary growth", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                val growth = report.growth
+                if (growth.size < 2) {
+                    Text("Come back in a few days; Pluton is counting.", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+                } else {
+                    val first = growth.first()
+                    val last = growth.last()
+                    Text("${first.known} → ${last.known} known · ${first.day} to ${last.day}", fontSize = 15.sp)
+                    val maxKnown = growth.maxOf { it.known }.coerceAtLeast(1)
+                    Row(
+                        Modifier.fillMaxWidth().height(48.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        for (snapshot in growth) {
+                            Box(
+                                Modifier.weight(1f)
+                                    .fillMaxHeight((snapshot.known.toFloat() / maxKnown).coerceAtLeast(0.03f))
+                                    .background(scheme.primary.copy(alpha = 0.55f)),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Error log · 30 days", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                if (errorTotal == 0) {
+                    Text("No corrections yet. Write a paragraph and ask for a correction.", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+                } else {
+                    Text(
+                        "$errorTotal correction${if (errorTotal == 1) "" else "s"} · most common first",
+                        color = scheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                    )
+                    for (item in errorKinds) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(item.kind, fontSize = 15.sp)
+                            Text("${item.count}", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+                    }
                 }
             }
         }

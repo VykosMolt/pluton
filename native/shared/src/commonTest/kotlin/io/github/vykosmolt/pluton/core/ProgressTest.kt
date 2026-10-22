@@ -15,6 +15,23 @@ class ProgressTest {
     }
 
     @Test
+    fun errorKindsAreCountedInTheWindowMostFrequentFirst() {
+        fun row(id: Long, kind: String, at: Long) =
+            CorrectionRecord(id, "writing", kind, "a$id", "b$id", "why", at, resolved = false)
+        val rows = listOf(
+            row(1, "spelling", 1000),
+            row(2, "grammar", 2000),
+            row(3, "grammar", 3000),
+            row(4, "vocabulary", 4000),
+            row(5, "", 5000),
+            row(6, "grammar", 100),
+        )
+        val counts = errorKindCounts(rows, since = 500)
+        assertEquals(listOf(ErrorKindCount("grammar", 2), ErrorKindCount("spelling", 1), ErrorKindCount("vocabulary", 1)), counts)
+        assertEquals(1, errorKindCounts(rows, since = 500, limit = 1).size)
+    }
+
+    @Test
     fun aCheckpointCompletesWhenEveryCanDoIsTicked() {
         val canDos = canDosFor("A2").map { it.id }.toSet()
         val report = progressReport(
@@ -51,6 +68,7 @@ class ProgressTest {
             week = WeekActivity(reviews = 12, good = 9),
             canDoDone = setOf("A1-1"),
             stageLevel = "A1",
+            snapshots = listOf(ProgressSnapshot("2026-10-22", 1, 1), ProgressSnapshot("2026-10-20", 1, 0)),
         )
         assertEquals(1, report.knownWords)
         assertEquals(1, report.learningWords)
@@ -64,5 +82,6 @@ class ProgressTest {
         assertEquals(Checkpoint("A1", 1, 4), report.checkpoint)
         assertTrue(!report.checkpoint.complete)
         assertEquals(0.75, report.week.accuracy)
+        assertEquals(listOf("2026-10-20", "2026-10-22"), report.growth.map { it.day })
     }
 }

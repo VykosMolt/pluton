@@ -209,6 +209,21 @@ class Store(private val db: PlutonDb) {
         ReviewEntry(it.lemma, it.rating.toInt(), it.mode, it.at, it.overridden != 0L)
     }
 
+    /** Daily known/learning snapshots, oldest first; capped at 60 days. */
+    fun progressSnapshots(): List<ProgressSnapshot> =
+        meta("progress_snapshots")?.let {
+            runCatching { json.decodeFromString<List<ProgressSnapshot>>(it) }.getOrNull()
+        } ?: emptyList()
+
+    fun saveProgressSnapshot(day: String, known: Int, learning: Int) {
+        val existing = progressSnapshots()
+        if (existing.any { it.day == day && it.known == known && it.learning == learning }) return
+        val next = (existing.filterNot { it.day == day } + ProgressSnapshot(day, known, learning))
+            .sortedBy { it.day }
+            .takeLast(60)
+        putMeta("progress_snapshots", json.encodeToString(next))
+    }
+
     /** Review count and Good/Easy count over the last seven days. */
     fun weekActivity(now: Long): WeekActivity {
         val since = now - 7L * 24 * 60 * 60 * 1000

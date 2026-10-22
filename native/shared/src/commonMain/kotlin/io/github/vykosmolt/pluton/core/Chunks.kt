@@ -37,6 +37,18 @@ val CHUNKS: List<Chunk> = listOf(
     Chunk("tout de suite", "right away", "Viens tout de suite !", "Come right away!", listOf("tout", "suite"), "A1"),
     Chunk("mal à la tête", "a headache", "J'ai mal à la tête.", "I have a headache.", listOf("mal", "tête"), "A2"),
     Chunk("faire les courses", "to do the shopping", "Je dois faire les courses.", "I have to do the shopping.", listOf("faire", "course"), "A2"),
+    Chunk("avoir l'air", "to seem / to look", "Tu vas avoir l'air fatigué.", "You are going to look tired.", listOf("avoir", "air"), "A2"),
+    Chunk("tout le monde", "everyone", "Tout le monde aime le chat.", "Everyone loves the cat.", listOf("tout", "monde"), "A1"),
+    Chunk("être d'accord", "to agree", "Je vais être d'accord avec toi.", "I am going to agree with you.", listOf("être", "accord"), "A1"),
+    Chunk("en ce moment", "right now", "En ce moment, je lis un livre.", "Right now, I am reading a book.", listOf("moment"), "A1"),
+    Chunk("tout à l'heure", "in a moment / earlier", "Je reviens tout à l'heure.", "I will be back in a moment.", listOf("tout", "heure"), "A1"),
+    Chunk("pas du tout", "not at all", "Je ne suis pas du tout fatigué.", "I am not at all tired.", listOf("tout"), "A2"),
+    Chunk("de plus en plus", "more and more", "Il fait de plus en plus froid.", "It is getting colder and colder.", listOf("plus"), "A2"),
+    Chunk("au bout du compte", "in the end / all things considered", "Au bout du compte, il est parti.", "In the end, he left.", listOf("bout", "compte"), "B1"),
+    Chunk("grâce à", "thanks to", "Grâce à toi, j'ai compris.", "Thanks to you, I understood.", listOf("grâce"), "A2"),
+    Chunk("à cause de", "because of", "Le train est en retard à cause de la neige.", "The train is late because of the snow.", listOf("cause"), "A2"),
+    Chunk("faire semblant de", "to pretend to", "Il va faire semblant de dormir.", "He is going to pretend to sleep.", listOf("faire", "semblant"), "B1"),
+    Chunk("dès que", "as soon as", "Dès que tu arrives, appelle-moi.", "As soon as you arrive, call me.", listOf("dès", "que"), "B1"),
 )
 
 fun chunksFor(lemma: String): List<Chunk> = CHUNKS.filter { lemma in it.lemmas }

@@ -84,6 +84,7 @@ import io.github.vykosmolt.pluton.core.db.PlutonDb
 import io.github.vykosmolt.pluton.core.blank
 import io.github.vykosmolt.pluton.core.buildRun
 import io.github.vykosmolt.pluton.core.chunkWord
+import io.github.vykosmolt.pluton.core.studyCounts
 import io.github.vykosmolt.pluton.core.contextForm
 import io.github.vykosmolt.pluton.core.contextSentence
 import io.github.vykosmolt.pluton.core.decodeCognates
@@ -253,6 +254,11 @@ private fun MainScreen(loaded: Loaded, store: Store, aiStore: AiStore) {
     // Listening/speaking write straight to the store, so re-read the stats when the user comes back to a tab.
     var stats by remember { mutableStateOf(Stats(day = day)) }
     LaunchedEffect(tab, running, day) { if (!running) stats = store.stats(day) }
+    val cardStamp = cards.values.sumOf { it.updated }
+    LaunchedEffect(cardStamp, day) {
+        val counts = studyCounts(cards.values.toList(), deck.wordMap)
+        store.saveProgressSnapshot(day, counts.known, counts.learning)
+    }
     LaunchedEffect(Unit) {
         while (true) {
             delay(60_000)

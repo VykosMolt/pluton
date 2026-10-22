@@ -42,7 +42,8 @@ A simulator build needs no Apple account. A device build needs a signing team in
   button for voice turns and spoken replies; Write with prompts, AI correction, local history, revision and an error
   summary; **Fluency** with shadowing and 4/3/2; and **Sounds** with curated minimal pairs, phrase playback and a
   recording to compare.
-- **More**: Progress (vocabulary estimate, seven-day activity, can-do checkpoint, cabinet, milestones), Error
+- **More**: Progress (vocabulary estimate, seven-day activity, vocabulary growth, error log, can-do checkpoint,
+  cabinet, milestones), Error
   review (spaced: type the fix for each due writing correction and read why), Le Chemin with goals, the deck browser, all
   conjugation tables (tap a form to hear it), grammar topics, and Settings (pace; backup; AI provider/model/key).
 

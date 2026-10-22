@@ -52,6 +52,17 @@ class IosBridge {
 
     fun reviewError(store: Store, id: Long, result: String, now: Long): CorrectionRecord? =
         store.reviewError(id, result, now)
+
+    fun errorKindCounts(corrections: List<CorrectionRecord>, since: Long, limit: Int): List<ErrorKindCount> =
+        io.github.vykosmolt.pluton.core.errorKindCounts(corrections, since, limit)
+
+    fun studyCounts(cards: List<CardState>, words: Map<String, Word>): StudyCounts =
+        io.github.vykosmolt.pluton.core.studyCounts(cards, words)
+
+    fun progressSnapshots(store: Store): List<ProgressSnapshot> = store.progressSnapshots()
+
+    fun saveProgressSnapshot(store: Store, day: String, known: Int, learning: Int) =
+        store.saveProgressSnapshot(day, known, learning)
     fun gradeError(typed: String, expected: String): GradeResult = io.github.vykosmolt.pluton.core.gradeError(typed, expected)
     fun dicteeScore(result: DicteeResult): Int = io.github.vykosmolt.pluton.core.dicteeScore(result)
     fun gradeQuiz(questions: List<QuizQuestion>, answers: List<Int>): QuizResult = io.github.vykosmolt.pluton.core.gradeQuiz(questions, answers)
@@ -164,6 +175,7 @@ class IosBridge {
         week: WeekActivity,
         canDoDone: List<String>,
         stageLevel: String,
+        snapshots: List<ProgressSnapshot>,
     ): ProgressReport = io.github.vykosmolt.pluton.core.progressReport(
         cards,
         words,
@@ -175,6 +187,7 @@ class IosBridge {
         week,
         canDoDone.toSet(),
         stageLevel,
+        snapshots,
     )
     fun practiceDays(store: Store): List<String> = store.practiceDays().toList()
     fun markPlanDone(store: Store, day: String, step: String): List<String> = store.markPlanDone(day, step).toList()

@@ -438,6 +438,24 @@ class StoreTest {
     }
 
     @Test
+    fun progressSnapshotsReplaceSameDayAndCapAtSixty() {
+        val store = store()
+        store.saveProgressSnapshot("2026-10-20", 10, 2)
+        store.saveProgressSnapshot("2026-10-22", 12, 1)
+        store.saveProgressSnapshot("2026-10-21", 11, 2)
+        store.saveProgressSnapshot("2026-10-21", 13, 1)
+        assertEquals(
+            listOf("2026-10-20", "2026-10-21", "2026-10-22"),
+            store.progressSnapshots().map { it.day },
+        )
+        assertEquals(13, store.progressSnapshots()[1].known)
+        val capped = store()
+        repeat(70) { i -> capped.saveProgressSnapshot("d%03d".format(i), i, 0) }
+        assertEquals(60, capped.progressSnapshots().size)
+        assertEquals("d010", capped.progressSnapshots().first().day)
+    }
+
+    @Test
     fun weekActivityCountsOnlyTheLastSevenDays() {
         val store = store()
         val now = 10L * 86_400_000L

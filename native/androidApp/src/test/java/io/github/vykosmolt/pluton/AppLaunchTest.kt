@@ -173,6 +173,8 @@ class AppLaunchTest {
         }
         rule.onNodeWithText("Vocabulary estimate").assertExists()
         rule.onNodeWithText("Last 7 days").assertExists()
+        rule.onNodeWithText("Vocabulary growth").assertExists()
+        rule.onNodeWithText("Error log · 30 days").assertExists()
         rule.onNodeWithText("Cabinet").assertExists()
         val before = rule.onNodeWithTag("checkpoint").fetchSemanticsNode()
             .config[SemanticsProperties.Text].joinToString(" ") { it.text }

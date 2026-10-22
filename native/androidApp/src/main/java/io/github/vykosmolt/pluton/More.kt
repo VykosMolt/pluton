@@ -49,6 +49,7 @@ import io.github.vykosmolt.pluton.core.Store
 import io.github.vykosmolt.pluton.core.StoryChapter
 import io.github.vykosmolt.pluton.core.bridgeReadId
 import io.github.vykosmolt.pluton.core.errorDrills
+import io.github.vykosmolt.pluton.core.errorKindCounts
 import io.github.vykosmolt.pluton.core.Word
 import io.github.vykosmolt.pluton.core.conjKey
 import io.github.vykosmolt.pluton.core.createEmptyCard
@@ -103,6 +104,8 @@ internal fun MoreScreen(
                 for (t in shelf.filter { it.lang != "fr" }) if (bridgeReadId(t.title) in read) add(t.title)
                 for (t in store.texts()) if ("text-${t.id}" in read) add(t.title)
             }
+            val corrections = store.corrections()
+            val errorSince = System.currentTimeMillis() - 30L * 86_400_000L
             ProgressScreen(
                 report = progressReport(
                     cards = cards.values.toList(),
@@ -115,9 +118,12 @@ internal fun MoreScreen(
                     week = store.weekActivity(System.currentTimeMillis()),
                     canDoDone = store.canDoDone(),
                     stageLevel = path.stages.getOrNull(path.current)?.stage?.level ?: "C1",
+                    snapshots = store.progressSnapshots(),
                 ),
                 store = store,
                 finished = finished,
+                errorKinds = errorKindCounts(corrections, errorSince),
+                errorTotal = corrections.count { it.at >= errorSince && it.kind.isNotBlank() },
                 onBack = { section = Section.Hub },
                 modifier = modifier,
             )

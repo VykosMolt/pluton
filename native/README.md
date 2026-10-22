@@ -150,7 +150,7 @@ live in the app's SQLite database; the AI key lives in private prefs (Android ba
 and is excluded from the JSON backup. Speech recognition and text-to-speech are platform services (on-device or
 system-provided, depending on the device); only the recognized transcript is sent to the AI. The only network calls are the AI requests you trigger (and the media files
 you pick in Listen are read locally). The shared `Sync.kt` merge rules remain for reference but nothing in either
-app wires them up. 124 shared JVM tests and 29 Android JVM tests pass (5 AI, 24 Robolectric UI). The APK is 55 MB with 3,053 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
+app wires them up. 126 shared JVM tests and 29 Android JVM tests pass (5 AI, 24 Robolectric UI). The APK is 55 MB with 3,053 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
 core-library desugaring for `java.time` on minSdk 24.
 `AppLaunchTest` launches the real Activity under Robolectric on the JVM and verifies the deck/shelf assets, SQLite,
 Home (with the path stage), all five tabs, the story + classics list, the Your texts section, the Listen pickers, the
@@ -174,7 +174,7 @@ ticks and correction schedules), and both platforms now have an export/import UI
 
 P1 adds the speaking loop: Talk has a microphone (Android SpeechRecognizer / iOS SFSpeechRecognizer), sends the transcript to the AI and can speak the reply with French TTS; Speak also has a **Fluency** mode (shadowing, plus 4/3/2 with a countdown and recording) and a **Sounds** mode (nine curated lessons: nasals, /y/–/u/, /ʁ/, /s/–/z/, /ʃ/–/ʒ/, final consonants, liaison, silent letters, e caduc) with a minimal-pair quiz, phrase playback and recording. The Android manifest already had RECORD_AUDIO; iOS already had the microphone/speech usage strings. No new server, no new account, no new permission beyond the existing microphone.
 
-P2 starts the depth pass: 24 curated French chunks (il y a, avoir besoin de, tout à coup, …) become normal SRS cards from the word sheet, with synthetic `chunk:` lemmas and cloze-only reviews; mined words alternate between the sentence they were tapped in and their dictionary sentence, with the matching inflected form; grammar/conjugation focus is computed from the learner's current card state and passed into Talk, Write and a reading notice; Android Listen has a dictogloss (type the line you hear, word-level feedback); and “Continue this text” asks the AI for a 150–250-word continuation and saves it as a new local text. iOS has chunks, context alternation, focus prompts, reading notices, continuation and the Listen tab (audio/video, subtitles, line controls, dictogloss).
+P2 starts the depth pass: 36 curated French chunks (il y a, avoir besoin de, tout à coup, …) become normal SRS cards from the word sheet, with synthetic `chunk:` lemmas and cloze-only reviews; mined words alternate between the sentence they were tapped in and their dictionary sentence, with the matching inflected form; grammar/conjugation focus is computed from the learner's current card state and passed into Talk, Write and a reading notice; Android Listen has a dictogloss (type the line you hear, word-level feedback); and “Continue this text” asks the AI for a 150–250-word continuation and saves it as a new local text. iOS has chunks, context alternation, focus prompts, reading notices, continuation and the Listen tab (audio/video, subtitles, line controls, dictogloss).
 
 P3 completes assessment and polish: More→Progress shows a broad receptive vocabulary estimate (A1–C1 range,
 explicitly not a test), last-30-review accuracy, a Last 7 days card (review count and Good/Easy rate), a can-do
@@ -193,4 +193,8 @@ are due now. A correct answer moves the next review 1 → 3 → 7 → 16 → 35 
 tomorrow; wrong resets it to now; six correct reviews retire a correction. The More entry counts due drills, and
 backups carry the schedule.
 
-Next: more curated chunks, a broader story series, and device polish.
+P6 broadens the depth and the dashboard: the chunk shelf grows to 36, and More→Progress gains an Error log
+(last 30 days of corrections by kind) and Vocabulary growth (one known/learning snapshot per day, up to 60 local
+days, drawn as a 14-day bar row). Snapshots live in local meta and are not part of the JSON backup.
+
+Next: a broader story series and device polish.

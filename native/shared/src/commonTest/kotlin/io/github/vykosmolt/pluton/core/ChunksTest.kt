@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 class ChunksTest {
     @Test
     fun chunksAreUsableAndFindableFromTheirWords() {
-        assertEquals(24, CHUNKS.size)
+        assertEquals(36, CHUNKS.size)
         assertEquals(CHUNKS.size, CHUNKS.map { it.text }.toSet().size)
         for (chunk in CHUNKS) {
             assertTrue(chunk.text.isNotBlank() && chunk.gloss.isNotBlank(), chunk.text)
@@ -18,6 +18,9 @@ class ChunksTest {
         assertTrue(chunksFor("temps").any { it.text == "de temps en temps" })
         assertTrue(chunksFor("rendez-vous").any { it.text == "prendre rendez-vous" })
         assertTrue(chunksFor("course").any { it.text == "faire les courses" })
+        assertTrue(chunksFor("air").any { it.text == "avoir l'air" })
+        assertTrue(chunksFor("monde").any { it.text == "tout le monde" })
+        assertTrue(chunksFor("dès").any { it.text == "dès que" })
     }
 
     @Test
