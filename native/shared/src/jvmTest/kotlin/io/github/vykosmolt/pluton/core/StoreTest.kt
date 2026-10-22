@@ -14,6 +14,24 @@ class StoreTest {
         return Store(PlutonDb(driver))
     }
 
+    private fun v1Driver(): JdbcSqliteDriver {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val v1 = listOf(
+            """CREATE TABLE cards (
+                lemma TEXT NOT NULL PRIMARY KEY, due INTEGER NOT NULL, stability REAL NOT NULL,
+                difficulty REAL NOT NULL, elapsed_days INTEGER NOT NULL, scheduled_days INTEGER NOT NULL,
+                reps INTEGER NOT NULL, lapses INTEGER NOT NULL, learning_steps INTEGER NOT NULL,
+                state INTEGER NOT NULL, last_review INTEGER, known INTEGER NOT NULL DEFAULT 0,
+                added INTEGER NOT NULL, mined_sentence TEXT, mined_form TEXT, mined_translation TEXT,
+                updated INTEGER NOT NULL)""",
+            "CREATE TABLE reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, lemma TEXT NOT NULL, rating INTEGER NOT NULL, mode TEXT NOT NULL, at INTEGER NOT NULL, overridden INTEGER NOT NULL DEFAULT 0)",
+            "CREATE INDEX reviews_lemma ON reviews(lemma)",
+            "CREATE TABLE meta (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL)",
+        )
+        for (sql in v1) driver.execute(null, sql, 0)
+        return driver
+    }
+
     @Test
     fun savesCardAndReviewTogetherAndReloads() {
         val store = store()
@@ -136,21 +154,26 @@ class StoreTest {
     }
 
     @Test
-    fun version1DatabaseMigratesToTheCurrentSchema() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        val v1 = listOf(
-            """CREATE TABLE cards (
-                lemma TEXT NOT NULL PRIMARY KEY, due INTEGER NOT NULL, stability REAL NOT NULL,
-                difficulty REAL NOT NULL, elapsed_days INTEGER NOT NULL, scheduled_days INTEGER NOT NULL,
-                reps INTEGER NOT NULL, lapses INTEGER NOT NULL, learning_steps INTEGER NOT NULL,
-                state INTEGER NOT NULL, last_review INTEGER, known INTEGER NOT NULL DEFAULT 0,
-                added INTEGER NOT NULL, mined_sentence TEXT, mined_form TEXT, mined_translation TEXT,
-                updated INTEGER NOT NULL)""",
-            "CREATE TABLE reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, lemma TEXT NOT NULL, rating INTEGER NOT NULL, mode TEXT NOT NULL, at INTEGER NOT NULL, overridden INTEGER NOT NULL DEFAULT 0)",
-            "CREATE INDEX reviews_lemma ON reviews(lemma)",
-            "CREATE TABLE meta (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL)",
+    fun version4CorrectionsGetScheduleDefaults() {
+        val driver = v1Driver()
+        PlutonDb.Schema.migrate(driver, 1, 4).value
+        driver.execute(
+            null,
+            "INSERT INTO corrections(source, kind, original, fix, why, at, resolved) " +
+                "VALUES ('writing', 'spelling', 'a', 'b', 'why', 1000, 0)",
+            0,
         )
-        for (sql in v1) driver.execute(null, sql, 0)
+        PlutonDb.Schema.migrate(driver, 4, 5).value
+        val store = Store(PlutonDb(driver))
+        val drill = store.corrections().single()
+        assertEquals(0L, drill.nextDue)
+        assertEquals(0, drill.reps)
+        assertEquals(1, store.reviewError(drill.id, "right", 2000)?.reps)
+    }
+
+    @Test
+    fun version1DatabaseMigratesToTheCurrentSchema() {
+        val driver = v1Driver()
         PlutonDb.Schema.migrate(driver, 1, 5).value
         val store = Store(PlutonDb(driver))
         store.markKnown("chat", 2000) // old tables still work
@@ -294,10 +317,13 @@ class StoreTest {
             level = "A1",
         )
         store.saveWriting("Dis bonjour", "bonjours", result, 1000)
+        val scheduled = store.reviewError(store.corrections().single().id, "right", 2000)!!
         val copy = store()
         copy.import(store.export())
         assertEquals(store.writings().map { it.corrected }, copy.writings().map { it.corrected })
         assertEquals(store.corrections().map { it.original }, copy.corrections().map { it.original })
+        assertEquals(scheduled.nextDue, copy.corrections().single().nextDue)
+        assertEquals(1, copy.corrections().single().reps)
     }
 
     @Test
@@ -360,6 +386,7 @@ class StoreTest {
         repeat(6) { last = store.reviewError(id, "right", start)!! }
         assertEquals(6, last.reps)
         assertTrue(last.resolved)
+        assertTrue(store.reviewError(id, "wrong", start)!!.resolved) // retired stays retired
         assertTrue(errorDrills(store.corrections(), start).isEmpty())
     }
 

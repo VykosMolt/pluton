@@ -336,6 +336,7 @@ class Store(private val db: PlutonDb) {
     /** Advance one writing correction through a small fixed interval ladder; six right reviews retire it. */
     fun reviewError(id: Long, result: String, now: Long): CorrectionRecord? {
         val current = corrections().firstOrNull { it.id == id } ?: return null
+        if (current.resolved) return current
         val reps = when (result) {
             "right" -> current.reps + 1
             "wrong" -> 0

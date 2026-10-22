@@ -539,4 +539,4 @@ emulator/device, so the APK is built but not launched.
   after six correct reviews. Android More counts only due drills and passes a snapshot to the screen; iOS passes a
   snapshot from MoreView, so scheduling refreshes cannot mutate the drill under the learner. Tests: due/resolved
   filtering, the full schedule/reset/retire path, migration 1→5, and the existing screen tests updated. Verified:
-  121 shared JVM tests, 28 Android JVM tests, 0 failures; APK builds; Swift parses. Next: adversarial review of P5.
+  122 shared JVM tests, 28 Android JVM tests, 0 failures; APK builds; Swift parses. Next: adversarial review of P5.
