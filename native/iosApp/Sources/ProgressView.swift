@@ -86,8 +86,8 @@ struct ProgressView: View {
                         Text("\(finishedTexts.count) finished")
                             .font(.system(size: 22, weight: .black))
                             .foregroundStyle(.blue)
-                        ForEach(Array(finishedTexts.prefix(8).enumerated()), id: \.offset) { _, title in
-                            Text("• \(title)").font(.subheadline)
+                        ForEach(0..<min(finishedTexts.count, 8), id: \.self) { i in
+                            Text("• \(finishedTexts[i])").font(.subheadline)
                         }
                         if finishedTexts.count > 8 {
                             Text("+ \(finishedTexts.count - 8) more")
