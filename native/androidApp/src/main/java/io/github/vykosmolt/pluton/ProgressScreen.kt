@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -76,7 +77,7 @@ internal fun ProgressScreen(
                     Text("No reviews yet this week. A short run starts the record.", color = scheme.onSurfaceVariant)
                 } else {
                     Text("${week.reviews} reviews · ${(week.accuracy * 100).toInt()}% Good/Easy", fontSize = 22.sp, fontWeight = FontWeight.Black, color = scheme.secondary)
-                    Text("Only the last seven days; your all-time accuracy is above.", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+                    Text("Only the last seven days; the 30-review accuracy is above.", color = scheme.onSurfaceVariant, fontSize = 13.sp)
                 }
             }
         }
@@ -85,13 +86,16 @@ internal fun ProgressScreen(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Can you…? · ${report.stageLevel}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Text("Self-assessment for your current stage. Be honest; a tick is not a test result.", color = scheme.onSurfaceVariant, fontSize = 13.sp)
-                val checkpoint = report.checkpoint
+                // Use the live local ticks, not the report snapshot taken when More opened.
+                val ticked = report.canDos.count { it.id in done }
+                val complete = report.canDos.isNotEmpty() && ticked == report.canDos.size
                 Text(
-                    if (checkpoint.complete) "All ${checkpoint.total} ticked — tell Pluton you're ready for the next stage."
-                    else "${checkpoint.done} of ${checkpoint.total} ticked.",
-                    color = if (checkpoint.complete) scheme.secondary else scheme.onSurfaceVariant,
+                    if (complete) "All ${report.canDos.size} ticked — see Le Chemin when you're ready for the next stage."
+                    else "$ticked of ${report.canDos.size} ticked.",
+                    color = if (complete) scheme.secondary else scheme.onSurfaceVariant,
                     fontSize = 13.sp,
-                    fontWeight = if (checkpoint.complete) FontWeight.Bold else FontWeight.Normal,
+                    fontWeight = if (complete) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.testTag("checkpoint"),
                 )
                 for (item in report.canDos) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

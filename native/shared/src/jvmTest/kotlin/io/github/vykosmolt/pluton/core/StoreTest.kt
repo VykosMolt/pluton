@@ -113,12 +113,14 @@ class StoreTest {
         store.addText("Titre", "Bonjour", now)
         store.addIntroduced("2026-10-21", 5)
         store.addListened(30)
+        store.setCanDo("A1-1", true)
         val copy = store()
         copy.import(store.export())
         assertEquals(store.cards(), copy.cards())
         assertEquals(store.reviews(), copy.reviews())
         assertEquals(store.texts().map { it.title to it.body }, copy.texts().map { it.title to it.body })
         assertEquals(store.stats("2026-10-21"), copy.stats("2026-10-21"))
+        assertEquals(setOf("A1-1"), copy.canDoDone())
     }
 
     @Test
@@ -374,11 +376,13 @@ class StoreTest {
             level = "A2",
         )
         store.saveWriting("Raconte", "je suis alle", result, 1000)
+        store.setCanDo("A2-1", true)
         val legacy = kotlinx.serialization.json.Json.encodeToString(Backup(version = 1))
         store.import(legacy)
         assertEquals(1, store.writings().size)
         assertEquals(1, store.corrections().size)
         assertEquals("Je suis allé.", store.writings().single().corrected)
+        assertEquals(setOf("A2-1"), store.canDoDone())
     }
 
     @Test

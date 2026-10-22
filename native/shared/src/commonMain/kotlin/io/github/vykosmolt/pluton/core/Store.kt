@@ -122,6 +122,7 @@ data class Backup(
     val writings: List<BackupWriting> = emptyList(),
     val corrections: List<BackupCorrection> = emptyList(),
     val stats: Stats = Stats(),
+    val canDo: List<String> = emptyList(),
 )
 
 class Store(private val db: PlutonDb) {
@@ -361,7 +362,7 @@ class Store(private val db: PlutonDb) {
     /** Everything that matters on this device, as JSON. */
     fun export(): String = json.encodeToString(
         Backup(
-            version = 2,
+            version = 3,
             cards = cards(),
             reviews = reviews(),
             texts = texts().map { BackupText(it.title, it.body, it.added) },
@@ -372,6 +373,7 @@ class Store(private val db: PlutonDb) {
                 BackupCorrection(it.source, it.kind, it.original, it.fix, it.why, it.at, it.resolved)
             },
             stats = rawStats(),
+            canDo = canDoDone().toList(),
         ),
     )
 
@@ -414,6 +416,8 @@ class Store(private val db: PlutonDb) {
                 db.plutonQueries.putMeta("revision_id", "")
             }
             db.plutonQueries.putMeta("stats", json.encodeToString(backup.stats))
+            // A v1/v2 file predates the can-do self-assessment, so it must not erase the local ticks.
+            if (backup.version >= 3) db.plutonQueries.putMeta("cando", backup.canDo.joinToString(","))
             // A restored device starts from scratch: old deletions must not wipe the account, and pulled records
             // must be re-fetched. The device identity is kept.
             db.plutonQueries.deleteAllTombstones()

@@ -46,7 +46,7 @@ struct ProgressView: View {
                         Text("\(report.week.reviews) reviews · \(Int(report.week.accuracy * 100))% Good/Easy")
                             .font(.system(size: 22, weight: .black))
                             .foregroundStyle(.green)
-                        Text("Only the last seven days; your all-time accuracy is above.")
+                        Text("Only the last seven days; the 30-review accuracy is above.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -57,11 +57,13 @@ struct ProgressView: View {
                     Text("Self-assessment for your current stage. Be honest; a tick is not a test result.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    Text(report.checkpoint.complete
-                         ? "All \(report.checkpoint.total) ticked — tell Pluton you're ready for the next stage."
-                         : "\(report.checkpoint.done) of \(report.checkpoint.total) ticked.")
+                    let ticked = report.canDos.count { canDoDone.contains($0.id) }
+                    let complete = !report.canDos.isEmpty && ticked == report.canDos.count
+                    Text(complete
+                         ? "All \(report.canDos.count) ticked — see Le Chemin when you're ready for the next stage."
+                         : "\(ticked) of \(report.canDos.count) ticked.")
                         .font(.caption)
-                        .foregroundStyle(report.checkpoint.complete ? Color.green : Color.secondary)
+                        .foregroundStyle(complete ? Color.green : Color.secondary)
                     ForEach(report.canDos, id: \.id) { item in
                         Button {
                             canDoDone = Set(model.setCanDo(item.id, !canDoDone.contains(item.id)))

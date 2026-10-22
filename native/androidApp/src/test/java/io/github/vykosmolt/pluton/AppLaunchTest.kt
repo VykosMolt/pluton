@@ -1,9 +1,12 @@
 package io.github.vykosmolt.pluton
 
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -171,7 +174,14 @@ class AppLaunchTest {
         rule.onNodeWithText("Vocabulary estimate").assertExists()
         rule.onNodeWithText("Last 7 days").assertExists()
         rule.onNodeWithText("Cabinet").assertExists()
-        rule.onNodeWithText("ticked", substring = true).assertExists()
+        val before = rule.onNodeWithTag("checkpoint").fetchSemanticsNode()
+            .config[SemanticsProperties.Text].joinToString(" ") { it.text }
+        assertTrue(before, before.contains("ticked"))
+        rule.onAllNodes(isToggleable())[0].performScrollTo().performClick()
+        val after = rule.onNodeWithTag("checkpoint").fetchSemanticsNode()
+            .config[SemanticsProperties.Text].joinToString(" ") { it.text }
+        assertTrue(after, after.contains("ticked"))
+        org.junit.Assert.assertNotEquals("checkpoint should update when a can-do is ticked", before, after)
         rule.onNodeWithText("Milestones").performScrollTo().assertExists()
         rule.onNodeWithText("Can you…?", substring = true).assertExists()
     }
