@@ -68,7 +68,7 @@ internal fun ErrorReviewScreen(
                         fontSize = 18.sp,
                     )
                     Text(
-                        if (hasCorrections) "Scheduled corrections come back when they are due."
+                        if (hasCorrections) "New corrections appear here; this list only shows what is due."
                         else "Write a paragraph in Speak → Write and get it corrected; the fixes will land here.",
                         color = scheme.onSurfaceVariant,
                     )

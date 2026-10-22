@@ -399,6 +399,45 @@ class StoreTest {
     }
 
     @Test
+    fun duplicateCorrectionsShareOneSchedule() {
+        val store = store()
+        val result = WritingResult(
+            corrected = "Je suis allé.",
+            errors = listOf(WritingError("je suis alle", "je suis allé", "accent", "spelling")),
+            feedback = "Bien",
+            level = "A2",
+        )
+        store.saveWriting("Un", "je suis alle", result, 1000)
+        store.saveWriting("Deux", "je suis alle", result, 2000)
+        assertEquals(2, store.corrections().size)
+        val start = 10_000L
+        val reviewed = store.reviewError(store.corrections().first().id, "right", start)!!
+        assertEquals(1, reviewed.reps)
+        assertTrue(store.corrections().all { it.reps == 1 })
+        assertTrue(store.corrections().all { it.nextDue == start + 86_400_000L })
+        assertTrue(errorDrills(store.corrections(), start + 1).isEmpty())
+    }
+
+    @Test
+    fun almostComesBackTomorrowWithoutAdvancing() {
+        val store = store()
+        val result = WritingResult(
+            corrected = "Je suis allé.",
+            errors = listOf(WritingError("je suis alle", "je suis allé", "accent", "spelling")),
+            feedback = "Bien",
+            level = "A2",
+        )
+        store.saveWriting("Raconte", "je suis alle", result, 1000)
+        val id = store.corrections().single().id
+        val start = 10_000L
+        val almost = store.reviewError(id, "almost", start)!!
+        assertEquals(0, almost.reps)
+        assertEquals(start + 86_400_000L, almost.nextDue)
+        assertEquals(0, store.reviewError(id, "right", start)!!.reps) // not due yet
+        assertEquals(1, errorDrills(store.corrections(), start + 86_400_000L).size)
+    }
+
+    @Test
     fun weekActivityCountsOnlyTheLastSevenDays() {
         val store = store()
         val now = 10L * 86_400_000L

@@ -537,7 +537,17 @@ emulator/device, so the APK is built but not launched.
   unresolved drills whose due time has passed, earliest due first. `Store.reviewError` applies a simple interval
   ladder (1/3/7/16/35 days after correct answers, 1 day after almost, now after wrong) and retires a correction
   after six correct reviews. Android More counts only due drills and passes a snapshot to the screen; iOS passes a
-  snapshot from MoreView, so scheduling refreshes cannot mutate the drill under the learner. Tests: due/resolved
-  filtering, the full schedule/reset/retire path with interval gaps, backup round-trip, migration 1→5 and 4→5, a
-  parent-recomposition snapshot test, and the screen tests updated. Verified:
-  122 shared JVM tests, 29 Android JVM tests, 0 failures; APK builds; Swift parses. Next: adversarial review of P5.
+  snapshot from MoreView, so scheduling refreshes cannot mutate the drill under the learner. Tests: due/resolved filtering, the full schedule/reset/retire path with interval gaps, duplicate-pair
+  scheduling, almost, backup round-trip, migration 1→5 and 4→5, a parent-recomposition snapshot test, and the
+  Check→onGraded wiring. Verified:
+  124 shared JVM tests, 29 Android JVM tests, 0 failures; APK builds; Swift parses. Next: adversarial review of P5.
+- 2026-10-22: adversarial P5 review (2ab0c225, follow-ups checked). Blocking: duplicate corrections had independent
+  schedules, so grading one copy left its twin due the next day; `reviewError` now applies the new schedule to every
+  unresolved row with the same normalized original/fix. Confirmed non-blocking: the iOS drill list is now seeded
+  into `@State` once, so a refresh after Check cannot rebuild the pushed screen with a different list; the
+  empty-state copy no longer promises that retired corrections return; tests now cover duplicate pairs, "almost",
+  and Check→onGraded wiring. Follow-ups already fixed: resolved corrections cannot be revived, the unused 60-day
+  step is gone (1/3/7/16/35), early repeats do not advance the schedule, the hub counts all due drills, and Android
+  snapshots the session against parent recomposition. Verified: 124 shared JVM tests, 29 Android JVM tests,
+  0 failures; APK builds; Swift parses; CI for 2ab0c225 green. HEAD 12334adf plus this review-fix commit were made
+  while GitHub DNS was down; push them when the network returns.

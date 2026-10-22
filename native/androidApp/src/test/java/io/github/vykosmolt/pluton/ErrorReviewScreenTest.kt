@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.vykosmolt.pluton.core.ErrorDrill
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,13 +31,19 @@ class ErrorReviewScreenTest {
 
     @Test
     fun checkingAnAnswerShowsTheFixAndReasonThenAdvances() {
-        rule.setContent { MaterialTheme { ErrorReviewScreen(drills, hasCorrections = true, onGraded = { _, _ -> }, onBack = {}) } }
+        var graded: Pair<Long, String>? = null
+        rule.setContent {
+            MaterialTheme {
+                ErrorReviewScreen(drills, hasCorrections = true, onGraded = { drill, result -> graded = drill.id to result.result }, onBack = {})
+            }
+        }
         rule.onNodeWithText("je suis alle").assertIsDisplayed()
         rule.onNode(hasSetTextAction()).performScrollTo().performTextInput("je suis allé")
         rule.onNodeWithText("Check").performScrollTo().performClick()
         rule.onNodeWithText("Exactly.").assertExists()
         rule.onNodeWithText("The fix: je suis allé").assertExists()
         rule.onNodeWithText("Le participe s'accorde.").assertExists()
+        assertEquals(1L to "right", graded)
         rule.onNodeWithText("Next").performScrollTo().performClick()
         rule.onNodeWithText("les chats").assertExists()
     }

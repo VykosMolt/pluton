@@ -333,24 +333,36 @@ class Store(private val db: PlutonDb) {
         CorrectionRecord(it.id, it.source, it.kind, it.original, it.fix, it.why, it.at, it.resolved != 0L, it.next_due, it.reps.toInt())
     }
 
-    /** Advance one writing correction through a small fixed interval ladder; six right reviews retire it. */
+    /**
+     * Advance a correction through a small fixed interval ladder; six right reviews retire it.
+     * Identical unresolved mistakes share one schedule, so grading one copy does not leave a twin due tomorrow.
+     */
     fun reviewError(id: Long, result: String, now: Long): CorrectionRecord? {
-        val current = corrections().firstOrNull { it.id == id } ?: return null
+        val all = corrections()
+        val current = all.firstOrNull { it.id == id } ?: return null
         // A drill only advances when it is due; cycling the session must not farm repetitions.
         if (current.resolved || current.nextDue > now) return current
+        val original = norm(current.original)
+        val fix = norm(current.fix)
+        val siblings = all.filter { !it.resolved && norm(it.original) == original && norm(it.fix) == fix }
+        val repsBefore = siblings.maxOf { it.reps }
         val reps = when (result) {
-            "right" -> current.reps + 1
+            "right" -> repsBefore + 1
             "wrong" -> 0
-            else -> current.reps
+            else -> repsBefore
         }
         val days = when (result) {
-            "right" -> ERROR_INTERVALS[current.reps.coerceIn(0, ERROR_INTERVALS.lastIndex)]
+            "right" -> ERROR_INTERVALS[repsBefore.coerceIn(0, ERROR_INTERVALS.lastIndex)]
             "almost" -> 1
             else -> 0
         }
         val resolved = result == "right" && reps >= ERROR_RETIRE
         val due = if (resolved) 0 else now + days * 86_400_000L
-        db.plutonQueries.updateCorrectionSchedule(due, reps.toLong(), if (resolved) 1L else 0L, id)
+        db.transaction {
+            for (s in siblings) {
+                db.plutonQueries.updateCorrectionSchedule(due, reps.toLong(), if (resolved) 1L else 0L, s.id)
+            }
+        }
         return corrections().firstOrNull { it.id == id }
     }
 

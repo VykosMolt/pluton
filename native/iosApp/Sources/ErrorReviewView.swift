@@ -4,11 +4,16 @@ import PlutonCore
 /// Retrieval practice for the learner's own writing corrections: see the mistake, type the fix, read why.
 struct ErrorReviewView: View {
     @EnvironmentObject var model: AppModel
-    let drills: [ErrorDrill]
+    @SwiftUI.State private var drills: [ErrorDrill]
     @SwiftUI.State private var index = 0
     @SwiftUI.State private var typed = ""
     @SwiftUI.State private var result: GradeResult?
     @SwiftUI.State private var right = 0
+
+    init(drills: [ErrorDrill]) {
+        // Seed once: grading refreshes `corrections`, and a rebuilt destination must not swap the drill.
+        _drills = State(initialValue: drills)
+    }
 
     var body: some View {
         ScrollView {
@@ -22,7 +27,7 @@ struct ErrorReviewView: View {
                             .font(.headline)
                         Text(model.corrections.isEmpty
                              ? "Write a paragraph in Speak → Write and get it corrected; the fixes will land here."
-                             : "Scheduled corrections come back when they are due.")
+                             : "New corrections appear here; this list only shows what is due.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
