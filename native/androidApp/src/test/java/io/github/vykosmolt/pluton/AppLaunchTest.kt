@@ -187,6 +187,20 @@ class AppLaunchTest {
     }
 
     @Test
+    fun moreTabOpensTheErrorReview() {
+        waitForHome()
+        rule.onNodeWithText("More").performClick()
+        rule.waitUntil(timeoutMillis = 20_000) {
+            rule.onAllNodesWithText("Error review").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("Error review").performScrollTo().performClick()
+        rule.waitUntil(timeoutMillis = 20_000) {
+            rule.onAllNodesWithText("Nothing to review yet").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("Nothing to review yet").assertExists()
+    }
+
+    @Test
     fun moreTabShowsThePath() {
         waitForHome()
         rule.onNodeWithText("More").performClick()

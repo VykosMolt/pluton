@@ -48,6 +48,7 @@ import io.github.vykosmolt.pluton.core.ShelfText
 import io.github.vykosmolt.pluton.core.Store
 import io.github.vykosmolt.pluton.core.StoryChapter
 import io.github.vykosmolt.pluton.core.bridgeReadId
+import io.github.vykosmolt.pluton.core.errorDrills
 import io.github.vykosmolt.pluton.core.Word
 import io.github.vykosmolt.pluton.core.conjKey
 import io.github.vykosmolt.pluton.core.createEmptyCard
@@ -62,7 +63,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private enum class Section { Hub, Progress, Path, Words, Verbs, Grammar, Settings }
+private enum class Section { Hub, Progress, Errors, Path, Words, Verbs, Grammar, Settings }
 
 /** The reference shelf: conjugation tables and grammar topics, both open from day one. */
 @Composable
@@ -121,6 +122,11 @@ internal fun MoreScreen(
                 modifier = modifier,
             )
         }
+        Section.Errors -> ErrorReviewScreen(
+            drills = errorDrills(store.corrections()),
+            onBack = { section = Section.Hub },
+            modifier = modifier,
+        )
         Section.Hub -> Column(
             modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -131,6 +137,17 @@ internal fun MoreScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Progress", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     Text("Level estimate, can-do checks and milestones", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            val correctionCount = store.corrections().size
+            Card(Modifier.fillMaxWidth().clickable { section = Section.Errors }) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Error review", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (correctionCount == 0) "No corrections yet"
+                        else "$correctionCount corrections from your writing",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             Card(Modifier.fillMaxWidth().clickable { section = Section.Path }) {

@@ -150,7 +150,7 @@ live in the app's SQLite database; the AI key lives in private prefs (Android ba
 and is excluded from the JSON backup. Speech recognition and text-to-speech are platform services (on-device or
 system-provided, depending on the device); only the recognized transcript is sent to the AI. The only network calls are the AI requests you trigger (and the media files
 you pick in Listen are read locally). The shared `Sync.kt` merge rules remain for reference but nothing in either
-app wires them up. 115 shared JVM tests and 24 Android JVM tests pass (5 AI, 19 Robolectric UI). The APK is 55 MB with 3,053 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
+app wires them up. 119 shared JVM tests and 27 Android JVM tests pass (5 AI, 22 Robolectric UI). The APK is 55 MB with 3,053 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
 core-library desugaring for `java.time` on minSdk 24.
 `AppLaunchTest` launches the real Activity under Robolectric on the JVM and verifies the deck/shelf assets, SQLite,
 Home (with the path stage), all five tabs, the story + classics list, the Your texts section, the Listen pickers, the
@@ -181,5 +181,11 @@ explicitly not a test), last-30-review accuracy, a Last 7 days card (review coun
 self-assessment for the current stage (saved locally) with a checkpoint line, a Cabinet of finished story chapters,
 classics, Bridge texts and user texts, and milestones for words, reading, classics, Bridge texts, listening hours,
 recordings, AI talk and corrected writing. The same screen is in iOS More.
+
+P4 closes the writing loop: More → Error review turns the corrections from Write into short retrieval drills. It
+shows the sentence you actually wrote, you type the fix, and it grades exact / accent-or-typo / wrong, then shows
+the correction, the reason and the error kind. The shared `errorDrills` de-duplicates by normalised pair and keeps
+the newest 20; `gradeError` reuses the existing grading rules. No new storage or network path: it reads the
+corrections already in SQLite.
 
 Next: more curated chunks, a broader story series, and device polish.

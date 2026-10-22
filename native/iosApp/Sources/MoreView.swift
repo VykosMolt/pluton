@@ -12,6 +12,11 @@ struct MoreView: View {
                 Section("Progress") {
                     NavigationLink { ProgressView() } label: { Label("Progress", systemImage: "chart.bar") }
                 }
+                Section("Practice") {
+                    NavigationLink { ErrorReviewView() } label: {
+                        Label("Error review · \(model.corrections.count)", systemImage: "pencil")
+                    }
+                }
                 Section("Reference") {
                     NavigationLink { PathView() } label: { Label("Path", systemImage: "map") }
                     NavigationLink { WordsView() } label: { Label("Words · \(model.cards.count)", systemImage: "text.book.closed") }

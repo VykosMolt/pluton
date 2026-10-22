@@ -516,3 +516,10 @@ emulator/device, so the APK is built but not launched.
   README says so. Verified: 115 shared JVM tests, 24 Android JVM tests, 0 failures; APK builds; e126/440dd CI
   build jobs green; the simulator smoke job hung in the macOS runner and was cancelled, so only the compile/package
   half of those runs was used.
+- 2026-10-22: P4 error-review loop. The corrections already stored from Write now drive retrieval drills on both
+  platforms: `errorDrills` filters changed non-blank pairs, orders newest first, de-duplicates by normalized pair
+  and caps at 20; `gradeError` reuses `grade` for exact/accent-or-typo/wrong feedback. Android More → Error review
+  and the iOS More → Practice row render the original, a fix field, the grade, the correction and the reason.
+  Tests: drill filtering/order/dedupe/limit/empty, accent/typo grading, a Compose screen test for check→fix→why→next,
+  an empty-state test, and a Robolectric More navigation test. Verified: 119 shared JVM tests, 27 Android JVM tests,
+  0 failures; APK builds; Swift parses. Next: adversarial review of P4.

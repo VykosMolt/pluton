@@ -316,6 +316,12 @@ final class AppModel: ObservableObject {
 
     func chunks(for lemma: String) -> [Chunk] { bridge.chunksFor(lemma: lemma) }
 
+    func errorDrills() -> [ErrorDrill] { bridge.errorDrills(corrections: corrections, limit: 20) }
+
+    func gradeError(_ typed: String, _ expected: String) -> GradeResult {
+        bridge.gradeError(typed: typed, expected: expected)
+    }
+
     func addChunk(_ chunk: Chunk) {
         let word = bridge.chunkWord(chunk: chunk)
         _ = bridge.addCard(store: store, word: word, form: chunk.text, sentence: chunk.example, now: Self.now())
