@@ -23,7 +23,7 @@ val CHUNKS: List<Chunk> = listOf(
     Chunk("par exemple", "for example", "Par exemple, le chat dort.", "For example, the cat is sleeping.", listOf("par", "exemple"), "A1"),
     Chunk("au revoir", "goodbye", "Au revoir et à demain !", "Goodbye and see you tomorrow!", listOf("au", "revoir"), "A1"),
     Chunk("s'il vous plaît", "please (formal)", "Un café, s'il vous plaît.", "A coffee, please.", listOf("si", "il", "vous", "plaire"), "A1"),
-    Chunk("prendre rendez-vous", "to make an appointment", "Je dois prendre rendez-vous chez le médecin.", "I have to make an appointment with the doctor.", listOf("prendre", "rendez"), "A2"),
+    Chunk("prendre rendez-vous", "to make an appointment", "Je dois prendre rendez-vous chez le médecin.", "I have to make an appointment with the doctor.", listOf("prendre", "rendez-vous"), "A2"),
     Chunk("se rendre compte", "to realise", "Il va se rendre compte de l'erreur.", "He is going to realise the mistake.", listOf("se", "rendre", "compte"), "B1"),
     Chunk("au fait", "by the way", "Au fait, tu viens ce soir ?", "By the way, are you coming tonight?", listOf("au", "fait"), "A2"),
     Chunk("d'un coup", "all at once", "Il a tout mangé d'un coup.", "He ate everything all at once.", listOf("coup"), "B1"),
@@ -36,10 +36,13 @@ val CHUNKS: List<Chunk> = listOf(
     Chunk("à pied", "on foot", "Je vais au travail à pied.", "I go to work on foot.", listOf("pied"), "A1"),
     Chunk("tout de suite", "right away", "Viens tout de suite !", "Come right away!", listOf("tout", "suite"), "A1"),
     Chunk("mal à la tête", "a headache", "J'ai mal à la tête.", "I have a headache.", listOf("mal", "tête"), "A2"),
-    Chunk("faire les courses", "to do the shopping", "Je dois faire les courses.", "I have to do the shopping.", listOf("faire", "courses"), "A2"),
+    Chunk("faire les courses", "to do the shopping", "Je dois faire les courses.", "I have to do the shopping.", listOf("faire", "course"), "A2"),
 )
 
 fun chunksFor(lemma: String): List<Chunk> = CHUNKS.filter { lemma in it.lemmas }
+
+/** Synthetic chunk lemmas must not be counted as single words (e.g. in AI prompts). */
+fun isChunk(lemma: String): Boolean = lemma.startsWith("chunk:")
 
 /** A normal Word for the SRS: the synthetic lemma keeps chunks out of the frequency deck until added. */
 fun chunkWord(chunk: Chunk): Word = Word(

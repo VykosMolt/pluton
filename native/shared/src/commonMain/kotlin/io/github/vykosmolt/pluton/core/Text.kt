@@ -130,14 +130,21 @@ fun sentenceAt(text: String, at: Int): String {
 }
 
 /** [before, match, after] around the first whole-word occurrence of `form` (case-insensitive). */
+/** Typographic apostrophes are one UTF-16 unit each, so replacing them keeps every offset intact. */
+private fun straightApostrophes(s: String): String = s.replace('’', '\'').replace('‘', '\'')
+
 fun blank(sentence: String, form: String): Triple<String, String, String> {
     if (form.isEmpty()) return Triple(sentence, "", "")
+    val search = straightApostrophes(sentence)
+    val needle = straightApostrophes(form)
+    // An elided token (n', d', l') ends at the apostrophe; the next letter is not a word boundary problem.
+    val openEnded = needle.endsWith("'")
     var from = 0
     while (true) {
-        val i = sentence.indexOf(form, from, ignoreCase = true)
+        val i = search.indexOf(needle, from, ignoreCase = true)
         if (i < 0) return Triple(sentence, "", "")
-        val before = if (i == 0) null else sentence[i - 1]
-        val after = if (i + form.length >= sentence.length) null else sentence[i + form.length]
+        val before = if (i == 0) null else search[i - 1]
+        val after = if (openEnded || i + needle.length >= search.length) null else search[i + needle.length]
         if ((before == null || !before.isLetter()) && (after == null || !after.isLetter())) {
             return Triple(sentence.substring(0, i), sentence.substring(i, i + form.length), sentence.substring(i + form.length))
         }

@@ -172,7 +172,7 @@ fun continueSystem(level: Level, known: List<String>, targets: List<String>, pre
         "\n\nContinue the text below. If it is a story, keep the same characters, setting and tone; otherwise continue in the same style and subject. Write 150-250 words. " +
             "Recycle the known words and end on a small hook. Return ONLY a JSON object, with nothing before or after it:\n" +
             "{\"title\": \"<a short French title for this part>\", \"body\": \"<the continuation, with \\n between paragraphs>\"}\n\n" +
-            "Previous part:\n" + previous.take(2500),
+            "Previous part:\n" + previous.takeLast(2500),
     )
 }
 

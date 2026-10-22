@@ -24,6 +24,7 @@ struct ListenView: View {
     @SwiftUI.State private var showSubsPicker = false
     @SwiftUI.State private var selected: String?
     @SwiftUI.State private var selectedSentence = ""
+    @SwiftUI.State private var selectedForm = ""
     @SwiftUI.State private var listenStarted: Date?
     @SwiftUI.State private var lastTick: Double = 0
     @SwiftUI.State private var dictCue: Cue?
@@ -58,8 +59,8 @@ struct ListenView: View {
                         mediaControls
                     }
                     subtitleCard
-                    if let cue {
-                        dictoglossCard(cue)
+                    if player != nil, let line = dictCue ?? cue {
+                        dictoglossCard(line)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -75,7 +76,7 @@ struct ListenView: View {
             importSubs(result)
         }
         .sheet(item: Binding(get: { selected.map(IdentifiedString.init) }, set: { selected = $0?.value })) { wrapper in
-            WordDetailView(lemma: wrapper.value, sentence: selectedSentence)
+            WordDetailView(lemma: wrapper.value, sentence: selectedSentence, form: selectedForm)
                 .environmentObject(model)
         }
         .onDisappear { stop() }
@@ -130,8 +131,13 @@ struct ListenView: View {
                     .lineSpacing(6)
                     .environment(\.openURL, OpenURLAction { url in
                         if url.scheme == "pluton" {
-                            selected = url.lastPathComponent.removingPercentEncoding
-                            selectedSentence = cue?.text ?? ""
+                            let line = cue?.text ?? ""
+                            if let raw = Int(url.lastPathComponent),
+                               let token = model.tokens(line).first(where: { !$0.name && Int($0.start) == raw }) {
+                                selected = token.lemma
+                                selectedForm = token.text
+                                selectedSentence = line
+                            }
                             return .handled
                         }
                         return .systemAction
@@ -216,8 +222,7 @@ struct ListenView: View {
                 result += AttributedString(ns.substring(with: NSRange(location: cursor, length: start - cursor)))
             }
             var piece = AttributedString(ns.substring(with: NSRange(location: start, length: end - start)))
-            let escaped = token.lemma.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? token.lemma
-            piece.link = URL(string: "pluton://word/\(escaped)")
+            piece.link = URL(string: "pluton://word/\(token.start)")
             let status = model.statusCode(for: token.lemma)
             if status == 1 {
                 piece.backgroundColor = Color.orange.opacity(0.22)
@@ -253,6 +258,9 @@ struct ListenView: View {
             position = 0
             duration = 0
             lastTick = 0
+            dictCue = nil
+            dictation = ""
+            dictResult = nil
             error = ""
             observe(p, item: item)
             Task {

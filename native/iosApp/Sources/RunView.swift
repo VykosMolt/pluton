@@ -32,11 +32,11 @@ struct RunView: View {
     }
 
     private func sentence(for item: RunItem) -> String {
-        model.cards[item.lemma]?.mined?.sentence ?? word(for: item).sentence ?? ""
+        model.sentence(for: item.card)
     }
 
     private func form(for item: RunItem) -> String {
-        model.cards[item.lemma]?.mined?.form ?? word(for: item).form ?? item.lemma
+        model.form(for: item.card)
     }
 
     private func mode(for item: RunItem) -> String {

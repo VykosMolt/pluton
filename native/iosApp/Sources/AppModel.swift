@@ -170,9 +170,16 @@ final class AppModel: ObservableObject {
 
     func learningWords() -> [String] {
         cards.values
-            .filter { statusCode(for: $0.lemma) == 1 }
+            .filter { !$0.lemma.hasPrefix("chunk:") && statusCode(for: $0.lemma) == 1 }
             .sorted { (($0.fsrs.lastReview?.int64Value ?? 0) > ($1.fsrs.lastReview?.int64Value ?? 0)) }
             .prefix(40)
+            .map { $0.lemma }
+    }
+
+    func targetWords() -> [String] {
+        cards.values
+            .filter { !$0.lemma.hasPrefix("chunk:") && statusCode(for: $0.lemma) == 1 && !$0.known }
+            .prefix(8)
             .map { $0.lemma }
     }
 
@@ -265,7 +272,10 @@ final class AppModel: ObservableObject {
 
     func knownWords() -> [String] {
         cards.values
-            .filter { statusCode(for: $0.lemma) == 0 }
+            .filter {
+                !$0.lemma.hasPrefix("chunk:") && statusCode(for: $0.lemma) != 3 &&
+                    (words[$0.lemma]?.gloss.trimmingCharacters(in: .whitespaces).isEmpty == false)
+            }
             .prefix(40)
             .map { $0.lemma }
     }

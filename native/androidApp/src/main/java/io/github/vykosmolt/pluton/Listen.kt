@@ -88,7 +88,7 @@ internal fun ListenScreen(
     var rate by remember { mutableStateOf(1f) }
     var autoPause by remember { mutableStateOf(false) }
     var dragging by remember { mutableStateOf<Float?>(null) }
-    var sel by remember { mutableStateOf<Token?>(null) }
+    var sel by remember { mutableStateOf<ListenSelection?>(null) }
     var listenStarted by remember { mutableStateOf(0L) }
     var lastTick by remember { mutableStateOf(0.0) }
     var dictCue by remember { mutableStateOf<Cue?>(null) }
@@ -179,6 +179,9 @@ internal fun ListenScreen(
                 positionMs = 0
                 durationMs = 0
                 lastTick = 0.0
+                dictCue = null
+                dictation = ""
+                dictResult = null
                 val mime = context.contentResolver.getType(uri)
                 if (mime?.startsWith("video/") == true) {
                     videoUri = uri
@@ -370,7 +373,7 @@ internal fun ListenScreen(
                         style = TextStyle(color = scheme.onBackground, fontSize = 22.sp, lineHeight = 32.sp),
                         onClick = { offset ->
                             cueTokens.firstOrNull { !it.name && offset >= it.start && offset < it.end }
-                                ?.let { sel = it }
+                                ?.let { sel = ListenSelection(it, cue?.text.orEmpty()) }
                         },
                     )
                 } else {
@@ -382,7 +385,8 @@ internal fun ListenScreen(
             }
         }
 
-        if (cue != null) {
+        val dictLine = dictCue ?: cue
+        if (dictLine != null && (media != null || videoUri != null)) {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Dictogloss", fontWeight = FontWeight.Bold, fontSize = 18.sp)
@@ -393,10 +397,10 @@ internal fun ListenScreen(
                     )
                     TextButton(
                         onClick = {
-                            dictCue = cue
+                            dictCue = dictLine
                             dictation = ""
                             dictResult = null
-                            seek((cue.start * 1000).toLong())
+                            seek((dictLine.start * 1000).toLong())
                             start()
                         },
                     ) { Text("Use this line") }
@@ -446,8 +450,9 @@ internal fun ListenScreen(
         }
     }
 
-    sel?.let { token ->
-        val sentence = cue?.text ?: ""
+    sel?.let { selected ->
+        val token = selected.token
+        val sentence = selected.sentence
         WordSheet(
             token = token,
             word = words[token.lemma],
@@ -475,6 +480,8 @@ internal fun ListenScreen(
         )
     }
 }
+
+private data class ListenSelection(val token: Token, val sentence: String)
 
 private fun clock(ms: Long): String {
     val total = ms / 1000

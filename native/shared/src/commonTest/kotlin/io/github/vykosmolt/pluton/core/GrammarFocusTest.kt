@@ -21,11 +21,24 @@ class GrammarFocusTest {
     }
 
     @Test
+    fun nothingIsFocusedWithoutLearningMaterialOrEnoughVocabulary() {
+        val topic = GrammarTopic("objets", "A2", "les pronoms objets", "object pronouns")
+        assertNull(grammarFocus(emptyList(), emptyList()))
+        assertNull(grammarFocus(emptyList(), listOf(topic)))
+        val graduated = CardState(gramKey("objets"), createEmptyCard(1).copy(state = State.Review))
+        assertNull(grammarFocus(listOf(graduated), listOf(topic)))
+        val fresh = CardState(gramKey("objets"), createEmptyCard(1).copy(state = State.New))
+        assertEquals("the grammar topic “les pronoms objets” (object pronouns)", grammarFocus(listOf(fresh), listOf(topic)))
+    }
+
+    @Test
     fun promptsMentionTheFocusAndStayUnchangedWithoutIt() {
         val level = levelOf(500)
-        assertNull(grammarFocus(emptyList(), emptyList()))
-        assertTrue(chatSystem(level, emptyList(), "the présent forms of “être”").contains("Learner focus"))
-        assertTrue(writeSystem(level, "Raconte ta journée", "the présent forms of “être”").contains("particular attention"))
+        val focus = "the présent forms of “être”"
+        assertTrue(chatSystem(level, emptyList(), focus).contains("Learner focus"))
+        assertTrue(writeSystem(level, "Raconte ta journée", focus).contains("particular attention"))
+        assertTrue(writeSystem(level, "Raconte ta journée", focus).contains("JSON"))
         assertTrue(!chatSystem(level, emptyList(), null).contains("Learner focus"))
+        assertTrue(!writeSystem(level, "Raconte ta journée", null).contains("particular attention"))
     }
 }

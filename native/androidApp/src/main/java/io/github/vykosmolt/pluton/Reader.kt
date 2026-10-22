@@ -65,6 +65,7 @@ import io.github.vykosmolt.pluton.core.coverage
 import io.github.vykosmolt.pluton.core.continueSystem
 import io.github.vykosmolt.pluton.core.coverageComfort
 import io.github.vykosmolt.pluton.core.gradeQuiz
+import io.github.vykosmolt.pluton.core.isChunk
 import io.github.vykosmolt.pluton.core.isWord
 import io.github.vykosmolt.pluton.core.levelOf
 import io.github.vykosmolt.pluton.core.parseRetell
@@ -195,6 +196,7 @@ internal fun ReaderScreen(
     var genError by remember { mutableStateOf("") }
     var contBusy by remember { mutableStateOf(false) }
     var contError by remember { mutableStateOf("") }
+    var contToken by remember { mutableStateOf(0) }
     var retellText by remember { mutableStateOf("") }
     var retellBusy by remember { mutableStateOf(false) }
     var retellResult by remember { mutableStateOf<RetellFeedback?>(null) }
@@ -248,6 +250,9 @@ internal fun ReaderScreen(
         retellError = ""
         retellBusy = false
         genError = ""
+        contToken++
+        contError = ""
+        contBusy = false
     }
 
     fun generate() {
@@ -258,12 +263,14 @@ internal fun ReaderScreen(
             runCatching {
                 val known = cards.values
                     .filter { c ->
-                        isWord(c) && status(c, words[c.lemma]) != WordStatus.New &&
+                        isWord(c) && !isChunk(c.lemma) && status(c, words[c.lemma]) != WordStatus.New &&
                             words[c.lemma]?.gloss?.isNotBlank() == true
                     }
                     .map { it.lemma }.take(40)
                 val targets = cards.values
-                    .filter { c -> isWord(c) && status(c, words[c.lemma]) == WordStatus.Learning && !c.known }
+                    .filter { c ->
+                        isWord(c) && !isChunk(c.lemma) && status(c, words[c.lemma]) == WordStatus.Learning && !c.known
+                    }
                     .map { it.lemma }.take(8)
                 val reply = aiChat(
                     config,
@@ -292,18 +299,22 @@ internal fun ReaderScreen(
     fun continueStory(reading: Reading) {
         val config = ai ?: return
         if (contBusy) return
+        val token = contToken + 1
+        contToken = token
         contBusy = true
         contError = ""
         scope.launch {
-            runCatching {
+            val outcome = runCatching {
                 val known = cards.values
                     .filter { c ->
-                        isWord(c) && status(c, words[c.lemma]) != WordStatus.New &&
+                        isWord(c) && !isChunk(c.lemma) && status(c, words[c.lemma]) != WordStatus.New &&
                             words[c.lemma]?.gloss?.isNotBlank() == true
                     }
                     .map { it.lemma }.take(40)
                 val targets = cards.values
-                    .filter { c -> isWord(c) && status(c, words[c.lemma]) == WordStatus.Learning && !c.known }
+                    .filter { c ->
+                        isWord(c) && !isChunk(c.lemma) && status(c, words[c.lemma]) == WordStatus.Learning && !c.known
+                    }
                     .map { it.lemma }.take(8)
                 val reply = aiChat(
                     config,
@@ -311,21 +322,25 @@ internal fun ReaderScreen(
                     listOf(ChatMessage("user", "Continue the story.")),
                 )
                 parseStory(reply) ?: throw AiError("The model returned an unexpected continuation. Try again.")
-            }.onSuccess { story ->
-                val base = reading.title.removePrefix("Suite · ")
-                val record = store.addText("Suite · $base", story.body, System.currentTimeMillis())
-                userTexts = store.texts()
-                open = Reading(
-                    id = "text-${record.id}",
-                    title = record.title,
-                    sub = "Your text",
-                    body = record.body,
-                    questions = emptyList(),
-                    sentences = emptyList(),
-                    userTextId = record.id,
-                )
-            }.onFailure { contError = it.message ?: "The AI request failed." }
-            contBusy = false
+            }
+            // Navigating away invalidates the request: never open a continuation over a different reading.
+            if (contToken == token) {
+                outcome.onSuccess { story ->
+                    val base = reading.title.removePrefix("Suite · ")
+                    val record = store.addText("Suite · $base", story.body, System.currentTimeMillis())
+                    userTexts = store.texts()
+                    open = Reading(
+                        id = "text-${record.id}",
+                        title = record.title,
+                        sub = "Your text",
+                        body = record.body,
+                        questions = emptyList(),
+                        sentences = emptyList(),
+                        userTextId = record.id,
+                    )
+                }.onFailure { contError = it.message ?: "The AI request failed." }
+                contBusy = false
+            }
         }
     }
 

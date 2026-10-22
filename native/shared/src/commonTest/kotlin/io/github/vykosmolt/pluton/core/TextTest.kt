@@ -78,6 +78,10 @@ class TextTest {
         assertEquals(" pied !", c)
         assertEquals("dort", blank("Le chat dort sur le mur.", "dort").second)
         assertEquals("", blank("Le chat dort.", "chien").second)
+        // Typographic apostrophes and elided tokens are what the tokenizer actually produces in real texts.
+        assertEquals("d’abord", blank("Il part d’abord.", "d'abord").second)
+        assertEquals("n'", blank("Ce n'est pas vrai.", "n'").second)
+        assertEquals("n’", blank("Ce n’est pas vrai.", "n'").second)
     }
 
     @Test

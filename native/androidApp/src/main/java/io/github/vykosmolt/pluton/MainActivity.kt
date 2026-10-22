@@ -781,11 +781,12 @@ private fun RunScreen(
     }
     val expectedConj = forms.getOrNull(person).orEmpty()
 
-    // A word added from the reader may carry its own mined sentence; otherwise use the deck's example.
+    // Freeze the context for this queue item: grading bumps reps before Next, and the sentence must not flip
+    // under the answer, the feedback hint, or the dictée marks.
     val base = deck.wordMap[lemma]
-    val card = cards[lemma]
-    val sentence = contextSentence(card, base)
-    val form = contextForm(card, base)
+    val card = remember(lemma, item.phase, done) { cards[lemma] }
+    val sentence = remember(lemma, item.phase, done) { contextSentence(cards[lemma], base) }
+    val form = remember(lemma, item.phase, done) { contextForm(cards[lemma], base) }
     val display = base?.display ?: lemma
     val gloss = base?.gloss ?: ""
     val translation = card?.mined?.translation?.takeIf { it.isNotBlank() } ?: base?.translation
@@ -1009,10 +1010,12 @@ private fun RunScreen(
                                 "produce" -> Text("Comment dit-on « ${gloss.ifBlank { display }} » ?", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                                 else -> Text("$before" + "______" + after, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                             }
+                            // The built-in clip only matches the built-in sentence, not a mined context.
+                            val builtIn = sentence == base?.sentence
                             val hear = when {
                                 mode == "produce" -> if (feedback != null) base?.audioWord else null
-                                mode == "dictation" || mode == "dictee" -> base?.audioSentence
-                                else -> base?.audioSentence ?: base?.audioWord
+                                mode == "dictation" || mode == "dictee" -> if (builtIn) base?.audioSentence else null
+                                else -> if (builtIn) base?.audioSentence ?: base?.audioWord else null
                             }
                             if (hear != null) TextButton(onClick = { clip.play(hear) }) { Text("Hear it") }
                             if (feedback == null) {

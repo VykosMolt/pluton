@@ -173,6 +173,7 @@ private struct ReadingView: View {
     @StateObject private var speaker = Speaker()
     @SwiftUI.State private var selected: String?
     @SwiftUI.State private var selectedSentence = ""
+    @SwiftUI.State private var selectedForm = ""
     @SwiftUI.State private var confirmDelete = false
     @SwiftUI.State private var addable: [String] = []
     @SwiftUI.State private var contBusy = false
@@ -202,8 +203,7 @@ private struct ReadingView: View {
                 result += AttributedString(ns.substring(with: NSRange(location: cursor, length: start - cursor)))
             }
             var piece = AttributedString(ns.substring(with: NSRange(location: start, length: end - start)))
-            let escaped = token.lemma.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? token.lemma
-            piece.link = URL(string: "pluton://word/\(escaped)")
+            piece.link = URL(string: "pluton://word/\(token.start)")
             let status = model.statusCode(for: token.lemma)
             if status == 1 {
                 piece.backgroundColor = Color.orange.opacity(0.22)
@@ -255,11 +255,14 @@ private struct ReadingView: View {
                         .lineSpacing(6)
                         .environment(\.openURL, OpenURLAction { url in
                             if url.scheme == "pluton" {
-                                let lemma = url.lastPathComponent.removingPercentEncoding
-                                selected = lemma
-                                if let lemma, let token = model.tokens(reading.body).first(where: { !$0.name && $0.lemma == lemma }) {
+                                if let raw = Int(url.lastPathComponent),
+                                   let token = model.tokens(reading.body).first(where: { !$0.name && Int($0.start) == raw }) {
+                                    selected = token.lemma
+                                    selectedForm = token.text
                                     selectedSentence = model.sentence(at: token.start, in: reading.body)
                                 } else {
+                                    selected = url.lastPathComponent.removingPercentEncoding
+                                    selectedForm = selected ?? ""
                                     selectedSentence = reading.body
                                 }
                                 return .handled
@@ -295,7 +298,7 @@ private struct ReadingView: View {
             }
         }
         .sheet(item: Binding(get: { selected.map(IdentifiedString.init) }, set: { selected = $0?.value })) { wrapper in
-            WordDetailView(lemma: wrapper.value, sentence: selectedSentence)
+            WordDetailView(lemma: wrapper.value, sentence: selectedSentence, form: selectedForm)
                 .environmentObject(model)
         }
         .alert("Delete this text?", isPresented: $confirmDelete) {
@@ -324,7 +327,7 @@ private struct ReadingView: View {
                 let system = model.bridge.continueSystem(
                     words: Int32(model.vocab()),
                     known: model.knownWords(),
-                    targets: model.learningWords(),
+                    targets: model.targetWords(),
                     previous: reading.body
                 )
                 let reply = try await AIClient.chat(system: system, turns: [ChatTurn(role: "user", content: "Continue the text.")])
@@ -408,6 +411,7 @@ struct WordDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let lemma: String
     let sentence: String
+    let form: String
     @SwiftUI.State private var tappedSentence = ""
 
     var body: some View {
@@ -441,7 +445,8 @@ struct WordDetailView: View {
             if status == 3 {
                 HStack {
                     Button("+ Add to deck") {
-                        let token = Token(start: 0, end: Int32(lemma.count), text: word?.form ?? lemma, lemma: lemma, name: false)
+                        let text = form.isEmpty ? (word?.form ?? lemma) : form
+                        let token = Token(start: 0, end: Int32(text.count), text: text, lemma: lemma, name: false)
                         model.addWord(token: token, word: word, sentence: sentence)
                         dismiss()
                     }

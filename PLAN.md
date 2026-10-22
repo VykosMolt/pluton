@@ -470,4 +470,18 @@ emulator/device, so the APK is built but not launched.
   shortcuts and last-tab restore were renumbered. Also fixed Android's resume-after-auto-pause on the last subtitle
   line (replay that line instead of pausing instantly). Verified: 107 shared JVM tests, 23 Android JVM tests,
   0 failures; APK builds; Swift files parse clean. CI run 39741005344 (commit `cc6dda09`) was green for both the
-  unsigned-IPA build and the simulator launch; the Listen changes are pending their first CI compile.
+  unsigned-IPA build and the simulator launch. A follow-up run (`671c6d82`) was also green after fixing SwiftUI
+  `ProgressView` name shadowing and a `try` inside a `??` fallback.
+- 2026-10-22: adversarial P2 review (commit `cc6dda09`) and fixes. Blocking: iOS word-sheet adds now carry the
+  tapped surface form and occurrence (links encode the token offset), so mined cloze/dictée pairs actually blank;
+  `blank` now matches typographic apostrophes and treats an elided form (`n'`) as boundary-complete; Android Listen
+  snapshots the subtitle line with the tapped token instead of reading the current line when Add is pressed; iOS
+  runs now use the alternating `contextSentence`/`contextForm` pair instead of always the mined one; Android run
+  feedback freezes the displayed context before grading bumps reps; continuation keeps the *end* of long texts
+  (`takeLast`) instead of the opening; Android continuation requests are invalidated on navigation. Also: chunk
+  lemmas are filtered out of AI prompt word lists, iOS continuation prompt lists match Android (glossed known words,
+  8 targets), the built-in sentence clip is only offered when the built-in sentence is displayed, the dictogloss is
+  hidden without media, and two chunk lemma links were corrected (`rendez-vous`, `course`). Tests: real
+  blankable mined pairs, elisions/curly apostrophes, long continuation endings, exact 24 chunks × all reps cloze,
+  empty/graduated grammar focus, and story parsing. Verified: 113 shared JVM tests, 23 Android JVM tests,
+  0 failures; APK builds; Swift parses; CI for the preceding commit was green (build + simulator launch).

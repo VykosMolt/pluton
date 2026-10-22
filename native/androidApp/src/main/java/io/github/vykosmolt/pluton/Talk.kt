@@ -39,6 +39,7 @@ import io.github.vykosmolt.pluton.core.CardState
 import io.github.vykosmolt.pluton.core.Store
 import io.github.vykosmolt.pluton.core.Word
 import io.github.vykosmolt.pluton.core.WordStatus
+import io.github.vykosmolt.pluton.core.isChunk
 import io.github.vykosmolt.pluton.core.chatSystem
 import io.github.vykosmolt.pluton.core.levelOf
 import io.github.vykosmolt.pluton.core.splitCorrection
@@ -124,7 +125,7 @@ internal fun TalkScreen(
     val level = remember(vocab) { levelOf(vocab) }
     val learning = remember(cards.size) {
         cards.values
-            .filter { status(it, words[it.lemma]) == WordStatus.Learning }
+            .filter { !isChunk(it.lemma) && status(it, words[it.lemma]) == WordStatus.Learning }
             .sortedByDescending { it.fsrs.lastReview ?: 0 }
             .take(40)
             .map { it.lemma }
