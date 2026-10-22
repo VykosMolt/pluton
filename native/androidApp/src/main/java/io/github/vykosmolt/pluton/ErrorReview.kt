@@ -96,6 +96,7 @@ internal fun ErrorReviewScreen(
                         ) { Text("Check") }
                         if (result != null) {
                             TextButton(onClick = {
+                                if (safeIndex + 1 >= drills.size) right = 0
                                 index = (safeIndex + 1) % drills.size
                                 typed = ""
                                 result = null
@@ -131,6 +132,10 @@ internal fun ErrorReviewScreen(
 
 private fun outcome(result: GradeResult): String = when (result.result) {
     "right" -> "Exactly."
-    "almost" -> if (result.why == "accent") "Almost — only the accents differ." else "Almost — one small typo."
+    "almost" -> when (result.why) {
+        "accent" -> "Almost — only the accents differ."
+        "case" -> "Almost — check the capitals."
+        else -> "Almost — one small typo."
+    }
     else -> "Not quite. Compare with the fix."
 }

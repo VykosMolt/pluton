@@ -183,7 +183,7 @@ classics, Bridge texts and user texts, and milestones for words, reading, classi
 recordings, AI talk and corrected writing. The same screen is in iOS More.
 
 P4 closes the writing loop: More → Error review turns the corrections from Write into short retrieval drills. It
-shows the sentence you actually wrote, you type the fix, and it grades exact / accent-or-typo / wrong, then shows
+shows the sentence you actually wrote, you type the fix, and it grades exact / accent, capital or typo / wrong, then shows
 the correction, the reason and the error kind. The shared `errorDrills` de-duplicates by normalised pair and keeps
 the newest 20; `gradeError` reuses the existing grading rules. No new storage or network path: it reads the
 corrections already in SQLite.

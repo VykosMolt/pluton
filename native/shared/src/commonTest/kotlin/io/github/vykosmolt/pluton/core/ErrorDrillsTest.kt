@@ -32,10 +32,15 @@ class ErrorDrillsTest {
     }
 
     @Test
-    fun aCapitalizationOnlyFixIsStillADrill() {
+    fun aCapitalizationOnlyFixIsStillADrillAndIsGraded() {
         val drills = errorDrills(listOf(correction(1, "bonjour", "Bonjour", 1000)))
         assertEquals(1, drills.size)
         assertEquals("Bonjour", drills.single().fix)
+        val graded = gradeError("bonjour", drills.single().fix)
+        assertEquals("almost", graded.result)
+        assertEquals("case", graded.why)
+        assertEquals("right", gradeError("d'abord", "d’abord").result)
+        assertTrue(errorDrills(listOf(correction(2, "je  suis", "je suis", 2000))).isEmpty())
     }
 
     @Test

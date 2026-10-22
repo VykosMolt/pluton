@@ -10,16 +10,30 @@ data class ErrorDrill(
     val kind: String,
 )
 
+/** Apostrophe style and whitespace are ignored here, but case is not: a capitalization fix is real. */
+private fun caseSensitiveNormal(s: String): String =
+    s.replace('’', '\'').replace('‘', '\'').trim().replace(Regex("\\s+"), " ")
+
 /** Recent corrections as drills: newest first, blank/unchanged pairs dropped, duplicates collapsed. */
 fun errorDrills(corrections: List<CorrectionRecord>, limit: Int = 20): List<ErrorDrill> =
     corrections.asSequence()
-        .filter { it.original.isNotBlank() && it.fix.isNotBlank() && it.original.trim() != it.fix.trim() }
+        .filter {
+            it.original.isNotBlank() && it.fix.isNotBlank() &&
+                caseSensitiveNormal(it.original) != caseSensitiveNormal(it.fix)
+        }
         .sortedByDescending { it.at }
         .distinctBy { norm(it.original) to norm(it.fix) }
         .take(limit.coerceAtLeast(0))
         .map { ErrorDrill(it.original.trim(), it.fix.trim(), it.why.trim(), it.kind.trim()) }
         .toList()
 
-/** Grade a typed fix: exact, accent/typo "almost", or wrong. */
-fun gradeError(typed: String, expected: String): GradeResult =
-    grade(typed, expected, lemma = "", forms = emptyMap())
+/** Grade a typed fix: exact, accent/typo/case "almost", or wrong. */
+fun gradeError(typed: String, expected: String): GradeResult {
+    val graded = grade(typed, expected, lemma = "", forms = emptyMap())
+    if (graded.result != "right") return graded
+    return if (caseSensitiveNormal(typed) != caseSensitiveNormal(expected)) {
+        GradeResult("almost", "case")
+    } else {
+        graded
+    }
+}

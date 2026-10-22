@@ -139,7 +139,7 @@ internal fun MoreScreen(
                     Text("Level estimate, can-do checks and milestones", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            val correctionCount = store.corrections().size
+            val correctionCount = errorDrills(store.corrections()).size
             Card(Modifier.fillMaxWidth().clickable { section = Section.Errors }) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Error review", fontSize = 22.sp, fontWeight = FontWeight.Bold)

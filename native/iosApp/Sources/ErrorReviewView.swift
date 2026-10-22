@@ -51,6 +51,7 @@ struct ErrorReviewView: View {
                             .disabled(typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || result != nil)
                             if result != nil {
                                 Button(current + 1 >= drills.count ? "Start over" : "Next") {
+                                    if current + 1 >= drills.count { right = 0 }
                                     index = (current + 1) % drills.count
                                     typed = ""
                                     result = nil
@@ -83,7 +84,12 @@ struct ErrorReviewView: View {
     private func outcome(_ result: GradeResult) -> String {
         switch result.result {
         case "right": return "Exactly."
-        case "almost": return result.why == "accent" ? "Almost — only the accents differ." : "Almost — one small typo."
+        case "almost":
+            switch result.why {
+            case "accent": return "Almost — only the accents differ."
+            case "case": return "Almost — check the capitals."
+            default: return "Almost — one small typo."
+            }
         default: return "Not quite. Compare with the fix."
         }
     }

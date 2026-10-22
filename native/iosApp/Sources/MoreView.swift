@@ -14,7 +14,7 @@ struct MoreView: View {
                 }
                 Section("Practice") {
                     NavigationLink { ErrorReviewView() } label: {
-                        Label("Error review · \(model.corrections.count)", systemImage: "pencil")
+                        Label("Error review · \(model.errorDrills().count)", systemImage: "pencil")
                     }
                 }
                 Section("Reference") {
