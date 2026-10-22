@@ -123,7 +123,13 @@
   const titles = $derived(Object.fromEntries(story.map((c) => [c.id, `Chapitre ${c.stage + 1} · ${c.title}`])))
   const path = $derived(pathState(metrics, titles))
   const reached = $derived(Math.max(path.current, total.stage))
-  const stage = $derived(path.stages[Math.min(reached, STAGES.length - 1)])
+  // A completed store stage must not hide the goals the current path still has open (e.g. a stage 10 reached
+  // before P7 added the epilogues to it).
+  const stage = $derived(
+    reached < STAGES.length ? path.stages[reached]
+    : path.current < STAGES.length ? path.stages[path.current]
+    : null
+  )
   const todo = $derived(focus(stage, !!ai))
   $effect(() => {
     if (!words || path.current <= total.stage) return
