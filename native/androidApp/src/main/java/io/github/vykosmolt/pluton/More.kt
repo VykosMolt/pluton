@@ -145,7 +145,7 @@ internal fun MoreScreen(
                 }
             }
             val allCorrections = store.corrections()
-            val dueDrills = errorDrills(allCorrections, System.currentTimeMillis()).size
+            val dueDrills = errorDrills(allCorrections, System.currentTimeMillis(), Int.MAX_VALUE).size
             Card(Modifier.fillMaxWidth().clickable { section = Section.Errors }) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Error review", fontSize = 22.sp, fontWeight = FontWeight.Bold)

@@ -316,8 +316,8 @@ final class AppModel: ObservableObject {
 
     func chunks(for lemma: String) -> [Chunk] { bridge.chunksFor(lemma: lemma) }
 
-    func errorDrills() -> [ErrorDrill] {
-        bridge.errorDrills(corrections: corrections, now: Self.now(), limit: 20)
+    func errorDrills(limit: Int32 = 20) -> [ErrorDrill] {
+        bridge.errorDrills(corrections: corrections, now: Self.now(), limit: limit)
     }
 
     func gradeError(_ typed: String, _ expected: String) -> GradeResult {

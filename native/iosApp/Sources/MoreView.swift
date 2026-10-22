@@ -13,7 +13,7 @@ struct MoreView: View {
                     NavigationLink { ProgressView() } label: { Label("Progress", systemImage: "chart.bar") }
                 }
                 Section("Practice") {
-                    let due = model.errorDrills().count
+                    let due = model.errorDrills(limit: Int32.max).count
                     NavigationLink { ErrorReviewView(drills: model.errorDrills()) } label: {
                         Label("Error review · \(due) drill\(due == 1 ? "" : "s")", systemImage: "pencil")
                     }
