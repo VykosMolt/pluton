@@ -167,8 +167,9 @@ internal fun TalkScreen(
     fun listen() {
         tts.stop()
         voice.start { text ->
+            val end = if (voice.speechEndedAt > 0) voice.speechEndedAt else SystemClock.elapsedRealtime()
             val seconds = if (voice.speechStartedAt > 0) {
-                (SystemClock.elapsedRealtime() - voice.speechStartedAt) / 1000.0
+                (end - voice.speechStartedAt) / 1000.0
             } else {
                 0.0
             }

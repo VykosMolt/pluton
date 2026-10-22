@@ -178,22 +178,28 @@ internal class VoiceInput(private val context: Context) {
     /** Elapsed-realtime millis when the recognizer first heard speech, or 0. */
     var speechStartedAt by mutableStateOf(0L)
         private set
+    /** Elapsed-realtime millis when speech ended, or 0; excludes the recognizer's finalize tail. */
+    var speechEndedAt by mutableStateOf(0L)
+        private set
     private var recognizer: SpeechRecognizer? = null
 
     fun start(onResult: (String) -> Unit) {
         if (listening) return
         error = ""
         speechStartedAt = 0
+        speechEndedAt = 0
         val r = SpeechRecognizer.createSpeechRecognizer(context)
         recognizer = r
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
             override fun onBeginningOfSpeech() {
-                speechStartedAt = SystemClock.elapsedRealtime()
+                if (speechStartedAt == 0L) speechStartedAt = SystemClock.elapsedRealtime()
             }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
+            override fun onEndOfSpeech() {
+                if (speechEndedAt == 0L) speechEndedAt = SystemClock.elapsedRealtime()
+            }
             override fun onError(errorCode: Int) {
                 listening = false
                 error = "Speech recognition failed ($errorCode)."

@@ -17,7 +17,7 @@ Aimed at C1: see the Road to C1 in [PLAN.md](PLAN.md) for what's covered and wha
   a real sentence, then you *type* them back: fill the gap, listen and type, recall from English (nouns with the
   right gender), and full-sentence dictées once a word is solid. Conjugation tables for 59 verbs unlock tense by
   tense. FSRS schedules every review. Combos, points, levels, a streak, and a cat with opinions.
-- **Library**: Pluton's story (10 chapters, A1 to C1), your own texts (lyrics, articles, subtitles), and a shelf of
+- **Library**: Pluton's story (12 chapters, A1 to C1), your own texts (lyrics, articles, subtitles), and a shelf of
   public-domain classics (La Fontaine, Perrault, Daudet, Maupassant, Verne). Every word is coloured by whether you know
   it; the story and classics read themselves aloud with the sentence highlighted. A text gets comfortable at 95% of
   words known, and one tap queues exactly the words that get you there. Each chapter ends with a short comprehension

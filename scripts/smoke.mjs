@@ -157,9 +157,14 @@ await page.screenshot({ path: `${OUT}/2-comprehension.png` })
 await page.getByRole('button', { name: '← Library' }).click()
 await page.locator('.item.chapter', { hasText: 'Le Mur' }).getByText('✓ read').waitFor()
 const readMark = await page.locator('.item.chapter', { hasText: 'Le Mur' }).textContent()
-await page.locator('.item.chapter').last().click()
+await page.locator('.item.chapter', { hasText: "L'Opéra" }).click()
 await page.getByRole('heading', { name: "L'Opéra" }).waitFor()
 const lastChapterWords = await page.locator('.text .w').count()
+await page.getByRole('button', { name: '← Library' }).click()
+// The epilogues are story chapters too: the last one must open without a stage lookup.
+await page.locator('.item.chapter').last().click()
+await page.getByRole('heading', { name: 'Le Chat Noir' }).waitFor()
+const epilogueWords = await page.locator('.text .w').count()
 await page.getByRole('button', { name: '← Library' }).click()
 
 // Library: open the starter text, tap an unknown word, add it, then queue the rest of the unlock.
@@ -508,7 +513,7 @@ server.kill()
 
 const claudeSent = { model: claude?.body.model, fallbacks: claude?.body.fallbacks, effort: claude?.body.output_config?.effort,
   beta: claude?.headers['anthropic-beta'], browser: claude?.headers['anthropic-dangerous-direct-browser-access'] }
-const report = { accounts, topics, revealed, placedRun, fixRun, offlineOk, stageTag, lastChapterWords, steps, celebration, stageAfter,
+const report = { accounts, topics, revealed, placedRun, fixRun, offlineOk, stageTag, lastChapterWords, epilogueWords, steps, celebration, stageAfter,
   placement, placedKnown, bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec,
   shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after,
   streak, level, sw, due, run2, quizBlocked, quizScore, readMark, generatedWords, retellText, speaking, audio, errors }
@@ -540,6 +545,7 @@ const checks = {
   'retell is scored by the AI': /4 \/ 5/.test(retellText),
   'home shows stage 1 of the path': /Étape 1 \/ 10/.test(stageTag),
   'every chapter is open at stage 1 (C1 chapter readable)': lastChapterWords > 150,
+  'epilogue chapter opens and reads at stage 1': epilogueWords > 150,
   'the path map lists 10 stages': steps === 10,
   'grammar: all 15 topics open, answers revealable, B2 topic practisable on day one': topics === 15 && revealed.length > 0,
   'grammar topic comes into runs once the vocabulary is there': (placedRun.modes.gram ?? 0) > 0,

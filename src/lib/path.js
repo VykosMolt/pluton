@@ -27,7 +27,7 @@ export const STAGES = [
   { place: 'La Bibliothèque', grammar: 13, en: 'The Library', level: 'C1', words: 4500, verbs: [null, 150],
     read: ['story-8', 'Le Tour du monde en quatre-vingts jours, chapitre 1'], listen: 720, talk: 120, write: 16,
     fr: 'Les notes de Baudelaire, et une lettre sans signature.', say: 'Baudelaire\'s notes, and an unsigned letter.' },
-  { place: 'L\'Opéra', grammar: 15, en: 'The Opéra', level: 'C1', words: 6000, verbs: [null, 300], read: ['story-9', 'La Chèvre de monsieur Seguin'],
+  { place: 'L\'Opéra', grammar: 15, en: 'The Opéra', level: 'C1', words: 6000, verbs: [null, 300], read: ['story-9', 'story-10', 'story-11', 'La Chèvre de monsieur Seguin'],
     listen: 1200, talk: 200, write: 20, fr: 'Un bal masqué, un lac sous la scène, et quelqu\'un qui attend.', say: 'A masked ball, a lake under the stage, and someone waiting.' },
 ]
 

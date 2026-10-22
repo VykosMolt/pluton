@@ -234,7 +234,7 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
     <button class="btn ghost" onclick={close}>← Library</button>
     {#if texts.some((t) => t.id === open.id)}<button class="btn ghost" onclick={remove} aria-label="Delete text">🗑</button>{/if}
   </div>
-  {#if open.stage != null}<p class="kicker">Chapitre {open.stage + 1} · {STAGES[open.stage].level}</p>{/if}
+  {#if open.stage != null}<p class="kicker">Chapitre {open.stage + 1} · {STAGES[open.stage]?.level ?? 'C1'}</p>{/if}
   <h2>{open.title}</h2>
   {#if open.author}<p class="byline">{open.author}, {open.year} · <a href={open.source} target="_blank" rel="noopener">source</a></p>{/if}
   {#if open.lang === 'en'}
@@ -365,8 +365,8 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
 
   {#if chapters.length}
     <h3 class="shelf">🐈‍⬛ L'histoire de Pluton</h3>
-    <p class="muted">The story of the path, one chapter per stage, written for that stage's French. Read along with audio.</p>
-    {#each chapters as x (x.t.id)}{@render item(x, 'chapter', `Chapitre ${x.t.stage + 1} · ${STAGES[x.t.stage].level}`)}{/each}
+    <p class="muted">The story of the path, chapter by chapter, written for each stage's French. The two epilogues follow the Opéra. Read along with audio.</p>
+    {#each chapters as x (x.t.id)}{@render item(x, 'chapter', `Chapitre ${x.t.stage + 1} · ${STAGES[x.t.stage]?.level ?? 'C1'}`)}{/each}
   {/if}
 
   <h3 class="shelf">📝 Your texts</h3>
