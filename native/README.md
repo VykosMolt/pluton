@@ -189,7 +189,7 @@ the newest 20; `gradeError` reuses the existing grading rules. No new storage or
 corrections already in SQLite.
 
 P5 spaces the error loop: schema v5 adds `next_due`/`reps` to corrections. Error review shows only drills that
-are due now. A correct answer moves the next review 1 → 3 → 7 → 16 → 35 → 60 days out; "almost" comes back
+are due now. A correct answer moves the next review 1 → 3 → 7 → 16 → 35 days out; "almost" comes back
 tomorrow; wrong resets it to now; six correct reviews retire a correction. The More entry counts due drills, and
 backups carry the schedule.
 

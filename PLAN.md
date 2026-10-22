@@ -535,7 +535,7 @@ emulator/device, so the APK is built but not launched.
 - 2026-10-22: P5 spaced error review. Schema v5 (`4.sqm`) adds `next_due`/`reps` to corrections; the data class,
   backup fields, inserts and migration test carry them. `errorDrills(corrections, now, limit)` now returns only
   unresolved drills whose due time has passed, earliest due first. `Store.reviewError` applies a simple interval
-  ladder (1/3/7/16/35/60 days after correct answers, 1 day after almost, now after wrong) and retires a correction
+  ladder (1/3/7/16/35 days after correct answers, 1 day after almost, now after wrong) and retires a correction
   after six correct reviews. Android More counts only due drills and passes a snapshot to the screen; iOS passes a
   snapshot from MoreView, so scheduling refreshes cannot mutate the drill under the learner. Tests: due/resolved
   filtering, the full schedule/reset/retire path, migration 1→5, and the existing screen tests updated. Verified:

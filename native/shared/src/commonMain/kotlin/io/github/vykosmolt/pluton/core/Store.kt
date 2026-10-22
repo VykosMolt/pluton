@@ -589,7 +589,7 @@ class Store(private val db: PlutonDb) {
     private fun putStats(s: Stats) = db.plutonQueries.putMeta("stats", json.encodeToString(s))
 }
 
-private val ERROR_INTERVALS = listOf(1, 3, 7, 16, 35, 60)
+private val ERROR_INTERVALS = listOf(1, 3, 7, 16, 35)
 private const val ERROR_RETIRE = 6
 
 private fun Cards.toState() = CardState(

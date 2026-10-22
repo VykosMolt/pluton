@@ -383,11 +383,15 @@ class StoreTest {
         assertTrue(!first.resolved)
         assertEquals(1, store.reviewError(id, "right", start)!!.reps) // not due yet: no farming
 
+        val gaps = mutableListOf(1L)
         var last = first
         var guard = 0
         while (!last.resolved && guard++ < 10) {
-            last = store.reviewError(id, "right", store.corrections().single().nextDue)!!
+            val due = store.corrections().single().nextDue
+            last = store.reviewError(id, "right", due)!!
+            if (!last.resolved) gaps += (last.nextDue - due) / 86_400_000L
         }
+        assertEquals(listOf(1L, 3L, 7L, 16L, 35L), gaps)
         assertTrue(last.resolved)
         assertEquals(6, last.reps)
         assertTrue(store.reviewError(id, "wrong", start)!!.resolved) // retired stays retired
