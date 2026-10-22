@@ -157,7 +157,7 @@ struct ReadView: View {
                 Text("\(Int(coverage.pct * 100))% understood · \(labeled.0) · \(coverage.total) words")
                     .font(.caption)
                     .foregroundStyle(labeled.1)
-                ProgressView(value: coverage.pct)
+                SwiftUI.ProgressView(value: coverage.pct)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()

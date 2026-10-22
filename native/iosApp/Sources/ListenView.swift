@@ -182,7 +182,7 @@ struct ListenView: View {
                 if let result = dictResult {
                     Text(outcome(result))
                         .font(.body.bold())
-                        .foregroundStyle(result.result == "right" ? .green : result.result == "almost" ? .orange : .red)
+                        .foregroundStyle(result.result == "right" ? Color.green : result.result == "almost" ? Color.orange : Color.red)
                     Text("Word match: \(model.dicteeScore(result))%")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -270,10 +270,15 @@ struct ListenView: View {
             let url = try result.get()
             let access = url.startAccessingSecurityScopedResource()
             defer { if access { url.stopAccessingSecurityScopedResource() } }
-            let text = (try? String(contentsOf: url, encoding: .utf8))
-                ?? (try String(contentsOf: url, encoding: .isoLatin1))
+            let text: String
+            if let utf8 = try? String(contentsOf: url, encoding: .utf8) {
+                text = utf8
+            } else {
+                text = try String(contentsOf: url, encoding: .isoLatin1)
+            }
             let parsed = model.parseCues(text)
             cues = parsed
+            lastTick = position
             dictCue = nil
             dictation = ""
             dictResult = nil

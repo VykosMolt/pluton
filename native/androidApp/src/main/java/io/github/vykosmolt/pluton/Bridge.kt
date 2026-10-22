@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -37,6 +38,7 @@ import io.github.vykosmolt.pluton.core.Token
 import io.github.vykosmolt.pluton.core.Word
 import io.github.vykosmolt.pluton.core.WordStatus
 import io.github.vykosmolt.pluton.core.bridgeNote
+import io.github.vykosmolt.pluton.core.bridgeReadId
 import io.github.vykosmolt.pluton.core.englishTokens
 import io.github.vykosmolt.pluton.core.status
 import io.github.vykosmolt.pluton.core.chunkWord
@@ -75,9 +77,13 @@ internal fun BridgeScreen(
     cognates: Map<String, List<String>>,
     cards: SnapshotStateMap<String, CardState>,
     store: Store,
+    read: Set<String>,
+    onRead: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val readId = bridgeReadId(text.title)
+    val finished = readId in read
     var mode by remember { mutableStateOf(0) } // 0 English, 1 weave what I know, 2 weave everything
     var sel by remember { mutableStateOf<EnglishToken?>(null) }
     val tokens = remember(text.body, cognates) { englishTokens(text.body, cognates) }
@@ -184,6 +190,11 @@ internal fun BridgeScreen(
                     },
                 )
             }
+        }
+        if (finished) {
+            Text("You finished this one", color = scheme.secondary, fontWeight = FontWeight.Bold)
+        } else {
+            Button(onClick = { onRead(readId) }) { Text("Finish this text") }
         }
     }
 

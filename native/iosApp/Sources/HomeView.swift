@@ -96,7 +96,7 @@ struct HomeView: View {
             Text("About \(model.dailyMinutes) minutes · four small steps")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            ProgressView(value: Double(model.planDone.count) / Double(total))
+            SwiftUI.ProgressView(value: Double(model.planDone.count) / Double(total))
             HStack(spacing: 6) {
                 Text("This week").font(.caption2).foregroundStyle(.secondary)
                 ForEach(lastSevenDays, id: \.self) { day in
@@ -183,7 +183,7 @@ struct HomeView: View {
                     .font(.caption.bold())
                     .foregroundStyle(.orange)
                 Text("\(stage.stage.place) · \(stage.stage.en)").font(.title3.bold())
-                ProgressView(value: stage.pct)
+                SwiftUI.ProgressView(value: stage.pct)
                 if let next = model.bridge.focus(stage: stage) {
                     Text("Next: \(next.label)").font(.footnote).foregroundStyle(.secondary)
                 }

@@ -59,6 +59,7 @@ class IosBridge {
         io.github.vykosmolt.pluton.core.buildRun(store.cards(), words, now, newToday, perRun = pace.perRun, perDay = pace.perDay)
 
     fun tokenize(text: String, forms: Map<String, String>): List<Token> = io.github.vykosmolt.pluton.core.tokenize(text, forms, FRENCH_ELISION)
+    fun bridgeReadId(title: String): String = io.github.vykosmolt.pluton.core.bridgeReadId(title)
     fun parseCues(text: String): List<Cue> = io.github.vykosmolt.pluton.core.parseCues(text)
     fun cueAt(cues: List<Cue>, t: Double): Int = io.github.vykosmolt.pluton.core.cueAt(cues, t)
     fun coverage(tokens: List<Token>, cards: Map<String, CardState>, words: Map<String, Word>): Coverage =

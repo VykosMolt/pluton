@@ -204,6 +204,7 @@ internal fun ListenScreen(
             runCatching {
                 val text = context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() }
                 cues = parseCues(text)
+                lastTick = positionMs / 1000.0
                 dictCue = null
                 dictation = ""
                 dictResult = null

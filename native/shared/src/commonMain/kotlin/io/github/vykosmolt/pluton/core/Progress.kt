@@ -25,6 +25,9 @@ data class ProgressReport(
     val milestones: List<Milestone>,
 )
 
+/** The id a Bridge text is marked read under; keeps the reader, the milestone and both apps in sync. */
+fun bridgeReadId(title: String): String = "bridge:$title"
+
 /** A deliberately broad receptive vocabulary estimate; the app labels it as an estimate, never a CEFR test. */
 fun cefrEstimate(knownWords: Int): String = when {
     knownWords < 500 -> "A1"

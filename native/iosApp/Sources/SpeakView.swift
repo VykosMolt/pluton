@@ -174,7 +174,7 @@ private struct TalkView: View {
                         .padding(12)
                         .background(turn.role == "user" ? Color.blue.opacity(0.12) : Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
                     }
-                    if busy { ProgressView().padding(.vertical, 4) }
+                    if busy { SwiftUI.ProgressView().padding(.vertical, 4) }
                     if !error.isEmpty { Text(error).foregroundStyle(.red) }
                     HStack {
                         TextField("Écris à Pluton…", text: $draft, axis: .vertical)

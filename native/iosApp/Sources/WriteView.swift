@@ -71,7 +71,7 @@ struct WriteView: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(essay.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
                         if busy {
-                            HStack { ProgressView(); Text("Pluton lit…").foregroundStyle(.secondary) }
+                            HStack { SwiftUI.ProgressView(); Text("Pluton lit…").foregroundStyle(.secondary) }
                         }
                         if !note.isEmpty { Text(note).font(.footnote).foregroundStyle(.green) }
                         if !error.isEmpty { Text(error).foregroundStyle(.red) }

@@ -22,9 +22,9 @@ class ProgressTest {
             cards = listOf(known, learning),
             words = emptyMap(),
             stats = Stats(read = listOf("La Parure"), listened = 3600, spoken = 1, talked = 10, written = 1),
-            read = setOf("La Parure"),
+            read = setOf("La Parure", bridgeReadId("Beowulf")),
             classicTitles = setOf("La Parure"),
-            bridgeTitles = emptySet(),
+            bridgeTitles = setOf(bridgeReadId("Beowulf")),
             accuracy = 0.9,
             canDoDone = setOf("A1-1"),
             stageLevel = "A1",
@@ -33,6 +33,7 @@ class ProgressTest {
         assertEquals(1, report.learningWords)
         assertEquals("A1", report.cefr)
         assertTrue(report.milestones.single { it.id == "classic" }.done)
+        assertTrue(report.milestones.single { it.id == "bridge" }.done)
         assertTrue(report.milestones.single { it.id == "listen-1h" }.done)
         assertTrue(report.milestones.single { it.id == "words-100" }.done.not())
         assertEquals(4, report.canDos.size)

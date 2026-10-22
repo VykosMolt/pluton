@@ -234,7 +234,7 @@ internal fun ReaderScreen(
     var bridgeOpen by remember { mutableStateOf<ShelfText?>(null) }
 
     bridgeOpen?.let { text ->
-        BridgeScreen(text, words, cognates, cards, store) { bridgeOpen = null }
+        BridgeScreen(text, words, cognates, cards, store, read, onRead) { bridgeOpen = null }
         return
     }
 

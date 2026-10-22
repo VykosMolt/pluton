@@ -104,6 +104,13 @@ struct BridgeView: View {
                             pick = BridgePick(token: token, piece: piece(token))
                             return .handled
                         })
+                    let readId = model.bridgeReadId(text.title)
+                    if model.read.contains(readId) {
+                        Text("You finished this one").bold().foregroundStyle(.green)
+                    } else {
+                        Button("Finish this text") { model.addRead(readId) }
+                            .buttonStyle(.bordered)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(20)

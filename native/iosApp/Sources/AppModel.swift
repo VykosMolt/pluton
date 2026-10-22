@@ -126,6 +126,10 @@ final class AppModel: ObservableObject {
         bridge.tokenize(text: body, forms: forms)
     }
 
+    func bridgeReadId(_ title: String) -> String {
+        bridge.bridgeReadId(title: title)
+    }
+
     func parseCues(_ text: String) -> [Cue] {
         bridge.parseCues(text: text)
     }
@@ -275,7 +279,7 @@ final class AppModel: ObservableObject {
             stats: stats,
             read: Array(read),
             classicTitles: shelf.filter { $0.lang == "fr" }.map { $0.title },
-            bridgeTitles: shelf.filter { $0.lang != "fr" }.map { $0.title },
+            bridgeTitles: shelf.filter { $0.lang != "fr" }.map { bridgeReadId($0.title) },
             accuracy: accuracy,
             canDoDone: Array(Set(bridge.canDoDone(store: store))),
             stageLevel: stageLevel

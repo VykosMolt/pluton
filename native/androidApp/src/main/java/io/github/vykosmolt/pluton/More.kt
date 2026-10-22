@@ -46,6 +46,7 @@ import io.github.vykosmolt.pluton.core.PathState
 import io.github.vykosmolt.pluton.core.STAGES
 import io.github.vykosmolt.pluton.core.ShelfText
 import io.github.vykosmolt.pluton.core.Store
+import io.github.vykosmolt.pluton.core.bridgeReadId
 import io.github.vykosmolt.pluton.core.Word
 import io.github.vykosmolt.pluton.core.conjKey
 import io.github.vykosmolt.pluton.core.createEmptyCard
@@ -100,7 +101,7 @@ internal fun MoreScreen(
                     stats = stats,
                     read = read,
                     classicTitles = shelf.filter { it.lang == "fr" }.map { it.title }.toSet(),
-                    bridgeTitles = shelf.filter { it.lang != "fr" }.map { it.title }.toSet(),
+                    bridgeTitles = shelf.filter { it.lang != "fr" }.map { bridgeReadId(it.title) }.toSet(),
                     accuracy = store.recentAccuracy(),
                     canDoDone = store.canDoDone(),
                     stageLevel = path.stages.getOrNull(path.current)?.stage?.level ?: "C1",
