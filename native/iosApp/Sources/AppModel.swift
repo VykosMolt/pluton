@@ -289,7 +289,8 @@ final class AppModel: ObservableObject {
             stats: stats,
             read: Array(read),
             classicTitles: shelf.filter { $0.lang == "fr" }.map { $0.title },
-            bridgeTitles: shelf.filter { $0.lang != "fr" }.map { bridgeReadId($0.title) },
+            // `shelf` is already filtered to French; the English Bridge texts live in `bridgeShelf`.
+            bridgeTitles: bridgeShelf.map { bridgeReadId($0.title) },
             accuracy: accuracy,
             canDoDone: Array(Set(bridge.canDoDone(store: store))),
             stageLevel: stageLevel

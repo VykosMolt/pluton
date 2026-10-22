@@ -91,6 +91,7 @@ internal fun ListenScreen(
     var sel by remember { mutableStateOf<ListenSelection?>(null) }
     var listenStarted by remember { mutableStateOf(0L) }
     var lastTick by remember { mutableStateOf(0.0) }
+    var pausedBoundary by remember { mutableStateOf<Double?>(null) }
     var dictCue by remember { mutableStateOf<Cue?>(null) }
     var dictation by remember { mutableStateOf("") }
     var dictResult by remember { mutableStateOf<DicteeResult?>(null) }
@@ -111,10 +112,28 @@ internal fun ListenScreen(
     }
 
     fun start() {
+        fun boundaryTarget(): Double? {
+            if (!autoPause) {
+                pausedBoundary = null
+                return null
+            }
+            val boundary = pausedBoundary ?: return null
+            pausedBoundary = null
+            // Auto-pause stops up to one tick after the line ends; restart at the next line's start.
+            return cues.firstOrNull { it.start >= boundary - 0.001 }?.start ?: cues.lastOrNull()?.start
+        }
+
         if (videoUri != null) {
             val v = video ?: return
             var sought = false
-            if (autoPause) {
+            val boundaryTarget = boundaryTarget()
+            if (boundaryTarget != null) {
+                val targetMs = (boundaryTarget * 1000).toInt()
+                v.seekTo(targetMs)
+                positionMs = targetMs.toLong()
+                lastTick = boundaryTarget
+                sought = true
+            } else if (autoPause) {
                 val t = v.currentPosition / 1000.0
                 val k = cueAt(cues, t)
                 val cue = cues.getOrNull(k)
@@ -137,7 +156,14 @@ internal fun ListenScreen(
         }
         val mp = media ?: return
         var sought = false
-        if (autoPause) {
+        val boundaryTarget = boundaryTarget()
+        if (boundaryTarget != null) {
+            val targetMs = (boundaryTarget * 1000).toInt()
+            mp.seekTo(targetMs)
+            positionMs = targetMs.toLong()
+            lastTick = boundaryTarget
+            sought = true
+        } else if (autoPause) {
             // The line we stopped on is over; replay the last line or start the next one.
             val t = mp.currentPosition / 1000.0
             val k = cueAt(cues, t)
@@ -160,6 +186,7 @@ internal fun ListenScreen(
     }
 
     fun seek(ms: Long) {
+        pausedBoundary = null
         if (videoUri != null) {
             video?.seekTo(ms.toInt())
             positionMs = ms
@@ -185,6 +212,7 @@ internal fun ListenScreen(
                 positionMs = 0
                 durationMs = 0
                 lastTick = 0.0
+                pausedBoundary = null
                 dictCue = null
                 dictation = ""
                 dictResult = null
@@ -214,6 +242,7 @@ internal fun ListenScreen(
                 val text = context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() }
                 cues = parseCues(text)
                 lastTick = positionMs / 1000.0
+                pausedBoundary = null
                 dictCue = null
                 dictation = ""
                 dictResult = null
@@ -230,6 +259,10 @@ internal fun ListenScreen(
             video = null
             countListen()
         }
+    }
+
+    LaunchedEffect(autoPause) {
+        if (!autoPause) pausedBoundary = null
     }
 
     // Drive the subtitle line and the auto-pause from the player's own clock (audio or video).
@@ -257,9 +290,9 @@ internal fun ListenScreen(
                 break
             }
             // Pause at the end of any line, including back-to-back cues; ignore seek jumps.
-            if (autoPause && t > previous && t - previous <= 0.6 &&
-                cues.any { it.end > previous && it.end <= t }
-            ) {
+            val crossedEnd = cues.firstOrNull { it.end > previous && it.end <= t }?.end
+            if (autoPause && t > previous && t - previous <= 0.6 && crossedEnd != null) {
+                pausedBoundary = crossedEnd
                 pause()
             }
             delay(120)

@@ -7,6 +7,7 @@ import PlutonCore
 /// Play any French audio/video the learner owns, with its subtitles, line controls and dictogloss.
 struct ListenView: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
     @SwiftUI.State private var player: AVPlayer?
     @SwiftUI.State private var timeObserver: Any?
     @SwiftUI.State private var endToken: NSObjectProtocol?
@@ -25,7 +26,9 @@ struct ListenView: View {
     @SwiftUI.State private var selected: String?
     @SwiftUI.State private var selectedSentence = ""
     @SwiftUI.State private var selectedForm = ""
-    @SwiftUI.State private var listenStarted: Date?
+    @SwiftUI.State private var listenClock = ListenClock()
+    @SwiftUI.State private var pausedBoundary: Double?
+    @SwiftUI.State private var mediaURL: URL?
     @SwiftUI.State private var lastTick: Double = 0
     @SwiftUI.State private var dictCue: Cue?
     @SwiftUI.State private var dictation = ""
@@ -80,6 +83,12 @@ struct ListenView: View {
                 .environmentObject(model)
         }
         .onDisappear { stop() }
+        .onChange(of: autoPause) { _, on in
+            if !on { pausedBoundary = nil }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background, playing { pause() }
+        }
     }
 
     @ViewBuilder
@@ -241,8 +250,8 @@ struct ListenView: View {
     }
 
     private func importMedia(_ result: Result<URL, Error>) {
+        guard case .success(let url) = result else { return }
         do {
-            let url = try result.get()
             let access = url.startAccessingSecurityScopedResource()
             defer { if access { url.stopAccessingSecurityScopedResource() } }
             stop()
@@ -250,6 +259,7 @@ struct ListenView: View {
             let dest = FileManager.default.temporaryDirectory
                 .appendingPathComponent("pluton-listen-\(UUID().uuidString).\(ext)")
             try FileManager.default.copyItem(at: url, to: dest)
+            mediaURL = dest
             isVideo = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)?.conforms(to: .movie) ?? false
             let item = AVPlayerItem(url: dest)
             let p = AVPlayer(playerItem: item)
@@ -274,8 +284,8 @@ struct ListenView: View {
     }
 
     private func importSubs(_ result: Result<URL, Error>) {
+        guard case .success(let url) = result else { return }
         do {
-            let url = try result.get()
             let access = url.startAccessingSecurityScopedResource()
             defer { if access { url.stopAccessingSecurityScopedResource() } }
             let text: String
@@ -287,6 +297,7 @@ struct ListenView: View {
             let parsed = model.parseCues(text)
             cues = parsed
             lastTick = position
+            pausedBoundary = nil
             dictCue = nil
             dictation = ""
             dictResult = nil
@@ -307,9 +318,28 @@ struct ListenView: View {
             let previous = lastTick
             position = now
             lastTick = now
+            if playing, p.timeControlStatus == .paused, p.rate == 0 {
+                // An interruption pauses the player without touching our button.
+                playing = false
+                flushListen()
+                listenClock.tick = nil
+            }
+            if playing, p.timeControlStatus == .playing {
+                let wall = Date()
+                if let last = listenClock.tick {
+                    let delta = wall.timeIntervalSince(last)
+                    // Skip suspension gaps; only closely spaced ticks are real playback time.
+                    if delta > 0, delta < 1.5 { listenClock.carry += delta }
+                }
+                listenClock.tick = wall
+                if listenClock.carry >= 30 { flushListen() }
+            } else {
+                listenClock.tick = nil
+            }
             // Pause at the end of any line, including back-to-back cues; ignore seek jumps.
             if playing, autoPause, now > previous, now - previous <= 0.6,
-               cues.contains(where: { $0.end > previous && $0.end <= now }) {
+               let end = cues.first(where: { $0.end > previous && $0.end <= now })?.end {
+                pausedBoundary = end
                 pause()
             }
         }
@@ -320,7 +350,8 @@ struct ListenView: View {
         ) { _ in
             guard player?.currentItem === item else { return }
             playing = false
-            countListen()
+            flushListen()
+            listenClock.tick = nil
             if duration > 0 { position = duration }
         }
         failToken = NotificationCenter.default.addObserver(
@@ -330,7 +361,8 @@ struct ListenView: View {
         ) { _ in
             guard player?.currentItem === item else { return }
             playing = false
-            countListen()
+            flushListen()
+            listenClock.tick = nil
             error = "Playback failed."
         }
     }
@@ -348,7 +380,12 @@ struct ListenView: View {
 
     private func play() {
         guard let p = player else { return }
-        if autoPause, let cue, position >= cue.end {
+        if autoPause, let boundary = pausedBoundary {
+            // Auto-pause overshoots the cue end by up to one tick; restart at the next line, not mid-line.
+            let target = cues.first(where: { $0.start >= boundary - 0.001 })?.start ?? cues.last?.start
+            pausedBoundary = nil
+            if let target { seek(to: target) }
+        } else if autoPause, let cue, position >= cue.end {
             // Resume on the line after the one that just auto-paused, or replay the last one.
             seek(to: cues[safe: cueIndex + 1]?.start ?? cue.start)
         } else if duration > 0, position >= duration - 0.1 {
@@ -358,13 +395,14 @@ struct ListenView: View {
         p.rate = Float(rate)
         playing = true
         lastTick = position
-        if listenStarted == nil { listenStarted = Date() }
+        listenClock.tick = Date()
     }
 
     private func pause() {
         player?.pause()
         playing = false
-        countListen()
+        flushListen()
+        listenClock.tick = nil
     }
 
     private func stop() {
@@ -373,6 +411,11 @@ struct ListenView: View {
         player?.replaceCurrentItem(with: nil)
         player = nil
         isVideo = false
+        pausedBoundary = nil
+        if let mediaURL {
+            try? FileManager.default.removeItem(at: mediaURL)
+        }
+        mediaURL = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
@@ -382,6 +425,7 @@ struct ListenView: View {
         player.seek(to: CMTime(seconds: actual, preferredTimescale: 600))
         position = actual
         lastTick = actual
+        pausedBoundary = nil
     }
 
     private func setRate(_ value: Double) {
@@ -395,11 +439,13 @@ struct ListenView: View {
         try? session.setActive(true)
     }
 
-    private func countListen() {
-        guard let started = listenStarted else { return }
-        let seconds = Int(Date().timeIntervalSince(started))
-        if seconds > 0 { model.addListened(seconds) }
-        listenStarted = nil
+    /// Commit whole seconds accumulated from ticks where the player was actually advancing.
+    private func flushListen() {
+        let whole = Int(listenClock.carry)
+        if whole > 0 {
+            model.addListened(whole)
+            listenClock.carry -= Double(whole)
+        }
     }
 
     private func clock(_ seconds: Double) -> String {
@@ -407,6 +453,12 @@ struct ListenView: View {
         let total = Int(seconds)
         return "\(total / 60):" + String(format: "%02d", total % 60)
     }
+}
+
+/// Mutable tick accumulator kept outside SwiftUI state so per-tick updates do not redraw the view.
+private final class ListenClock {
+    var carry: Double = 0
+    var tick: Date?
 }
 
 private struct MarkedLineView: View {

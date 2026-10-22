@@ -492,3 +492,11 @@ emulator/device, so the APK is built but not launched.
   was started but terminated before it could report (reviewer provider returned HTTP 402, insufficient balance);
   the delta therefore rests on the first P2 review, local Swift syntax checks and the macOS type-check. Android's
   auto-pause baseline now syncs to the player's actual position on resume when no seek happened.
+- 2026-10-22: resumed iOS Listen delta review (the earlier attempt hit an API 402). One blocking finding: the iOS
+  Bridge milestone read its titles from the French-only `shelf`, so it could never complete; now it uses
+  `bridgeShelf`. Non-blocking fixes: listening seconds accumulate only while `AVPlayer.timeControlStatus` is
+  `.playing` (suspension/interruption gaps are ignored, flushed on pause/end/background), file-picker cancellation
+  no longer shows an error, the temporary media copy is deleted in `stop()`, and auto-pause remembers the crossed
+  cue end so Play restarts at the next line instead of mid-line. The same boundary resume fix is in Android Listen.
+  Verified: 113 shared JVM tests, 24 Android JVM tests, 0 failures; APK builds; Swift parses; CI for `30e480f8`
+  green (build + smoke). This commit awaits its own CI run.
