@@ -507,3 +507,12 @@ emulator/device, so the APK is built but not launched.
   accuracy (Store), checkpoint completion, a week-accuracy assertion in the report test, and Robolectric assertions
   for the new Progress cards. Verified: 115 shared JVM tests, 24 Android JVM tests, 0 failures; APK builds; Swift
   parses. CI pending. Next: adversarial review of P3.
+- 2026-10-22: adversarial P3 review (HEAD `440dd171`). No blocking data defect. Confirmed: the Android checkpoint
+  line was stale after ticking a can-do (now derived from the local tick set and covered by the Robolectric test),
+  and the weekly card said "all-time accuracy" for the last-30 card (copy fixed). The review also corrected the
+  record: the `440dd171` commit's claim that the tuple key path would not type-check was false — the `e126464f`
+  build succeeded with it; the index-range variant is a harmless simplification. Fixed the misplaced
+  `recentAccuracy` KDoc. Can-do ticks now ride in backup version 3 (v1/v2 backups preserve local ticks), and the
+  README says so. Verified: 115 shared JVM tests, 24 Android JVM tests, 0 failures; APK builds; e126/440dd CI
+  build jobs green; the simulator smoke job hung in the macOS runner and was cancelled, so only the compile/package
+  half of those runs was used.

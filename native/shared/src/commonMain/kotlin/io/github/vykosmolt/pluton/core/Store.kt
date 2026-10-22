@@ -205,7 +205,6 @@ class Store(private val db: PlutonDb) {
         ReviewEntry(it.lemma, it.rating.toInt(), it.mode, it.at, it.overridden != 0L)
     }
 
-    /** Share of the last [n] reviews rated Good or Easy; null until there is history. */
     /** Review count and Good/Easy count over the last seven days. */
     fun weekActivity(now: Long): WeekActivity {
         val since = now - 7L * 24 * 60 * 60 * 1000
@@ -213,6 +212,7 @@ class Store(private val db: PlutonDb) {
         return WeekActivity(ratings.size, ratings.count { it >= 3L })
     }
 
+    /** Share of the last [n] reviews rated Good or Easy; null until there is history. */
     fun recentAccuracy(n: Int = 30): Double? {
         val ratings = db.plutonQueries.recentRatings(n.toLong()).executeAsList()
         if (ratings.isEmpty()) return null
