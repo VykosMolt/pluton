@@ -25,16 +25,37 @@ class AppLaunchTest {
     @get:Rule
     val rule = createAndroidComposeRule<MainActivity>()
 
-    private fun waitForHome() = rule.waitUntil(timeoutMillis = 90_000) {
-        rule.onAllNodesWithText("Start a run", substring = true).fetchSemanticsNodes().isNotEmpty()
+    private fun waitForHome() {
+        // A fresh install shows the one-question onboarding before Home; later tests reuse the saved answer.
+        rule.waitUntil(timeoutMillis = 30_000) {
+            rule.onAllNodesWithText("Start with 10 minutes").fetchSemanticsNodes().isNotEmpty() ||
+                rule.onAllNodesWithText("Start a run", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        if (rule.onAllNodesWithText("Start with 10 minutes").fetchSemanticsNodes().isNotEmpty()) {
+            rule.onNodeWithText("Start with 10 minutes").performClick()
+        }
+        rule.waitUntil(timeoutMillis = 90_000) {
+            rule.onAllNodesWithText("Start a run", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     @Test
     fun homeLoadsTheDeckAndShowsItsTabs() {
         waitForHome()
+        rule.onNodeWithText("Today").assertExists()
         rule.onNodeWithText("Start a run", substring = true).performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Read").assertExists()
         rule.onNodeWithText("Speak").assertExists()
+    }
+
+    @Test
+    fun theDailyPlanOffersAllFourStrands() {
+        waitForHome()
+        rule.onNodeWithText("Today").assertExists()
+        rule.onNodeWithText("Warm up").assertExists()
+        rule.onNodeWithText("Read something").assertExists()
+        rule.onNodeWithText("Speak aloud").assertExists()
+        rule.onNodeWithText("Write a little").assertExists()
     }
 
     @Test
@@ -46,24 +67,27 @@ class AppLaunchTest {
         }
         rule.onNodeWithText("Chapitre 1 · Le Mur", substring = true).assertExists()
         rule.onNodeWithText("La Parure", substring = true).assertExists()
+        rule.onNodeWithText("Norman Bridge").assertExists()
+        rule.onNodeWithText("The Black Cat", substring = true).assertExists()
         // Your texts section renders with its add action, even when empty.
         rule.onNodeWithText("Your texts").assertExists()
         rule.onNodeWithText("+ Add").assertExists()
     }
 
     @Test
-    fun moreTabExplainsAccountSync() {
+    fun normanBridgeOpensAnEnglishText() {
         waitForHome()
-        rule.onNodeWithText("More").performClick()
+        rule.onNodeWithText("Read").performClick()
         rule.waitUntil(timeoutMillis = 20_000) {
-            rule.onAllNodesWithText("Account").fetchSemanticsNodes().isNotEmpty()
+            rule.onAllNodesWithText("The Black Cat", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNodeWithText("Account").performScrollTo().performClick()
+        rule.onNodeWithText("The Black Cat", substring = true).performScrollTo().performClick()
         rule.waitUntil(timeoutMillis = 20_000) {
-            rule.onAllNodesWithText("Sync server").fetchSemanticsNodes().isNotEmpty()
+            rule.onAllNodesWithText("Norman Bridge").fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNodeWithText("Supabase URL").assertExists()
-        rule.onNodeWithText("Save server").assertExists()
+        rule.onNodeWithText("Weave what I know").assertExists()
+        rule.onNodeWithText("Weave everything").assertExists()
+        rule.onNodeWithText("came that way", substring = true).assertExists()
     }
 
     @Test
@@ -97,7 +121,26 @@ class AppLaunchTest {
         }
         rule.onNodeWithText("Open Settings").assertExists()
         rule.onNodeWithText("Practice").performClick()
-        rule.onNodeWithText("🔊 Hear it").assertExists()
+        rule.onNodeWithText("Hear it").assertExists()
+    }
+
+    @Test
+    fun speakOffersFluencyAndSounds() {
+        waitForHome()
+        rule.onNodeWithText("Speak").performClick()
+        rule.waitUntil(timeoutMillis = 20_000) {
+            rule.onAllNodesWithText("Practice").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("Fluency").performScrollTo().performClick()
+        rule.waitUntil(timeoutMillis = 20_000) {
+            rule.onAllNodesWithText("Shadowing").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("4 / 3 / 2").assertExists()
+        rule.onNodeWithText("Sounds").performScrollTo().performClick()
+        rule.waitUntil(timeoutMillis = 20_000) {
+            rule.onAllNodesWithText("Les nasales").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("Les nasales").assertExists()
     }
 
     @Test
@@ -202,9 +245,9 @@ class AppLaunchTest {
         }
         rule.onNodeWithText("Start a run", substring = true).performScrollTo().performClick()
         rule.waitUntil(timeoutMillis = 20_000) {
-            rule.onAllNodesWithText("NEW TABLE", substring = true).fetchSemanticsNodes().isNotEmpty()
+            rule.onAllNodesWithText("CONJUGATION", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNodeWithText("NEW TABLE", substring = true).assertExists()
+        rule.onNodeWithText("CONJUGATION", substring = true).assertExists()
     }
 
     @Test
@@ -225,9 +268,9 @@ class AppLaunchTest {
         }
         rule.onNodeWithText("Bonjour. Ça va bien ?", substring = true).performScrollTo().performClick()
         rule.waitUntil(timeoutMillis = 20_000) {
-            rule.onAllNodesWithText("▶ Listen").fetchSemanticsNodes().isNotEmpty()
+            rule.onAllNodesWithText("Read & listen").fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNodeWithText("▶ Listen").assertExists()
+        rule.onNodeWithText("Read & listen").assertExists()
     }
 
     @Test
@@ -237,7 +280,7 @@ class AppLaunchTest {
         rule.waitUntil(timeoutMillis = 20_000) {
             rule.onAllNodesWithText("Chapitre 1 · Le Mur", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNodeWithText("✨ Story").performScrollTo().performClick()
+        rule.onNodeWithText("Story").performScrollTo().performClick()
         rule.waitUntil(timeoutMillis = 20_000) {
             rule.onAllNodesWithText("A story at your level", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
@@ -260,7 +303,7 @@ class AppLaunchTest {
         rule.waitUntil(timeoutMillis = 20_000) {
             rule.onAllNodesWithText("Chapitre 1 · Le Mur", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNodeWithText("Chapitre 1 · Le Mur", substring = true).performClick()
+        rule.onNodeWithText("Chapitre 1 · Le Mur", substring = true).performScrollTo().performClick()
         rule.waitUntil(timeoutMillis = 20_000) {
             rule.onAllNodesWithText("← Library").fetchSemanticsNodes().isNotEmpty()
         }

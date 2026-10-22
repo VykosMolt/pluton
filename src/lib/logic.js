@@ -4,6 +4,8 @@ import { LANG } from './lang.js'
 
 export { createEmptyCard, Rating, State }
 export const scheduler = fsrs({ enable_fuzz: true })
+// Sync replay must give every device the same card, so it can't use fuzz.
+const replayScheduler = fsrs({ enable_fuzz: false })
 
 export const KNOWN_DAYS = 21 // FSRS stability at which a word counts as "known"
 export const UNLOCK = 0.95 // share of known words at which a text is comfortable to read
@@ -280,6 +282,12 @@ export function gradeGram(typed, answers) {
   return { result: 'wrong' }
 }
 
+/** Comprehension quiz: answers hold option indices (-1 = unanswered). Pass at two thirds right. */
+export function gradeQuiz(questions, answers) {
+  const right = questions.reduce((n, q, i) => n + (answers[i] === q.ok ? 1 : 0), 0)
+  return { right, total: questions.length, pass: right >= Math.ceil(questions.length * 2 / 3) }
+}
+
 /** A practice card from a correction: the corrected sentence with the fixed words to type back. */
 export function fixCard(sentence, answer, wrong, why, now = Date.now()) {
   if (!sentence || !answer || !sentence.includes(answer)) return null
@@ -416,6 +424,33 @@ export function cueAt(cues, t) {
 /** Next milestone above n, for progress bars that always have somewhere to go; past the list, the next multiple of its last step. */
 export const milestone = (n, steps) => steps.find((g) => g > n) ?? (Math.floor(n / steps.at(-1)) + 1) * steps.at(-1)
 export const listenGoal = (h) => milestone(h, [10, 50, 100, 250, 500, 1000])
+
+/** Sentence offsets for texts that have no recorded clips ([start, end, null], as story/shelf data does).
+ *  A null clip id makes say() use the browser voice. Mirrors data/fr/build.py's split_sentences. */
+export function sentencesOf(body) {
+  const out = []
+  for (const m of body.matchAll(/[^.!?…\n]+(?:[.!?…]+)?/g)) {
+    const s = m[0]
+    if (!/\p{L}/u.test(s)) continue
+    const lead = s.length - s.replace(/^[ «»—"“”]+/, '').length
+    const start = m.index + lead
+    const end = m.index + s.trimEnd().length
+    const spoken = body.slice(start, end).replace(/[«»“”"]|^—\s*/g, '').trim()
+    if (spoken) out.push([start, end, null])
+  }
+  return out
+}
+
+/**
+ * FSRS card after replaying a unioned review log in time order. Deterministic (no fuzz), so every device that
+ * synced the same log lands on the same card. `entries` are log entries; `added` is when the card was created.
+ */
+export function replayCard(entries, added) {
+  const sorted = [...entries].sort((a, b) => a.at - b.at || String(a.key ?? '').localeCompare(String(b.key ?? '')))
+  let card = createEmptyCard(new Date(added ?? sorted[0]?.at ?? Date.now()))
+  for (const e of sorted) card = replayScheduler.next(card, new Date(e.at), e.rating).card
+  return card
+}
 
 /** The sentence around offset `at`, cropped to ~160 chars so a mined card stays readable. */
 export function sentenceAt(text, at) {

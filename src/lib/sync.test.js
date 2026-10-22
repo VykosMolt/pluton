@@ -1,13 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { plan, collect } from './sync.js'
+import { plan, collect, replayPulled } from './sync.js'
 
 const T = (s) => new Date(s).toISOString()
 const card = (lemma, updated, extra = {}) => ({ lemma, updated, fsrs: { due: new Date(0), state: 2 }, ...extra })
 
 test('pull: newer remote versions win, older ones and own echoes are ignored', () => {
   const cards = new Map([['chat', card('chat', 2000)], ['chien', card('chien', 9000)]])
-  const texts = new Map([[3, { id: 3, title: 'mine', updated: 1000 }]])
+  const texts = new Map([[3, { id: 3, title: 'mine', updated: 9000 }]])
   const rows = [
     { store: 'cards', key: 'chat', data: card('chat', 5000), updated_at: T(5000) }, // newer: applied
     { store: 'cards', key: 'chien', data: card('chien', 5000), updated_at: T(5000) }, // older: ignored
@@ -26,6 +26,44 @@ test('pull: newer remote versions win, older ones and own echoes are ignored', (
   assert.ok(ops[0][2].fsrs.due instanceof Date) // dates revived from JSON
   assert.equal(ops[0][2].pulled, 5000) // so it isn't pushed straight back
   assert.deepEqual(stamped, { settings: 7000 })
+})
+
+test('pull: another device can edit or delete the text this device created', () => {
+  const texts = new Map([[3, { id: 3, title: 'mine', updated: 1000 }]])
+  const edited = plan([{ store: 'texts', key: 'dev1:3', data: { id: 'dev1:3', title: 'edited' }, updated_at: T(5000) }],
+    { device: 'dev1', cards: new Map(), texts, stamps: {} })
+  assert.equal(edited.ops.length, 1)
+  assert.deepEqual([edited.ops[0][0], edited.ops[0][1], edited.ops[0][2].id, edited.ops[0][2].title],
+    ['put', 'texts', 3, 'edited'])
+  const deleted = plan([{ store: 'texts', key: 'dev1:3', data: { deleted: true }, updated_at: T(5000) }],
+    { device: 'dev1', cards: new Map(), texts, stamps: {} })
+  assert.deepEqual(deleted.ops, [['del', 'texts', 3]])
+})
+
+test('pull: a newer local deletion is not undone by an older remote edit', () => {
+  const rows = [{ store: 'cards', key: 'chat', data: card('chat', 5000), updated_at: T(5000) }]
+  const base = { device: 'dev1', cards: new Map(), texts: new Map(), stamps: {} }
+  assert.deepEqual(plan(rows, { ...base, tomb: { 'cards\tchat': 6000 } }).ops, [])
+  assert.equal(plan(rows, { ...base, tomb: { 'cards\tchat': 4000 } }).ops.length, 1) // the edit is newer: apply
+})
+
+test('pull: a card is rebuilt from both devices reviews, without double-counting own logs', () => {
+  const op = ['put', 'cards', { lemma: 'chat', added: 500, updated: 3000, fsrs: {} }]
+  const mine = [[1, { lemma: 'chat', rating: 3, at: 2000 }]]
+  const rows = [{ store: 'log', key: 'dev2:1', data: { lemma: 'chat', rating: 3, at: 1000 }, updated_at: T(1000) }]
+  const [out] = replayPulled([op], mine, rows, 'dev1')
+  assert.equal(out[2].fsrs.reps, 2) // both reviews happened
+  const own = [{ store: 'log', key: 'dev1:1', data: mine[0][1], updated_at: T(2000) }]
+  assert.equal(replayPulled([op], mine, own, 'dev1')[0][2].fsrs.reps, 1) // the local review is not replayed twice
+  const known = ['put', 'cards', { lemma: 'chat', known: true, fsrs: {} }]
+  assert.deepEqual(replayPulled([known], mine, [], 'dev1'), [known]) // a marked-known card keeps its state
+  // The device whose card state won LWW gets no card op, but still has to absorb the other device's review.
+  const cards = new Map([['chat', { lemma: 'chat', added: 500, updated: 3000, fsrs: { reps: 1 } }]])
+  const replayed = replayPulled([], mine, rows, 'dev1', cards)
+  assert.equal(replayed.length, 1)
+  assert.equal(replayed[0][2].fsrs.reps, 2)
+  // ...but a pulled deletion must not be resurrected by an old review.
+  assert.deepEqual(replayPulled([['del', 'cards', 'chat']], mine, rows, 'dev1', cards), [['del', 'cards', 'chat']])
 })
 
 test('pull: deletions apply unless the local copy changed later', () => {

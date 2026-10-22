@@ -1,5 +1,11 @@
 package io.github.vykosmolt.pluton
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.speech.SpeechRecognizer
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,8 +48,11 @@ import kotlinx.coroutines.launch
 /** Three modes under the Speak tab: read-aloud practice, conversation, and corrected writing. */
 @Composable
 internal fun SpeakTabs(mode: Int, onMode: (Int) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for ((value, label) in listOf(0 to "Practice", 1 to "Talk", 2 to "Write")) {
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        for ((value, label) in listOf(0 to "Practice", 1 to "Talk", 2 to "Write", 3 to "Fluency", 4 to "Sounds")) {
             TextButton(onClick = { onMode(value) }) {
                 Text(
                     label,
@@ -76,6 +86,7 @@ internal fun TalkScreen(
     words: Map<String, Word>,
     cards: Map<String, CardState>,
     store: Store,
+    focus: String? = null,
     onSettings: () -> Unit,
     onTalked: () -> Unit,
     onPractice: () -> Unit,
@@ -83,11 +94,28 @@ internal fun TalkScreen(
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val tts = rememberFrenchTts()
+    val voice = rememberVoiceInput()
+    var voiceOn by remember { mutableStateOf(true) }
+    var permitted by remember {
+        mutableStateOf(context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+    }
+    var error by remember { mutableStateOf("") }
+    var pendingVoice by remember { mutableStateOf(false) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        permitted = granted
+        if (granted) {
+            pendingVoice = true
+        } else {
+            error = "Microphone permission is needed for voice chat."
+        }
+    }
+    val recognitionAvailable = remember { SpeechRecognizer.isRecognitionAvailable(context) }
     val log = remember { mutableStateListOf<ChatMessage>() }
     var draft by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf("") }
     val scroll = rememberScrollState()
 
     val vocab = cards.values.count {
@@ -106,20 +134,21 @@ internal fun TalkScreen(
         if (log.isNotEmpty()) scroll.animateScrollTo(scroll.maxValue)
     }
 
-    fun send() {
+    fun sendText(raw: String) {
         val config = ai ?: return
-        val text = draft.trim()
+        val text = raw.trim()
         if (text.isEmpty() || busy) return
         draft = ""
         error = ""
         log += ChatMessage("user", text)
         busy = true
         scope.launch {
-            runCatching { aiChat(config, chatSystem(level, learning), log.toList()) }
+            runCatching { aiChat(config, chatSystem(level, learning, focus), log.toList()) }
                 .onSuccess {
                     log += ChatMessage("assistant", it)
                     store.addTalked()
                     onTalked()
+                    if (voiceOn) tts.speak(splitCorrection(it).body)
                 }
                 .onFailure {
                     error = it.message ?: "The AI request failed."
@@ -127,6 +156,25 @@ internal fun TalkScreen(
                     draft = text
                 }
             busy = false
+        }
+    }
+
+    fun send() = sendText(draft)
+
+    fun startVoice() {
+        if (!permitted) {
+            permission.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        tts.stop()
+        voice.start { text -> sendText(text) }
+    }
+
+    LaunchedEffect(pendingVoice) {
+        if (pendingVoice) {
+            pendingVoice = false
+            tts.stop()
+            voice.start { text -> sendText(text) }
         }
     }
 
@@ -160,7 +208,7 @@ internal fun TalkScreen(
                     val correction = if (user) null else splitCorrection(message.content)
                     if (correction?.fix != null) {
                         Text(
-                            "✏️ ${correction.fix}" + if (correction.why.isNotBlank()) " — ${correction.why}" else "",
+                            "Correction · ${correction.fix}" + if (correction.why.isNotBlank()) " — ${correction.why}" else "",
                             color = scheme.tertiary,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -188,5 +236,21 @@ internal fun TalkScreen(
             )
             Button(onClick = { send() }, enabled = draft.isNotBlank() && !busy) { Text("Send") }
         }
+        if (recognitionAvailable) {
+            TextButton(
+                onClick = { if (voice.listening) voice.stop() else startVoice() },
+                enabled = !busy,
+            ) {
+                Text(if (voice.listening) "Listening… tap to stop" else "Speak instead of typing")
+            }
+        } else {
+            Text("Voice input isn't available on this device.", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+        }
+        Text("Voice input uses your device's speech service; only the transcript goes to the AI.", color = scheme.onSurfaceVariant, fontSize = 12.sp)
+        TextButton(onClick = { voiceOn = !voiceOn }) {
+            Text(if (voiceOn) "Voice replies on" else "Voice replies off", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+        }
+        if (voice.error.isNotBlank()) Text(voice.error, color = scheme.error)
+        if (tts.error.isNotBlank()) Text(tts.error, color = scheme.error)
     }
 }

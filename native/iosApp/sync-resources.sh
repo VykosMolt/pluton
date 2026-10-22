@@ -6,7 +6,7 @@ ROOT="$(cd "$SRCROOT/.." && pwd)"
 DATA="$ROOT/../public/data/fr"
 OUT="$SRCROOT/Data/fr"
 mkdir -p "$OUT"
-for name in words forms story shelf conj grammar; do
+for name in words forms story shelf conj grammar cognates; do
     if [ ! -f "$DATA/$name.json" ]; then
         echo "error: missing $DATA/$name.json — run \`uv run data/fr/build.py\` first" >&2
         exit 1

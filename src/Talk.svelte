@@ -6,6 +6,7 @@
   import { tokenize, wordDiff, sentenceAt, isWord, fixCard, firstChange } from './lib/logic.js'
   import { LANG } from './lib/lang.js'
   import Cat from './Cat.svelte'
+  import Speak from './Speak.svelte'
   import Tokens from './Tokens.svelte'
   import WordSheet from './WordSheet.svelte'
   import AccentBar from './AccentBar.svelte'
@@ -163,16 +164,22 @@
   <div class="seg" role="tablist">
     <button role="tab" aria-selected={mode === 'chat'} class:on={mode === 'chat'} onclick={() => (mode = 'chat')}>💬 Conversation</button>
     <button role="tab" aria-selected={mode === 'write'} class:on={mode === 'write'} onclick={() => (mode = 'write')}>✍️ Writing</button>
+    <button role="tab" aria-selected={mode === 'speak'} class:on={mode === 'speak'} onclick={() => (mode = 'speak')}>🗣 Speaking</button>
   </div>
 </div>
 
-{#if !ready(ai)}
+{#if mode === 'speak'}
+  <Speak {words} {cards} {statusOf} {oncount} />
+{:else if !ready(ai)}
   <section class="panel connect">
     <Cat mood="idle" size={80} />
     <div>
       <p><b>Pluton can talk with you and correct your writing</b>, using an AI model with your own key: Claude, ChatGPT models,
         DeepSeek, anything on OpenRouter, or a free local model with Ollama.</p>
-      <button class="btn" onclick={onsettings}>Connect an AI</button>
+      <div class="row">
+        <button class="btn" onclick={onsettings}>Connect an AI</button>
+        <button class="btn ghost" onclick={() => (mode = 'speak')}>Speaking needs no key</button>
+      </div>
     </div>
   </section>
 {:else if mode === 'chat'}

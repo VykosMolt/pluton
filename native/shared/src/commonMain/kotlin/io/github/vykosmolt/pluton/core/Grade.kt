@@ -91,6 +91,8 @@ fun gradeProduce(typed: String, word: Word, forms: Map<String, String>): GradeRe
 
 /** Which exercise a word card gets on this rep (matches modeFor in src/lib/logic.js). */
 fun modeFor(card: Card, word: Word): String {
+    // Chunks have no recorded sentence audio; a silent dictation would be unanswerable.
+    if (word.pos == "chunk") return "cloze"
     if (card.reps % 4 == 3 && card.stability >= KNOWN_DAYS && word.audioSentence != null) return "dictee"
     if (card.reps % 3 == 2 && card.state == State.Review && word.pos in PRODUCE_POS && word.gloss.isNotBlank()) return "produce"
     return if (card.reps % 2 == 1) "dictation" else "cloze"

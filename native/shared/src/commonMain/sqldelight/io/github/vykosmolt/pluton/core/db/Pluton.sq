@@ -55,6 +55,30 @@ CREATE TABLE tombstones (
   PRIMARY KEY (store, key)
 );
 
+CREATE TABLE writing (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  prompt TEXT NOT NULL,
+  draft TEXT NOT NULL,
+  corrected TEXT NOT NULL,
+  feedback TEXT NOT NULL,
+  level TEXT NOT NULL,
+  errors TEXT NOT NULL,
+  revised TEXT,
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL
+);
+
+CREATE TABLE corrections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  original TEXT NOT NULL,
+  fix TEXT NOT NULL,
+  why TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  resolved INTEGER NOT NULL DEFAULT 0
+);
+
 selectAllCards:
 SELECT * FROM cards;
 
@@ -138,3 +162,32 @@ SELECT value FROM meta WHERE key = ?;
 
 putMeta:
 INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?);
+
+selectAllWriting:
+SELECT * FROM writing ORDER BY created DESC;
+
+insertWriting:
+INSERT INTO writing(prompt, draft, corrected, feedback, level, errors, revised, created, updated)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+lastWritingId:
+SELECT last_insert_rowid() AS id;
+
+updateWritingRevision:
+UPDATE writing SET revised = ?, updated = ? WHERE id = ?;
+
+deleteAllWriting:
+DELETE FROM writing;
+
+selectAllCorrections:
+SELECT * FROM corrections ORDER BY at DESC;
+
+insertCorrection:
+INSERT INTO corrections(source, kind, original, fix, why, at, resolved)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteAllCorrections:
+DELETE FROM corrections;
+
+recentRatings:
+SELECT rating FROM reviews ORDER BY at DESC, id DESC LIMIT ?;

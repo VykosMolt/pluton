@@ -1,0 +1,23 @@
+CREATE TABLE writing (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  prompt TEXT NOT NULL,
+  draft TEXT NOT NULL,
+  corrected TEXT NOT NULL,
+  feedback TEXT NOT NULL,
+  level TEXT NOT NULL,
+  errors TEXT NOT NULL,
+  revised TEXT,
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL
+);
+
+CREATE TABLE corrections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  original TEXT NOT NULL,
+  fix TEXT NOT NULL,
+  why TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  resolved INTEGER NOT NULL DEFAULT 0
+);

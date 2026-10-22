@@ -40,6 +40,32 @@ data class TextRecord(
     val remoteKey: String? = null,
 )
 
+/** A saved writing attempt and its first correction. `revised` is the learner's second draft. */
+data class WritingRecord(
+    val id: Long,
+    val prompt: String,
+    val draft: String,
+    val corrected: String,
+    val feedback: String,
+    val level: String,
+    val errors: List<WritingError>,
+    val revised: String?,
+    val created: Long,
+    val updated: Long,
+)
+
+/** One correction from writing or talk, kept locally so recurring errors can be surfaced. */
+data class CorrectionRecord(
+    val id: Long,
+    val source: String,
+    val kind: String,
+    val original: String,
+    val fix: String,
+    val why: String,
+    val at: Long,
+    val resolved: Boolean,
+)
+
 /** New-word pace; the same JSON shape as the web app's settings meta. */
 @Serializable
 data class Pace(val perRun: Int = NEW_PER_RUN, val perDay: Int = NEW_PER_DAY)
@@ -64,11 +90,37 @@ private fun newDeviceId(): String = buildString {
 data class BackupText(val title: String, val body: String, val added: Long)
 
 @Serializable
+data class BackupWriting(
+    val prompt: String,
+    val draft: String,
+    val corrected: String,
+    val feedback: String,
+    val level: String,
+    val errors: List<WritingError> = emptyList(),
+    val revised: String? = null,
+    val created: Long,
+    val updated: Long,
+)
+
+@Serializable
+data class BackupCorrection(
+    val source: String,
+    val kind: String,
+    val original: String,
+    val fix: String,
+    val why: String,
+    val at: Long,
+    val resolved: Boolean = false,
+)
+
+@Serializable
 data class Backup(
     val version: Int = 1,
     val cards: List<CardState> = emptyList(),
     val reviews: List<ReviewEntry> = emptyList(),
     val texts: List<BackupText> = emptyList(),
+    val writings: List<BackupWriting> = emptyList(),
+    val corrections: List<BackupCorrection> = emptyList(),
     val stats: Stats = Stats(),
 )
 
@@ -92,7 +144,9 @@ class Store(private val db: PlutonDb) {
 
     /** Queue a reader word; words without a built-in sentence keep the sentence it was tapped in. */
     fun addCard(word: Word, form: String, sentence: String?, now: Long): CardState {
-        val mined = if (word.sentence == null && !sentence.isNullOrBlank()) Mined(sentence, form) else null
+        // Never replace a card that already exists: a stale reader sheet must not erase FSRS progress or "known".
+        card(word.lemma)?.let { return it }
+        val mined = if (!sentence.isNullOrBlank() && sentence != word.sentence) Mined(sentence, form) else null
         val card = CardState(word.lemma, createEmptyCard(now), added = now, mined = mined)
         saveCard(card, now)
         return card
@@ -150,6 +204,114 @@ class Store(private val db: PlutonDb) {
         ReviewEntry(it.lemma, it.rating.toInt(), it.mode, it.at, it.overridden != 0L)
     }
 
+    /** Share of the last [n] reviews rated Good or Easy; null until there is history. */
+    fun recentAccuracy(n: Int = 30): Double? {
+        val ratings = db.plutonQueries.recentRatings(n.toLong()).executeAsList()
+        if (ratings.isEmpty()) return null
+        return ratings.count { it >= 3L }.toDouble() / ratings.size
+    }
+
+    fun meta(key: String): String? = db.plutonQueries.getMeta(key).executeAsOneOrNull()
+
+    fun putMeta(key: String, value: String) = db.plutonQueries.putMeta(key, value)
+
+    /** Daily onboarding answer (minutes); null until the learner has chosen. */
+    fun onboardingMinutes(): Int? = meta("onboarding")?.toIntOrNull()
+
+    fun saveOnboarding(minutes: Int) = putMeta("onboarding", minutes.toString())
+
+    /**
+     * True when onboarding is done or the store already has progress from before onboarding existed.
+     * Existing installs must not be forced through the first-run screen or have their pace overwritten.
+     */
+    fun onboardedOrExisting(): Boolean {
+        if (onboardingMinutes() != null) return true
+        val existing = cards().isNotEmpty() || reviews().isNotEmpty() || texts().isNotEmpty() ||
+            meta("settings") != null || meta("stats") != null
+        if (existing) putMeta("onboarding", "0")
+        return existing
+    }
+
+    fun lastTab(): String? = meta("lastTab")
+
+    fun saveLastTab(tab: String) = putMeta("lastTab", tab)
+
+    fun planDone(day: String): Set<String> =
+        meta("plan:$day")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
+
+    fun markPlanDone(day: String, step: String): Set<String> {
+        val next = planDone(day) + step
+        putMeta("plan:$day", next.joinToString(","))
+        markPractice(day)
+        return next
+    }
+
+    /** Days with at least one completed plan step; used for the gentle weekly consistency row. */
+    fun practiceDays(): Set<String> =
+        meta("practice")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
+
+    fun markPractice(day: String): Set<String> {
+        val next = practiceDays() + day
+        putMeta("practice", next.joinToString(","))
+        return next
+    }
+
+    fun unmarkPlanDone(day: String, step: String): Set<String> {
+        val next = planDone(day) - step
+        putMeta("plan:$day", next.joinToString(","))
+        return next
+    }
+
+    fun writings(): List<WritingRecord> = db.plutonQueries.selectAllWriting().executeAsList().map {
+        WritingRecord(
+            id = it.id,
+            prompt = it.prompt,
+            draft = it.draft,
+            corrected = it.corrected,
+            feedback = it.feedback,
+            level = it.level,
+            errors = runCatching { json.decodeFromString<List<WritingError>>(it.errors) }.getOrDefault(emptyList()),
+            revised = it.revised,
+            created = it.created,
+            updated = it.updated,
+        )
+    }
+
+    fun saveWriting(prompt: String, draft: String, result: WritingResult, now: Long): WritingRecord =
+        db.transactionWithResult {
+            db.plutonQueries.insertWriting(
+                prompt,
+                draft,
+                result.corrected,
+                result.feedback,
+                result.level,
+                json.encodeToString(result.errors),
+                null,
+                now,
+                now,
+            )
+            val id = db.plutonQueries.lastWritingId().executeAsOne()
+            for (e in result.errors) {
+                db.plutonQueries.insertCorrection("writing", e.kind, e.original, e.fix, e.why, now, 0)
+            }
+            WritingRecord(id, prompt, draft, result.corrected, result.feedback, result.level, result.errors, null, now, now)
+        }
+
+    fun updateWritingRevision(id: Long, revised: String, now: Long) =
+        db.plutonQueries.updateWritingRevision(revised, now, id)
+
+    fun addCorrections(source: String, errors: List<WritingError>, now: Long) {
+        db.transaction {
+            for (e in errors) {
+                db.plutonQueries.insertCorrection(source, e.kind, e.original, e.fix, e.why, now, 0)
+            }
+        }
+    }
+
+    fun corrections(): List<CorrectionRecord> = db.plutonQueries.selectAllCorrections().executeAsList().map {
+        CorrectionRecord(it.id, it.source, it.kind, it.original, it.fix, it.why, it.at, it.resolved != 0L)
+    }
+
     fun texts(): List<TextRecord> = db.plutonQueries.selectAllTexts().executeAsList().map {
         TextRecord(it.id, it.title, it.body, it.added, it.updated, it.remote_key)
     }
@@ -183,9 +345,16 @@ class Store(private val db: PlutonDb) {
     /** Everything that matters on this device, as JSON. */
     fun export(): String = json.encodeToString(
         Backup(
+            version = 2,
             cards = cards(),
             reviews = reviews(),
             texts = texts().map { BackupText(it.title, it.body, it.added) },
+            writings = writings().map {
+                BackupWriting(it.prompt, it.draft, it.corrected, it.feedback, it.level, it.errors, it.revised, it.created, it.updated)
+            },
+            corrections = corrections().map {
+                BackupCorrection(it.source, it.kind, it.original, it.fix, it.why, it.at, it.resolved)
+            },
             stats = rawStats(),
         ),
     )
@@ -197,11 +366,37 @@ class Store(private val db: PlutonDb) {
             db.plutonQueries.deleteAllCards()
             db.plutonQueries.deleteAllReviews()
             db.plutonQueries.deleteAllTexts()
+            if (backup.version >= 2) {
+                db.plutonQueries.deleteAllWriting()
+                db.plutonQueries.deleteAllCorrections()
+            }
             for (c in backup.cards) writeCard(c, c.updated.takeIf { it != 0L } ?: c.added)
             for (r in backup.reviews) {
                 db.plutonQueries.insertReview(r.lemma, r.rating.toLong(), r.mode, r.at, if (r.overridden) 1L else 0L)
             }
             for (t in backup.texts) db.plutonQueries.insertText(t.title, t.body, t.added, t.added)
+            if (backup.version >= 2) {
+                for (w in backup.writings) {
+                    db.plutonQueries.insertWriting(
+                        w.prompt,
+                        w.draft,
+                        w.corrected,
+                        w.feedback,
+                        w.level,
+                        json.encodeToString(w.errors),
+                        w.revised,
+                        w.created,
+                        w.updated,
+                    )
+                }
+                for (c in backup.corrections) {
+                    db.plutonQueries.insertCorrection(c.source, c.kind, c.original, c.fix, c.why, c.at, if (c.resolved) 1L else 0L)
+                }
+                db.plutonQueries.putMeta("writing_draft", "")
+                db.plutonQueries.putMeta("writing_prompt", "0")
+                db.plutonQueries.putMeta("revision_draft", "")
+                db.plutonQueries.putMeta("revision_id", "")
+            }
             db.plutonQueries.putMeta("stats", json.encodeToString(backup.stats))
             // A restored device starts from scratch: old deletions must not wipe the account, and pulled records
             // must be re-fetched. The device identity is kept.

@@ -58,6 +58,51 @@ fun suggestedWritingPrompts(level: Level): List<WritingPrompt> {
     return WRITING_PROMPTS.filter { kotlin.math.abs(LEVEL_ORDER.indexOf(it.level) - at) <= 1 }
 }
 
+/**
+ * The grammar or conjugation form the learner is currently working on, as a short English/French label.
+ * Used to point AI conversation/writing and the reading notice at one useful form.
+ */
+fun grammarFocus(cards: List<CardState>, grammar: List<GrammarTopic>, conj: Map<String, ConjTable>? = null): String? {
+    fun topicLabel(topic: GrammarTopic): String =
+        if (topic.en.isBlank()) "the grammar topic “${topic.name}”" else "the grammar topic “${topic.name}” (${topic.en})"
+
+    val learningTopic = cards.firstOrNull {
+        it.lemma.startsWith(GRAM) && it.fsrs.state != State.Review && !it.known
+    }?.let { card -> grammar.firstOrNull { gramKey(it.id) == card.lemma } }
+    if (learningTopic != null) return topicLabel(learningTopic)
+
+    val nextTopic = newGrammar(cards, grammar, 1).firstOrNull()
+        ?.let { key -> grammar.firstOrNull { gramKey(it.id) == key } }
+    if (nextTopic != null) return topicLabel(nextTopic)
+
+    val learningTable = cards.firstOrNull {
+        it.lemma.startsWith(CONJ) && it.fsrs.state != State.Review && !it.known
+    }
+    parseConj(learningTable?.lemma ?: "")?.let { (verb, tense) ->
+        val name = FRENCH_TENSES.firstOrNull { it.id == tense }?.name ?: tense
+        return "the $name forms of “$verb”"
+    }
+
+    val nextTable = newConj(cards, conj ?: emptyMap(), FRENCH_TENSES.map { it.id }, 1).firstOrNull()
+    parseConj(nextTable ?: "")?.let { (verb, tense) ->
+        val name = FRENCH_TENSES.firstOrNull { it.id == tense }?.name ?: tense
+        return "the $name forms of “$verb”"
+    }
+    return null
+}
+
+fun chatSystem(level: Level, learning: List<String>, focus: String?): String {
+    val base = chatSystem(level, learning)
+    if (focus.isNullOrBlank()) return base
+    return base + "\n\nLearner focus: $focus. Use this form naturally in your own replies; when you correct French mistakes, correct this form first."
+}
+
+fun writeSystem(level: Level, prompt: String, focus: String?): String {
+    val base = writeSystem(level, prompt)
+    if (focus.isNullOrBlank()) return base
+    return base + "\n\nAlso pay particular attention to $focus. Correct errors in that form first, and mention it in the feedback."
+}
+
 fun writeSystem(level: Level, prompt: String): String =
     "You are a meticulous, encouraging French writing teacher. The learner (about ${level.code}) wrote a short " +
         "text in answer to: \"$prompt\".\n\nReturn ONLY a JSON object, with nothing before or after it:\n" +
@@ -117,6 +162,19 @@ fun readerSystem(level: Level, known: List<String> = emptyList(), targets: List<
                 "{\"title\": \"<a short French title>\", \"body\": \"<the story, with \\n between paragraphs>\"}",
         )
     }
+
+/** Continue an existing story at the learner's level; used by the serialised reading action. */
+fun continueSystem(level: Level, known: List<String>, targets: List<String>, previous: String): String = buildString {
+    append("You write short French stories for a language learner. The learner is ${level.code} (${level.how}).")
+    if (known.isNotEmpty()) append("\nWords they already know: ${known.joinToString(", ")}.")
+    if (targets.isNotEmpty()) append("\nWords they are learning right now (use a few naturally): ${targets.joinToString(", ")}.")
+    append(
+        "\n\nContinue the text below. If it is a story, keep the same characters, setting and tone; otherwise continue in the same style and subject. Write 150-250 words. " +
+            "Recycle the known words and end on a small hook. Return ONLY a JSON object, with nothing before or after it:\n" +
+            "{\"title\": \"<a short French title for this part>\", \"body\": \"<the continuation, with \\n between paragraphs>\"}\n\n" +
+            "Previous part:\n" + previous.take(2500),
+    )
+}
 
 /** Comprehension check for a text the learner read: judges meaning, not grammar (mirrors RETELL in tutor.js). */
 const val RETELL = "You check whether a French learner understood a text they just read. They write a short " +

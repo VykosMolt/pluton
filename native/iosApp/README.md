@@ -14,7 +14,7 @@ from Linux with iloader (free Apple ID) — or use TrollStore on supported iOS v
 
 The `Pluton` scheme runs two pre-build scripts:
 
-1. `sync-resources.sh` copies `public/data/fr/{words,forms,story,shelf,conj,grammar}.json` into
+1. `sync-resources.sh` copies `public/data/fr/{words,forms,story,shelf,conj,grammar,cognates}.json` into
    `Data/fr` (run `uv run data/fr/build.py` first if those files are missing).
 2. `./gradlew :shared:embedAndSignAppleFrameworkForXcode` builds and embeds `PlutonCore` from the shared module.
    The Xcode process needs `JAVA_HOME` pointing at JDK 21 and network access for Gradle's first run.
@@ -23,25 +23,34 @@ A simulator build needs no Apple account. A device build needs a signing team in
 
 ## What the app does
 
-- **Home**: words loaded, current Chemin stage and next goal, deck counts, start a run.
+- **Home**: a Today card with four steps (review, read, speak, write), a weekly consistency row, a daily-time onboarding, the current Chemin
+  stage, a pace suggestion from recent review accuracy, and the last tab restored on launch.
 - **Run**: intro cards then cloze, listen-and-type, English→French recall, or full-sentence dictée; grading and FSRS
   replay come from the shared core.
-- **Read**: Pluton's ten chapters with coverage, coloured/tappable words (a `pluton://word/<lemma>` link opens the
-  gloss/add/known sheet), the story comprehension quiz, the French classics, and your own pasted texts (add/delete).
-  French TTS reads the whole text.
+- **Read**: Pluton's ten chapters with coverage, comfortable/stretch/challenge labels, a "queue to 98%" action,
+  coloured/tappable words (a `pluton://word/<lemma>` link opens the gloss/add/known sheet, which now offers common
+  chunks), a grammar notice from the current card state, the story comprehension quiz, the French classics, the
+  **Norman Bridge** (English texts with the French-derived words marked, woven into French as your deck grows), and
+  your own pasted texts (add/continue/delete). French TTS reads the whole text.
 - **Speak**: read-aloud practice with device TTS, `AVAudioRecorder` playback, and `SFSpeechRecognizer` transcript
-  checked by the shared `gradeDictee` (recognizer-match percentage, not phonemes); plus a Talk tab using the shared
-  `chatSystem` prompt with a BYOK provider over `URLSession` (Anthropic or OpenAI-compatible). The key is in the
-  Keychain, not UserDefaults.
+  checked by the shared `gradeDictee` (recognizer-match percentage, not phonemes); Talk using the shared `chatSystem`
+  prompt with a BYOK provider over `URLSession` (Anthropic or OpenAI-compatible), key in the Keychain, with a mic
+  button for voice turns and spoken replies; Write with prompts, AI correction, local history, revision and an error
+  summary; **Fluency** with shadowing and 4/3/2; and **Sounds** with curated minimal pairs, phrase playback and a
+  recording to compare.
 - **More**: Le Chemin with goals, the deck browser, all conjugation tables (tap a form to hear it), grammar topics,
   and Settings (pace; AI provider/model/key).
 
-## Status: written, never compiled
+## Status: built by CI, not on this machine
 
-This machine is Linux and has no Xcode or Swift toolchain, so **none of the Swift code has been type-checked or run**,
-and Kotlin/Native iOS targets cannot be built here either (Gradle registers them only on a macOS host). Treat the
-Swift sources as a reviewed scaffold, not as a working build: the first `xcodegen` + Xcode build on a Mac will
-certainly need interop fixes (Kotlin class/property names, SwiftUI edge cases).
+This machine is Linux and has no Xcode or Swift toolchain, so the Swift sources cannot be compiled here. The
+`iOS unsigned IPA` workflow compiles the shared framework, generates the project with XcodeGen, builds the app,
+packages the unsigned IPA, and separately installs and launches it in a simulator; the last run before the P0/P1 changes was green. The next run is the first compile of the new Today/onboarding, writing, voice, Fluency and Sounds code.
 
-Known gaps versus Android: no Listen media tab, no account sync, no story generator/retell, no writing-correction
-mode, runs are word cards only (no conjugation/grammar drills), and no bundled sentence audio (TTS stands in).
+Everything is local: no account, no sync server. Progress is in the app's SQLite store and the AI key is in the
+Keychain, never in UserDefaults or a backup.
+
+Known gaps versus Android: no Listen media tab, no story generator/retell, runs are word cards only
+(no conjugation/grammar drills), and no bundled sentence audio (TTS stands in). The P0 changes (Today/onboarding,
+coverage labels, writing persistence) are in the sources but have not been compiled on this Linux machine; the next
+macOS CI run is their first type-check.

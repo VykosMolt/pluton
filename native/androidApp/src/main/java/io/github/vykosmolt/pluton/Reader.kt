@@ -43,12 +43,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.vykosmolt.pluton.core.CardState
+import io.github.vykosmolt.pluton.core.CoverageComfort
 import io.github.vykosmolt.pluton.core.FRENCH_ELISION
 import io.github.vykosmolt.pluton.core.QuizQuestion
 import io.github.vykosmolt.pluton.core.QuizResult
 import io.github.vykosmolt.pluton.core.RETELL
 import io.github.vykosmolt.pluton.core.RetellFeedback
+import io.github.vykosmolt.pluton.core.EnglishToken
 import io.github.vykosmolt.pluton.core.ShelfText
+import io.github.vykosmolt.pluton.core.bridgeNote
+import io.github.vykosmolt.pluton.core.englishTokens
 import io.github.vykosmolt.pluton.core.Store
 import io.github.vykosmolt.pluton.core.StoryChapter
 import io.github.vykosmolt.pluton.core.StoryQuestion
@@ -58,6 +62,8 @@ import io.github.vykosmolt.pluton.core.Token
 import io.github.vykosmolt.pluton.core.Word
 import io.github.vykosmolt.pluton.core.WordStatus
 import io.github.vykosmolt.pluton.core.coverage
+import io.github.vykosmolt.pluton.core.continueSystem
+import io.github.vykosmolt.pluton.core.coverageComfort
 import io.github.vykosmolt.pluton.core.gradeQuiz
 import io.github.vykosmolt.pluton.core.isWord
 import io.github.vykosmolt.pluton.core.levelOf
@@ -69,6 +75,7 @@ import io.github.vykosmolt.pluton.core.sentencesOf
 import io.github.vykosmolt.pluton.core.status
 import io.github.vykosmolt.pluton.core.tokenize
 import io.github.vykosmolt.pluton.core.unlockList
+import io.github.vykosmolt.pluton.core.chunkWord
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -88,6 +95,13 @@ private data class Reading(
 )
 
 @Composable
+private fun comfortLabel(pct: Double): Pair<String, androidx.compose.ui.graphics.Color> = when (coverageComfort(pct)) {
+    CoverageComfort.Comfortable -> "Comfortable" to androidx.compose.ui.graphics.Color(0xFF12B76A)
+    CoverageComfort.Stretch -> "Stretch" to androidx.compose.ui.graphics.Color(0xFFFF8A00)
+    CoverageComfort.Challenge -> "Challenge" to androidx.compose.ui.graphics.Color(0xFFFF4F64)
+}
+
+@Composable
 private fun ReadingCard(
     reading: Reading,
     forms: Map<String, String>,
@@ -97,16 +111,17 @@ private fun ReadingCard(
 ) {
     val tokens = tokenize(reading.body, forms, FRENCH_ELISION)
     val cov = coverage(tokens, statusOf)
+    val comfort = comfortLabel(cov.pct)
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(reading.title, fontWeight = FontWeight.Bold)
-                if (isRead) Text("✓ read", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                if (isRead) Text("Read", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
             }
             if (reading.sub.isNotBlank()) Text(reading.sub, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             Text(
-                "${(cov.pct * 100).toInt()}% understood · ${cov.total} words",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                "${(cov.pct * 100).toInt()}% understood · ${comfort.first} · ${cov.total} words",
+                color = comfort.second,
             )
             LinearProgressIndicator(
                 progress = { cov.pct.toFloat() },
@@ -158,10 +173,12 @@ internal fun ReaderScreen(
     forms: Map<String, String>,
     story: List<StoryChapter>,
     shelf: List<ShelfText>,
+    cognates: Map<String, List<String>>,
     cards: SnapshotStateMap<String, CardState>,
     read: Set<String>,
     store: Store,
     ai: AiConfig?,
+    focus: String? = null,
     onSettings: () -> Unit,
     onRead: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -176,6 +193,8 @@ internal fun ReaderScreen(
     var genOpen by remember { mutableStateOf(false) }
     var genBusy by remember { mutableStateOf(false) }
     var genError by remember { mutableStateOf("") }
+    var contBusy by remember { mutableStateOf(false) }
+    var contError by remember { mutableStateOf("") }
     var retellText by remember { mutableStateOf("") }
     var retellBusy by remember { mutableStateOf(false) }
     var retellResult by remember { mutableStateOf<RetellFeedback?>(null) }
@@ -191,7 +210,7 @@ internal fun ReaderScreen(
         story.mapIndexed { i, c -> Reading("story-$i", "Chapitre ${i + 1} · ${c.title}", "", c.body, c.questions, c.audioSentences()) }
     }
     val classicReadings = remember(shelf) {
-        shelf.map { t ->
+        shelf.filter { it.lang == "fr" }.map { t ->
             Reading(
                 id = t.title, // titles are unique; the path and the web app refer to classics by title
                 title = t.title,
@@ -201,6 +220,22 @@ internal fun ReaderScreen(
                 sentences = t.audioSentences(),
             )
         }
+    }
+    val bridgeTexts = remember(shelf, cognates) {
+        shelf.filter { it.lang == "en" }.map { text ->
+            val tokens = englishTokens(text.body, cognates)
+            BridgeText(
+                text = text,
+                french = tokens.filter { !it.faux }.mapNotNull { it.fr }.filterNot { it.isBlank() }.toSet(),
+                faux = tokens.count { it.faux },
+            )
+        }
+    }
+    var bridgeOpen by remember { mutableStateOf<ShelfText?>(null) }
+
+    bridgeOpen?.let { text ->
+        BridgeScreen(text, words, cognates, cards, store) { bridgeOpen = null }
+        return
     }
 
     LaunchedEffect(open) {
@@ -254,13 +289,64 @@ internal fun ReaderScreen(
         }
     }
 
+    fun continueStory(reading: Reading) {
+        val config = ai ?: return
+        if (contBusy) return
+        contBusy = true
+        contError = ""
+        scope.launch {
+            runCatching {
+                val known = cards.values
+                    .filter { c ->
+                        isWord(c) && status(c, words[c.lemma]) != WordStatus.New &&
+                            words[c.lemma]?.gloss?.isNotBlank() == true
+                    }
+                    .map { it.lemma }.take(40)
+                val targets = cards.values
+                    .filter { c -> isWord(c) && status(c, words[c.lemma]) == WordStatus.Learning && !c.known }
+                    .map { it.lemma }.take(8)
+                val reply = aiChat(
+                    config,
+                    continueSystem(level, known, targets, reading.body),
+                    listOf(ChatMessage("user", "Continue the story.")),
+                )
+                parseStory(reply) ?: throw AiError("The model returned an unexpected continuation. Try again.")
+            }.onSuccess { story ->
+                val base = reading.title.removePrefix("Suite · ")
+                val record = store.addText("Suite · $base", story.body, System.currentTimeMillis())
+                userTexts = store.texts()
+                open = Reading(
+                    id = "text-${record.id}",
+                    title = record.title,
+                    sub = "Your text",
+                    body = record.body,
+                    questions = emptyList(),
+                    sentences = emptyList(),
+                    userTextId = record.id,
+                )
+            }.onFailure { contError = it.message ?: "The AI request failed." }
+            contBusy = false
+        }
+    }
+
     if (open == null) {
         Column(
             modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Library", fontSize = 30.sp, fontWeight = FontWeight.Black)
-            Text("Pluton's story · ${storyReadings.size} chapters", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            focus?.let { Text("While you read, notice $it.", color = MaterialTheme.colorScheme.tertiary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+            if (bridgeTexts.isNotEmpty()) {
+                Text("Norman Bridge", fontSize = 24.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 8.dp))
+                Text(
+                    "English texts read through the French they inherited after 1066. Open one to see the words and weave them back.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                for (bridge in bridgeTexts) {
+                    BridgeCard(bridge, cards, words) { bridgeOpen = bridge.text }
+                }
+            }
+            Text("Pluton's story · ${storyReadings.size} chapters", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             storyReadings.forEach { reading ->
                 ReadingCard(reading, forms, statusOf, read.contains(reading.id)) { open = reading }
             }
@@ -274,7 +360,7 @@ internal fun ReaderScreen(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Your texts", fontSize = 24.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 8.dp))
                 Row {
-                    TextButton(onClick = { genOpen = !genOpen }) { Text("✨ Story") }
+                    TextButton(onClick = { genOpen = !genOpen }) { Text("Story") }
                     TextButton(onClick = { addOpen = true }) { Text("+ Add") }
                 }
             }
@@ -286,7 +372,7 @@ internal fun ReaderScreen(
             if (genOpen) {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("✨ A story at your level", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("A story at your level", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                         if (!ready(ai)) {
                             Text(
                                 "Connect an AI with your own key and Pluton will write a short story using the words you know.",
@@ -339,7 +425,7 @@ internal fun ReaderScreen(
     val id = reading.id
     val tokens = remember(reading.body, forms) { tokenize(reading.body, forms, FRENCH_ELISION) }
     val cov = coverage(tokens, statusOf)
-    val addable = unlockList(tokens, statusOf).filter { statusOf(it) == WordStatus.New }
+    val addable = unlockList(tokens, statusOf, target = 0.98).filter { statusOf(it) == WordStatus.New }
     val scheme = MaterialTheme.colorScheme
     val context = LocalContext.current
     val sentences = remember(reading.body) { reading.sentences }
@@ -531,19 +617,20 @@ internal fun ReaderScreen(
         TextButton(onClick = { open = null }) { Text("← Library") }
         Text(reading.title, fontSize = 26.sp, fontWeight = FontWeight.Black)
         if (reading.sub.isNotBlank()) Text(reading.sub, color = scheme.onSurfaceVariant)
+        focus?.let { Text("Notice: $it.", color = scheme.tertiary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
         Text(
-            "${(cov.pct * 100).toInt()}% understood · ${cov.total} words · ${addable.size} new words to queue",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            "${(cov.pct * 100).toInt()}% understood · ${comfortLabel(cov.pct).first} · ${cov.total} words · ${addable.size} new words to reach 98%",
+            color = scheme.onSurfaceVariant,
         )
         if (addable.isNotEmpty()) {
             TextButton(onClick = { queueAll() }) {
-                Text("Queue the ${addable.size} words that make this comfortable")
+                Text("Queue the ${addable.size} words to reach 98%")
             }
         }
         if (sentences.isNotEmpty() || ttsSpans.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(onClick = { listen() }, enabled = sentences.isNotEmpty() || ttsReady) {
-                    Text(if (playJob == null) "▶ Listen" else "⏸ Stop")
+                    Text(if (playJob == null) "Read & listen" else "Stop")
                 }
                 if (playJob != null) {
                     Text(
@@ -554,6 +641,12 @@ internal fun ReaderScreen(
                 }
             }
             if (sentences.isEmpty() && ttsError.isNotBlank()) Text(ttsError, color = scheme.error, fontSize = 13.sp)
+        }
+        if (reading.userTextId != null && ready(ai)) {
+            TextButton(onClick = { continueStory(reading) }, enabled = !contBusy) {
+                Text(if (contBusy) "Pluton écrit la suite…" else "Continue this text")
+            }
+            if (contError.isNotBlank()) Text(contError, color = scheme.error, fontSize = 13.sp)
         }
         ClickableText(
             text = annotated,
@@ -566,14 +659,14 @@ internal fun ReaderScreen(
 
         if (reading.questions.isEmpty()) {
             if (read.contains(id)) {
-                Text("✓ You read this one", color = scheme.secondary, fontWeight = FontWeight.Bold)
+                Text("You read this one", color = scheme.secondary, fontWeight = FontWeight.Bold)
             } else {
-                Button(onClick = { onRead(id) }) { Text("✓ I read it") }
+                Button(onClick = { onRead(id) }) { Text("Mark as read") }
             }
         } else if (quizResult != null) {
             val result = quizResult!!
             Text(
-                if (result.pass) "✓ Compris ! ${result.right} / ${result.total}" else "Pas encore… ${result.right} / ${result.total}",
+                if (result.pass) "Compris ! ${result.right} / ${result.total}" else "Pas encore… ${result.right} / ${result.total}",
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
                 color = if (result.pass) scheme.secondary else scheme.error,
@@ -595,7 +688,7 @@ internal fun ReaderScreen(
                 }) { Text("Try again") }
             }
         } else if (read.contains(id)) {
-            Text("✓ You read and understood this chapter.", color = scheme.secondary, fontWeight = FontWeight.Bold)
+            Text("You read and understood this chapter.", color = scheme.secondary, fontWeight = FontWeight.Bold)
         } else if (!quizOpen) {
             Button(onClick = {
                 answers = List(reading.questions.size) { -1 }
@@ -702,6 +795,11 @@ internal fun ReaderScreen(
             card = cards[lemma],
             onAdd = { word ->
                 cards[lemma] = store.addCard(word, selected.token.text, sentence, System.currentTimeMillis())
+                sel = null
+            },
+            onAddChunk = { chunk ->
+                val w = chunkWord(chunk)
+                cards[w.lemma] = store.addCard(w, chunk.text, chunk.example, System.currentTimeMillis())
                 sel = null
             },
             onKnown = {

@@ -12,15 +12,18 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.vykosmolt.pluton.core.CardState
+import io.github.vykosmolt.pluton.core.Chunk
 import io.github.vykosmolt.pluton.core.Token
 import io.github.vykosmolt.pluton.core.Word
 import io.github.vykosmolt.pluton.core.WordStatus
+import io.github.vykosmolt.pluton.core.chunksFor
 import io.github.vykosmolt.pluton.core.status
 
 /** The tap-a-word sheet, shared by the reader and the listening tab. */
@@ -32,6 +35,7 @@ internal fun WordSheet(
     sentence: String,
     card: CardState?,
     onAdd: (Word) -> Unit,
+    onAddChunk: (Chunk) -> Unit = {},
     onKnown: () -> Unit,
     onUndo: () -> Unit,
     onDismiss: () -> Unit,
@@ -55,6 +59,20 @@ internal fun WordSheet(
             )
             Text(word?.gloss?.takeIf { it.isNotBlank() } ?: "No gloss for this one. The sentence will have to teach it.")
             Text(sentence, fontStyle = FontStyle.Italic, color = scheme.onSurfaceVariant)
+            val chunks = remember(word?.lemma ?: token.lemma) { chunksFor(word?.lemma ?: token.lemma).take(3) }
+            if (chunks.isNotEmpty()) {
+                Text("Chunks with this word", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                for (chunk in chunks) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(chunk.text, fontWeight = FontWeight.SemiBold)
+                            Text(chunk.gloss, fontSize = 13.sp, color = scheme.onSurfaceVariant)
+                            Text(chunk.example, fontSize = 12.sp, fontStyle = FontStyle.Italic, color = scheme.onSurfaceVariant)
+                        }
+                        TextButton(onClick = { onAddChunk(chunk) }) { Text("Add") }
+                    }
+                }
+            }
             when {
                 state == WordStatus.New -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -70,9 +88,9 @@ internal fun WordSheet(
                         TextButton(onClick = onUndo) { Text("Undo") }
                     }
                 }
-                state == WordStatus.Queued -> Text("Queued for your next runs ✓")
-                state == WordStatus.Learning -> Text("In your deck ✓")
-                else -> Text("Known ✓")
+                state == WordStatus.Queued -> Text("Queued for your next runs")
+                state == WordStatus.Learning -> Text("In your deck")
+                else -> Text("Known")
             }
         }
     }

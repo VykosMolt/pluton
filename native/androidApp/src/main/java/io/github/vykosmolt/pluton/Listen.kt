@@ -22,6 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -48,15 +49,20 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.github.vykosmolt.pluton.core.CardState
 import io.github.vykosmolt.pluton.core.Cue
+import io.github.vykosmolt.pluton.core.DicteeMark
+import io.github.vykosmolt.pluton.core.DicteeResult
 import io.github.vykosmolt.pluton.core.FRENCH_ELISION
 import io.github.vykosmolt.pluton.core.Store
 import io.github.vykosmolt.pluton.core.Token
 import io.github.vykosmolt.pluton.core.Word
 import io.github.vykosmolt.pluton.core.WordStatus
 import io.github.vykosmolt.pluton.core.cueAt
+import io.github.vykosmolt.pluton.core.dicteeScore
+import io.github.vykosmolt.pluton.core.gradeDictee
 import io.github.vykosmolt.pluton.core.parseCues
 import io.github.vykosmolt.pluton.core.status
 import io.github.vykosmolt.pluton.core.tokenize
+import io.github.vykosmolt.pluton.core.chunkWord
 import kotlinx.coroutines.delay
 
 /** A file the user plays from their own storage, with its subtitles; playback time counts as listening. */
@@ -84,6 +90,9 @@ internal fun ListenScreen(
     var dragging by remember { mutableStateOf<Float?>(null) }
     var sel by remember { mutableStateOf<Token?>(null) }
     var listenStarted by remember { mutableStateOf(0L) }
+    var dictCue by remember { mutableStateOf<Cue?>(null) }
+    var dictation by remember { mutableStateOf("") }
+    var dictResult by remember { mutableStateOf<DicteeResult?>(null) }
 
     // Real seconds while playing, so seeking and speed changes don't inflate listening time.
     fun countListen() {
@@ -176,6 +185,9 @@ internal fun ListenScreen(
             runCatching {
                 val text = context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() }
                 cues = parseCues(text)
+                dictCue = null
+                dictation = ""
+                dictResult = null
                 subsName = "${displayName(context, uri) ?: "Subtitles"} · ${cues.size} lines"
             }.onFailure { subsName = "Couldn't read those subtitles" }
         }
@@ -250,10 +262,10 @@ internal fun ListenScreen(
             color = scheme.onSurfaceVariant,
         )
         Button(onClick = { pickMedia.launch(arrayOf("audio/*", "video/*")) }, modifier = Modifier.fillMaxWidth()) {
-            Text(mediaName.ifBlank { "🎬 Choose audio or video" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(mediaName.ifBlank { "Choose audio or video" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         TextButton(onClick = { pickSubs.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) {
-            Text(subsName.ifBlank { "💬 Choose subtitles (.srt / .vtt)" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subsName.ifBlank { "Choose subtitles (.srt / .vtt)" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
 
         if (media != null || videoUri != null) {
@@ -276,7 +288,7 @@ internal fun ListenScreen(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(onClick = { if (playing) pause() else start() }) {
-                    Text(if (playing) "⏸ Pause" else "▶ Play", fontSize = 18.sp)
+                    Text(if (playing) "Pause" else "Play", fontSize = 18.sp)
                 }
                 Text("${clock(positionMs)} / ${clock(durationMs)}", color = scheme.onSurfaceVariant)
             }
@@ -293,15 +305,15 @@ internal fun ListenScreen(
             if (cues.isNotEmpty()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { cues.getOrNull(cueIndex - 1)?.let { seek((it.start * 1000).toLong()) } }, enabled = cueIndex > 0) {
-                        Text("⏮ Prev")
+                        Text("Previous")
                     }
                     TextButton(onClick = { cues.getOrNull(cueIndex)?.let { seek((it.start * 1000).toLong()) } }, enabled = cueIndex >= 0) {
-                        Text("↺ Replay")
+                        Text("Replay")
                     }
                     TextButton(
                         onClick = { cues.getOrNull(cueIndex + 1)?.let { seek((it.start * 1000).toLong()) } },
                         enabled = cueIndex + 1 < cues.size,
-                    ) { Text("Next ⏭") }
+                    ) { Text("Next") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (videoUri == null) {
@@ -345,6 +357,69 @@ internal fun ListenScreen(
                 }
             }
         }
+
+        if (cue != null) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Dictogloss", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(
+                        "Listen to one line, then type what you heard. Replay it as often as you need; this is listening practice, not a test.",
+                        color = scheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                    )
+                    TextButton(
+                        onClick = {
+                            dictCue = cue
+                            dictation = ""
+                            dictResult = null
+                            seek((cue.start * 1000).toLong())
+                            start()
+                        },
+                    ) { Text("Use this line") }
+                    val chosen = dictCue
+                    if (chosen != null) {
+                        OutlinedTextField(
+                            value = dictation,
+                            onValueChange = { dictation = it },
+                            label = { Text("Type the line…") },
+                            minLines = 2,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { dictResult = gradeDictee(dictation, chosen.text) },
+                                enabled = dictation.isNotBlank(),
+                            ) { Text("Check") }
+                            TextButton(onClick = {
+                                seek((chosen.start * 1000).toLong())
+                                start()
+                            }) { Text("Hear the line again") }
+                        }
+                        dictResult?.let { result ->
+                            Text(
+                                when (result.result) {
+                                    "right" -> "Tout est là !"
+                                    "almost" -> if (result.why == "accent") "Almost — only accents slipped." else "One word off."
+                                    else -> "Not quite; listen once more."
+                                },
+                                color = when (result.result) {
+                                    "right" -> scheme.secondary
+                                    "almost" -> scheme.tertiary
+                                    else -> scheme.error
+                                },
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                "Word match: ${dicteeScore(result)}%",
+                                color = scheme.onSurfaceVariant,
+                                fontSize = 13.sp,
+                            )
+                            MarkedLine(chosen.text, result.marks)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     sel?.let { token ->
@@ -356,6 +431,11 @@ internal fun ListenScreen(
             card = cards[token.lemma],
             onAdd = { word ->
                 cards[token.lemma] = store.addCard(word, token.text, sentence.takeIf { it.isNotBlank() }, System.currentTimeMillis())
+                sel = null
+            },
+            onAddChunk = { chunk ->
+                val w = chunkWord(chunk)
+                cards[w.lemma] = store.addCard(w, chunk.text, chunk.example, System.currentTimeMillis())
                 sel = null
             },
             onKnown = {
@@ -381,3 +461,20 @@ private fun displayName(context: Context, uri: Uri): String? =
     context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
         if (c.moveToFirst()) c.getString(0) else null
     }
+
+@Composable
+private fun MarkedLine(sentence: String, marks: List<DicteeMark>) {
+    val scheme = MaterialTheme.colorScheme
+    val text = buildAnnotatedString {
+        append(sentence)
+        for (m in marks) {
+            val bg = when (m.mark) {
+                "accent" -> scheme.tertiary.copy(alpha = 0.35f)
+                "bad" -> scheme.error.copy(alpha = 0.28f)
+                else -> Color.Transparent
+            }
+            if (bg != Color.Transparent) addStyle(SpanStyle(background = bg), m.start, m.end)
+        }
+    }
+    Text(text, fontSize = 18.sp, lineHeight = 26.sp)
+}

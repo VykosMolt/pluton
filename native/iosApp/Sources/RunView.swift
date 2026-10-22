@@ -70,7 +70,7 @@ struct RunView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("✕") { finish() }
+                    Button { finish() } label: { Image(systemName: "xmark") }
                 }
                 ToolbarItem(placement: .principal) {
                     Text(progressText)
@@ -101,7 +101,7 @@ struct RunView: View {
     @ViewBuilder
     private func introCard(item: RunItem, word: Word, sentence: String, parts: [String]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("✨ NEW WORD").font(.caption.bold()).foregroundStyle(.orange)
+            Text("NEW WORD").font(.caption.bold()).foregroundStyle(.orange)
             Text(word.display)
                 .font(.system(size: 40, weight: .black))
                 .foregroundStyle(word.gender == "f" ? Color.red : Color.blue)
@@ -176,10 +176,10 @@ struct RunView: View {
 
     private func tag(_ mode: String) -> String {
         switch mode {
-        case "dictation": return "🎧 LISTEN, TYPE THE MISSING WORD"
-        case "dictee": return "📝 DICTÉE: WRITE THE WHOLE SENTENCE"
-        case "produce": return "💬 SAY IT IN FRENCH"
-        default: return "✍️ FILL THE GAP"
+        case "dictation": return "LISTEN, TYPE THE MISSING WORD"
+        case "dictee": return "DICTÉE: WRITE THE WHOLE SENTENCE"
+        case "produce": return "SAY IT IN FRENCH"
+        default: return "FILL THE GAP"
         }
     }
 

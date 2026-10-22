@@ -55,6 +55,26 @@ fun playable(
     else -> parseConj(card.lemma)?.let { (verb, tense) -> conj?.get(verb)?.t?.get(tense) != null } == true
 }
 
+/** The sentence shown for a card: alternate the context it was mined in with the dictionary example. */
+fun contextSentence(card: CardState?, word: Word?): String {
+    val mined = card?.mined?.sentence?.takeIf { it.isNotBlank() }
+    val builtIn = word?.sentence?.takeIf { it.isNotBlank() }
+    if (mined == null) return builtIn.orEmpty()
+    if (builtIn == null || builtIn == mined) return mined
+    return if ((card?.fsrs?.reps ?: 0) % 2 == 0) mined else builtIn
+}
+
+/** The form to blank in the sentence returned by [contextSentence]. */
+fun contextForm(card: CardState?, word: Word?): String {
+    val mined = card?.mined
+    val minedSentence = mined?.sentence?.takeIf { it.isNotBlank() }
+    val builtIn = word?.sentence?.takeIf { it.isNotBlank() }
+    val fallback = word?.form?.takeIf { it.isNotBlank() } ?: card?.lemma.orEmpty()
+    if (mined == null || minedSentence == null) return fallback
+    if (builtIn == null || builtIn == minedSentence) return mined.form.ifBlank { fallback }
+    return if ((card?.fsrs?.reps ?: 0) % 2 == 0) mined.form.ifBlank { fallback } else fallback
+}
+
 fun status(card: CardState?, word: Word?): WordStatus {
     if (card?.known == true || (card?.fsrs?.stability ?: 0.0) >= KNOWN_DAYS || (card == null && word?.pos == "interj")) {
         return WordStatus.Known
@@ -134,8 +154,9 @@ fun buildRun(
     fresh.take(n).forEachIndexed { i, c -> queue.add(min(queue.size, i * 5), item(c, true)) }
     val room = max(0, min(CONJ_PER_RUN, perDay - newToday - min(n, fresh.size)))
     val tables = if (conj != null) newConj(playableCards, conj, tenses, room) else emptyList()
+    // A table the learner just queued from Verbs starts the next run, after any due reviews.
     tables.forEachIndexed { i, key ->
-        queue.add(min(queue.size, 3 + i * 6), item(CardState(key, createEmptyCard(now), added = now), true))
+        queue.add(min(queue.size, due.size + i * 6), item(CardState(key, createEmptyCard(now), added = now), true))
     }
     if (grammar != null) {
         val gramRoom = max(0, min(1, perDay - newToday - min(n, fresh.size) - tables.size))

@@ -1,4 +1,6 @@
+import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 import PlutonCore
 
 struct MoreView: View {
@@ -36,7 +38,7 @@ private struct PathView: View {
         let path = model.path()
         List {
             Section {
-                Text("Pluton's journey from Poe's wall to the Paris Opéra, A1 to C1. Nothing is locked: the goals just show the next useful step. ★ goals are a bonus.")
+                Text("Pluton's journey from Poe's wall to the Paris Opéra, A1 to C1. Nothing is locked: the goals just show the next useful step. Bonus goals are extra.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -46,7 +48,10 @@ private struct PathView: View {
                     Text(stage.stage.say).font(.footnote).foregroundStyle(.secondary)
                     ForEach(Array(stage.goals.enumerated()), id: \.offset) { _, goal in
                         HStack {
-                            Text(goal.done ? "✅" : (goal.bonus ? "★" : "•"))
+                            Text(goal.done ? "Done" : (goal.bonus ? "Bonus" : "•"))
+                                .font(.caption.bold())
+                                .foregroundStyle(goal.done ? .green : .secondary)
+                                .frame(minWidth: 42, alignment: .leading)
                             Text(goal.label)
                             Spacer()
                             if !goal.done {
@@ -57,7 +62,7 @@ private struct PathView: View {
                     }
                 } label: {
                     VStack(alignment: .leading) {
-                        Text("\(index + 1) / \(path.stages.count) · \(stage.stage.level)\(stage.complete ? " ✓" : "")")
+                        Text("\(index + 1) / \(path.stages.count) · \(stage.stage.level)\(stage.complete ? " · complete" : "")")
                             .font(.caption.bold())
                             .foregroundStyle(stage.complete ? .green : .orange)
                         Text("\(stage.stage.place) · \(stage.stage.en)").font(.headline)
@@ -201,6 +206,12 @@ private struct SettingsView: View {
     @SwiftUI.State private var config = AIClient.config()
     @SwiftUI.State private var key = AIClient.key
     @SwiftUI.State private var note = ""
+    @SwiftUI.State private var backup = ""
+    @SwiftUI.State private var exportDocument: BackupDocument?
+    @SwiftUI.State private var exporting = false
+    @SwiftUI.State private var importing = false
+    @SwiftUI.State private var confirmImport = false
+    @SwiftUI.State private var backupNote = ""
 
 
     var body: some View {
@@ -219,6 +230,21 @@ private struct SettingsView: View {
                     ForEach([10, 15, 20, 30, 40], id: \.self) { Text("\($0)").tag($0) }
                 }
                 Text("Every new word comes back for reviews, so a higher pace means more reviews in the weeks after.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Backup") {
+                Button("Export backup") {
+                    backup = model.exportBackup()
+                    exportDocument = BackupDocument(text: backup)
+                    exporting = true
+                }
+                Button("Import backup") { confirmImport = true }
+                if !backupNote.isEmpty {
+                    Text(backupNote).font(.footnote).foregroundStyle(.secondary)
+                }
+                Text("Cards, reviews, texts, stats, writing history and the error log. The AI key is never included.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -250,5 +276,60 @@ private struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .fileExporter(
+            isPresented: $exporting,
+            document: exportDocument,
+            contentType: .json,
+            defaultFilename: "pluton-backup"
+        ) { result in
+            switch result {
+            case .success: backupNote = "Backup saved."
+            case .failure(let error): backupNote = "Backup failed: \(error.localizedDescription)"
+            }
+        }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
+            switch result {
+            case .success(let url):
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                do {
+                    let data = try String(contentsOf: url, encoding: .utf8)
+                    if let error = model.importBackup(data) {
+                        backupNote = "Import failed: \(error)"
+                    } else {
+                        backupNote = "Backup restored."
+                    }
+                } catch {
+                    backupNote = "Could not read that file: \(error.localizedDescription)"
+                }
+            case .failure(let error):
+                backupNote = "Import failed: \(error.localizedDescription)"
+            }
+        }
+        .alert("Replace all progress?", isPresented: $confirmImport) {
+            Button("Choose backup", role: .destructive) { importing = true }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Cards, reviews, texts, stats and writing history are replaced by the backup's. This cannot be undone.")
+        }
+    }
+}
+
+private struct BackupDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    var text: String
+
+    init(text: String) { self.text = text }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents,
+              let text = String(data: data, encoding: .utf8) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        self.text = text
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(text.utf8))
     }
 }

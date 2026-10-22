@@ -43,6 +43,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.11.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
@@ -64,7 +65,7 @@ dependencies {
 val dataDir = rootProject.projectDir.parentFile.resolve("public/data/fr")
 // Copy, not Sync: Sync would delete the audio/ directory written by syncAudio.
 val syncData = tasks.register<Copy>("syncData") {
-    from(dataDir) { include("words.json", "forms.json", "story.json", "shelf.json", "conj.json", "grammar.json") }
+    from(dataDir) { include("words.json", "forms.json", "story.json", "shelf.json", "conj.json", "grammar.json", "cognates.json") }
     into(layout.buildDirectory.dir("generated/assets/fr"))
     doFirst {
         for (name in listOf("words.json", "conj.json", "grammar.json")) {

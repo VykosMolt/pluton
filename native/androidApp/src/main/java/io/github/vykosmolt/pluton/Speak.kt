@@ -62,18 +62,24 @@ internal fun SpeakScreen(
     cards: Map<String, CardState>,
     store: Store,
     ai: AiConfig?,
+    focus: String? = null,
+    initialMode: Int = 0,
+    modeRequest: Int = 0,
     onSettings: () -> Unit,
     onTalked: () -> Unit,
+    onSpoken: () -> Unit = {},
     onWritten: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var mode by rememberSaveable { mutableStateOf(0) }
+    var mode by rememberSaveable { mutableStateOf(initialMode) }
+    LaunchedEffect(modeRequest) { if (modeRequest > 0) mode = initialMode }
     if (mode == 1) {
         TalkScreen(
             ai = ai,
             words = words,
             cards = cards,
             store = store,
+            focus = focus,
             onSettings = onSettings,
             onTalked = onTalked,
             onPractice = { mode = 0 },
@@ -88,10 +94,31 @@ internal fun SpeakScreen(
             words = words,
             cards = cards,
             store = store,
+            focus = focus,
             onSettings = onSettings,
             onWritten = onWritten,
             onPractice = { mode = 0 },
             onTalk = { mode = 1 },
+            modifier = modifier,
+        )
+        return
+    }
+    if (mode == 3) {
+        FluencyScreen(
+            words = words,
+            cards = cards,
+            store = store,
+            onMode = { mode = it },
+            onSpoken = onSpoken,
+            modifier = modifier,
+        )
+        return
+    }
+    if (mode == 4) {
+        SoundsScreen(
+            store = store,
+            onMode = { mode = it },
+            onSpoken = onSpoken,
             modifier = modifier,
         )
         return
@@ -125,12 +152,17 @@ internal fun SpeakScreen(
     var permitted by remember {
         mutableStateOf(context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
     }
+    var pendingMic by remember { mutableStateOf<(() -> Unit)?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         permitted = granted
-        if (!granted) error = "Microphone permission is needed for speaking practice."
+        if (granted) pendingMic?.invoke() else error = "Microphone permission is needed for speaking practice."
+        pendingMic = null
     }
     fun ensureMic(action: () -> Unit) {
-        if (permitted) action() else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        if (permitted) action() else {
+            pendingMic = action
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
     }
 
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
@@ -170,32 +202,35 @@ internal fun SpeakScreen(
 
     fun startRecording() {
         stopPlayer()
+        tts?.stop()
         clipPath?.let { File(it).delete() }
         clipPath = null
         pendingPath = null
         error = ""
         val file = File(context.cacheDir, "pluton-speak-${System.currentTimeMillis()}.m4a")
+        @Suppress("DEPRECATION")
+        val r = MediaRecorder()
+        recorder = r
         try {
-            @Suppress("DEPRECATION")
-            val r = MediaRecorder()
             r.setAudioSource(MediaRecorder.AudioSource.MIC)
             r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             r.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             r.setOutputFile(file.absolutePath)
             r.prepare()
             r.start()
-            recorder = r
             pendingPath = file.absolutePath
             recording = true
         } catch (e: Exception) {
-            recorder?.release()
+            r.release()
             recorder = null
             recording = false
+            pendingPath = null
             error = "Could not start recording: ${e.message}"
         }
     }
 
     fun stopRecording() {
+        if (!recording) return
         try {
             recorder?.stop()
             clipPath = pendingPath?.takeIf { File(it).length() > 0 }
@@ -206,7 +241,10 @@ internal fun SpeakScreen(
         recorder?.release()
         recorder = null
         recording = false
-        if (clipPath != null) store.addSpoken(1)
+        if (clipPath != null) {
+            store.addSpoken(1)
+            onSpoken()
+        }
     }
 
     fun toggleRecording() {
@@ -264,8 +302,14 @@ internal fun SpeakScreen(
                 override fun onResults(results: Bundle?) {
                     val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                     transcript = text
-                    dictee = gradeDictee(text, practice.sentence)
-                    store.addSpoken(1)
+                    if (text.isNotBlank()) {
+                        dictee = gradeDictee(text, practice.sentence)
+                        store.addSpoken(1)
+                        onSpoken()
+                    } else {
+                        dictee = null
+                        error = "The recognizer heard nothing. Try again."
+                    }
                     listening = false
                     r.destroy()
                     recognizer = null
@@ -346,22 +390,22 @@ internal fun SpeakScreen(
                     Text(practice.translation, color = scheme.onSurfaceVariant)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { hear() }, enabled = ttsReady && !recording && !listening) { Text("🔊 Hear it") }
+                    Button(onClick = { hear() }, enabled = ttsReady && !recording && !listening) { Text("Hear it") }
                     if (recording) {
                         Button(
                             onClick = { stopRecording() },
                             colors = ButtonDefaults.buttonColors(containerColor = scheme.error),
-                        ) { Text("⏹ Stop") }
+                        ) { Text("Stop") }
                     } else {
-                        Button(onClick = { toggleRecording() }, enabled = !listening) { Text("🎤 Record") }
+                        Button(onClick = { toggleRecording() }, enabled = !listening) { Text("Record") }
                     }
-                    Button(onClick = { playClip() }, enabled = clipPath != null && !listening) { Text("▶ Yours") }
+                    Button(onClick = { playClip() }, enabled = clipPath != null && !listening) { Text("Your recording") }
                 }
                 if (recognitionAvailable) {
                     TextButton(
                         onClick = { checkSpeech() },
                         enabled = !listening && !recording,
-                    ) { Text(if (listening) "Listening…" else "👂 Check what I said") }
+                    ) { Text(if (listening) "Listening…" else "Check what I said") }
                 } else {
                     Text("Speech recognition isn't available on this device; record and compare by ear.", fontSize = 13.sp, color = scheme.onSurfaceVariant)
                 }

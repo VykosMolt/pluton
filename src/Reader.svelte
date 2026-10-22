@@ -1,9 +1,11 @@
 <script>
   import { onMount, onDestroy } from 'svelte'
   import * as db from './lib/db.js'
-  import { tokenize, coverage, unlockList, fromSubtitles, sentenceAt, UNLOCK } from './lib/logic.js'
+  import { tokenize, coverage, unlockList, fromSubtitles, sentenceAt, sentencesOf, gradeQuiz, isWord, UNLOCK } from './lib/logic.js'
   import { addWord } from './lib/deck.js'
   import { say, stop, unlock } from './lib/sound.js'
+  import { chat, ready, parseJSON, AIError } from './lib/ai.js'
+  import { levelOf, readerSystem, RETELL } from './lib/tutor.js'
   import { STAGES } from './lib/path.js'
   import Tokens from './Tokens.svelte'
   import WordSheet from './WordSheet.svelte'
@@ -14,7 +16,7 @@
    * home screen open a text, and start reading it aloud.
    */
   let { words, forms, cards, statusOf, texts = $bindable(), shelf = [], story = [], read = new Set(), onread, onlisten,
-    openId = $bindable(null), listenNow = $bindable(false) } = $props()
+    openId = $bindable(null), listenNow = $bindable(false), ai = null, vocab = 0, onsettings } = $props()
 
   // Original starter text (not from any book), so there is something of your own to read on day one.
   const SAMPLE = {
@@ -32,6 +34,15 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
   let playing = $state(false)
   let at = $state(-1) // sentence being read aloud
   let run = 0
+  let quiz = $state(null) // { answers: [] } while answering a chapter's questions
+  let quizResult = $state(null) // { right, total, pass }
+  let retell = $state('')
+  let retellBusy = $state(false)
+  let retellResult = $state(null)
+  let retellError = $state('')
+  let genOpen = $state(false)
+  let genBusy = $state(false)
+  let genError = $state('')
 
   const open = $derived(texts.find((t) => t.id === openId) ?? story.find((t) => t.id === openId) ?? shelf.find((t) => t.id === openId))
   const rate = (t) => {
@@ -55,6 +66,17 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
     }
   })
   onDestroy(() => pause())
+
+  // Each text starts with a clean comprehension/retelling panel.
+  $effect(() => {
+    void openId
+    quiz = null
+    quizResult = null
+    retell = ''
+    retellResult = null
+    retellError = ''
+    genError = ''
+  })
 
   $effect(() => {
     if (listenNow && open?.sentences) {
@@ -105,10 +127,12 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
   async function save(t) {
     const body = t.body.normalize('NFC').trim()
     if (!body) return
-    const rec = { ...(t.id && { id: t.id }), title: t.title.trim() || body.slice(0, 40), body, added: Date.now() }
+    const rec = { ...(t.id && { id: t.id }), title: t.title.trim() || body.slice(0, 40), body, added: Date.now(),
+      sentences: sentencesOf(body) } // browser-voice read-along; built-in texts have recorded clips
     rec.id = await db.put('texts', rec)
-    texts = [...texts, rec]
+    texts = [...texts.filter((x) => x.id !== rec.id), rec]
     draft = null
+    return rec
   }
 
   async function loadFile(e) {
@@ -131,6 +155,54 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
       const tok = toks.find((t) => t.lemma === lemma)
       await addWord(cards, words, tok, sentenceAt(open.body, tok.start))
     }
+  }
+
+  // Chapter comprehension: a pass marks the chapter read, so the path's reading goal is evidence, not just a tap.
+  const startQuiz = () => (quiz = { answers: Array(open.questions.length).fill(-1) })
+  const retryQuiz = () => { quiz = { answers: Array(open.questions.length).fill(-1) }; quizResult = null }
+  function checkQuiz() {
+    quizResult = gradeQuiz(open.questions, quiz.answers)
+    if (quizResult.pass && !read.has(open.id)) onread?.(open.id)
+  }
+
+  // Optional check for imported/classic texts: the AI judges meaning, not grammar.
+  async function askRetell() {
+    if (!ready(ai)) return
+    retellBusy = true
+    retellError = ''
+    try {
+      const r = parseJSON(await chat(ai, { system: RETELL, effort: 'medium',
+        messages: [{ role: 'user', content: `TEXT:\n${open.body.slice(0, 6000)}\n\nLEARNER'S RETELLING:\n${retell.trim()}` }] }))
+      const score = Number(r.score)
+      if (!(score >= 1 && score <= 5) || typeof r.feedback !== 'string')
+        throw new AIError('The model returned an unexpected format. Try again.')
+      retellResult = { score, feedback: r.feedback }
+    } catch (e) {
+      retellError = e.message
+    }
+    retellBusy = false
+  }
+
+  // Unlimited graded input: a story at the learner's level, mostly from words they already know.
+  async function generate() {
+    if (!ready(ai)) return
+    genBusy = true
+    genError = ''
+    try {
+      const known = [...cards.values()].filter((c) => isWord(c) && statusOf(c.lemma) !== 'new' && words.get(c.lemma)?.gloss)
+        .map((c) => c.lemma).slice(0, 40)
+      const targets = [...cards.values()].filter((c) => isWord(c) && statusOf(c.lemma) === 'learning' && !c.known)
+        .map((c) => c.lemma).slice(0, 8)
+      const r = parseJSON(await chat(ai, { system: readerSystem(levelOf(vocab), known, targets), effort: 'low',
+        messages: [{ role: 'user', content: 'Write a new story for me.' }] }))
+      if (typeof r.title !== 'string' || typeof r.body !== 'string' || r.body.trim().length < 80)
+        throw new AIError('The model returned an unexpected story. Try again.')
+      const rec = await save({ title: r.title, body: r.body })
+      if (rec) { genOpen = false; openId = rec.id }
+    } catch (e) {
+      genError = e.message
+    }
+    genBusy = false
   }
 
   const pct = (x) => `${Math.round(x * 100)}%`
@@ -191,17 +263,105 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
     <div class="panel text" lang="fr">
       <Tokens text={open.body} {toks} {statusOf} {sel} {hl} onpick={pick} />
     </div>
-    <div class="finish">
-      {#if read.has(open.id)}<span class="ready">✓ You read this one</span>
-      {:else}<button class="btn" onclick={() => onread?.(open.id)}>✓ I read it</button>{/if}
-    </div>
+    {#if open.stage != null && open.questions?.length}
+      <section class="panel quiz">
+        {#if quizResult}
+          <h3>{quizResult.pass ? '✓ Compris !' : 'Pas encore…'}</h3>
+          <p class="muted">{quizResult.right} / {quizResult.total} correct.
+            {quizResult.pass ? 'This chapter counts as read.' : 'Read it again, then try once more.'}</p>
+          <ol class="review">
+            {#each open.questions as q, i}
+              <li>
+                <p>{q.q}</p>
+                <p>
+                  <span class:right={quiz.answers[i] === q.ok} class:wrong={quiz.answers[i] !== q.ok}>{q.a[quiz.answers[i]] ?? '—'}</span>
+                  → <b>{q.a[q.ok]}</b>
+                </p>
+                <p class="why">{q.why}</p>
+              </li>
+            {/each}
+          </ol>
+          {#if !quizResult.pass}<button class="btn" onclick={retryQuiz}>Try again</button>{/if}
+        {:else if read.has(open.id)}
+          <p class="ready">✓ You read and understood this chapter.</p>
+        {:else if !quiz}
+          <div class="row">
+            <span><b>Compréhension</b><br /><small class="muted">{open.questions.length} questions · {Math.ceil(open.questions.length * 2 / 3)} right to count the chapter as read</small></span>
+            <button class="btn" onclick={startQuiz}>Check understanding</button>
+          </div>
+        {:else}
+          <form onsubmit={(e) => { e.preventDefault(); checkQuiz() }}>
+            {#each open.questions as q, i}
+              <fieldset data-q={i}>
+                <legend>{i + 1}. {q.q}</legend>
+                {#each q.a as a, k}
+                  <label>
+                    <input type="radio" name={`q${i}`} checked={quiz.answers[i] === k} onchange={() => (quiz.answers[i] = k)} />
+                    {a}
+                  </label>
+                {/each}
+              </fieldset>
+            {/each}
+            <button class="btn" disabled={quiz.answers.includes(-1)}>Check answers</button>
+          </form>
+        {/if}
+      </section>
+    {:else}
+      <div class="finish">
+        {#if read.has(open.id)}<span class="ready">✓ You read this one</span>
+        {:else}<button class="btn" onclick={() => onread?.(open.id)}>✓ I read it</button>{/if}
+      </div>
+    {/if}
+    {#if open.stage == null}
+      <section class="panel retell">
+        <h3>Did you understand it?</h3>
+        {#if !ready(ai)}
+          <p class="muted">Connect an AI with your own key and Pluton will check your retelling. Reading stays open without one.</p>
+          {#if onsettings}<button class="btn ghost" onclick={onsettings}>Open Settings</button>{/if}
+        {:else if retellResult}
+          <p class="score">Pluton's score: <b>{retellResult.score} / 5</b></p>
+          <p>{retellResult.feedback}</p>
+          <button class="btn ghost" onclick={() => (retellResult = null)}>Try again</button>
+        {:else}
+          <p class="muted">Tell Pluton what this text was about, in your own words. He checks the meaning, not your grammar.</p>
+          <textarea class="field" rows="4" bind:value={retell} placeholder="De quoi parle ce texte ?" aria-label="Your retelling"></textarea>
+          <button class="btn" onclick={askRetell} disabled={retellBusy || retell.trim().length < 10}>
+            {retellBusy ? 'Reading…' : 'Ask Pluton'}
+          </button>
+          {#if retellError}<p class="err">{retellError}</p>{/if}
+        {/if}
+      </section>
+    {/if}
   {/if}
 {:else}
   <div class="row head">
     <h2>Library</h2>
-    <button class="btn" onclick={() => (draft = { title: '', body: '' })}>+ Add text</button>
+    <span class="row actions">
+      <button class="btn ghost" onclick={() => (genOpen = true)}>✨ Story</button>
+      <button class="btn" onclick={() => (draft = { title: '', body: '' })}>+ Add text</button>
+    </span>
   </div>
   <p class="muted">Everything here is open. At {pct(UNLOCK)} of the words known, reading stops being decoding and starts being fun.</p>
+
+  {#if genOpen}
+    <section class="panel gen">
+      <h3>✨ A story at your level</h3>
+      {#if !ready(ai)}
+        <p class="muted">Connect an AI with your own key and Pluton will write a short story using the words you know.</p>
+        <div class="row">
+          {#if onsettings}<button class="btn" onclick={onsettings}>Connect an AI</button>{/if}
+          <button class="btn ghost" onclick={() => (genOpen = false)}>Cancel</button>
+        </div>
+      {:else}
+        <p class="muted">Pluton writes 150–250 words at your level (~{vocab} words), recycling words you are learning. It lands in Your texts.</p>
+        <div class="row">
+          <button class="btn" onclick={generate} disabled={genBusy}>{genBusy ? 'Writing…' : 'Write it'}</button>
+          <button class="btn ghost" onclick={() => (genOpen = false)} disabled={genBusy}>Cancel</button>
+        </div>
+        {#if genError}<p class="err">{genError}</p>{/if}
+      {/if}
+    </section>
+  {/if}
 
   {#if chapters.length}
     <h3 class="shelf">🐈‍⬛ L'histoire de Pluton</h3>
@@ -258,6 +418,23 @@ Ils finissent leur café et marchent ensemble jusqu'au métro.`,
   .tools { justify-content: flex-start; margin-bottom: 12px; }
   .text { font-size: 20px; line-height: 1.75; white-space: pre-wrap; }
   .queue { font-size: 15px; }
-  .finish { display: flex; justify-content: center; margin: 18px 0 220px; }
+  .finish { display: flex; justify-content: center; margin: 18px 0 24px; }
+  .actions { flex: none; gap: 8px; }
+  .gen { margin-bottom: 14px; }
+  .quiz, .retell { margin: 18px 0 24px; }
+  .quiz .row { justify-content: space-between; }
+  fieldset { border: 0; padding: 0; margin: 0 0 14px; min-width: 0; }
+  legend { font-weight: 700; margin-bottom: 6px; }
+  .quiz label { display: flex; gap: 8px; align-items: baseline; padding: 7px 4px; border-radius: 8px; cursor: pointer; }
+  .quiz label:hover { background: color-mix(in srgb, var(--blue) 7%, transparent); }
+  .quiz input { accent-color: var(--blue); }
+  .review { padding-left: 18px; }
+  .review li { margin-bottom: 12px; }
+  .review p { margin: 2px 0; }
+  .review .right { color: var(--green); }
+  .review .wrong { color: var(--red); text-decoration: line-through; }
+  .why { color: var(--muted); font-size: 14px; }
+  .score { font-size: 18px; }
+  .err { color: var(--red); font-weight: 700; }
   small .w { padding: 0 4px; cursor: default; }
 </style>

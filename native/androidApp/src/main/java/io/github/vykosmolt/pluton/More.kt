@@ -45,7 +45,6 @@ import io.github.vykosmolt.pluton.core.Pace
 import io.github.vykosmolt.pluton.core.PathState
 import io.github.vykosmolt.pluton.core.STAGES
 import io.github.vykosmolt.pluton.core.Store
-import io.github.vykosmolt.pluton.core.SyncEngine
 import io.github.vykosmolt.pluton.core.Word
 import io.github.vykosmolt.pluton.core.conjKey
 import io.github.vykosmolt.pluton.core.createEmptyCard
@@ -59,7 +58,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private enum class Section { Hub, Path, Words, Verbs, Grammar, Account, Settings }
+private enum class Section { Hub, Path, Words, Verbs, Grammar, Settings }
 
 /** The reference shelf: conjugation tables and grammar topics, both open from day one. */
 @Composable
@@ -75,8 +74,6 @@ internal fun MoreScreen(
     ai: AiConfig?,
     aiStore: AiStore,
     onAi: (AiConfig?) -> Unit,
-    syncPrefs: SyncPrefs,
-    onSynced: () -> Unit,
     onRestored: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -126,12 +123,6 @@ internal fun MoreScreen(
                     Text("${grammar.size} topics with exercises", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Card(Modifier.fillMaxWidth().clickable { section = Section.Account }) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Account", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    Text("Sync cards, reviews and texts between devices", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
             Card(Modifier.fillMaxWidth().clickable { section = Section.Settings }) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Settings", fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -143,7 +134,6 @@ internal fun MoreScreen(
         Section.Words -> WordsScreen(words, cards) { section = Section.Hub }
         Section.Verbs -> VerbsScreen(conj, words, cards, ::practice) { section = Section.Hub }
         Section.Grammar -> GrammarScreen(grammar, cards, ::practice) { section = Section.Hub }
-        Section.Account -> AccountScreen(store, syncPrefs, onSynced) { section = Section.Hub }
         Section.Settings -> SettingsScreen(pace, onPace, store, ai, aiStore, onAi, onRestored) { section = Section.Hub }
     }
 }
@@ -181,9 +171,9 @@ private fun SettingsScreen(
                 )
                 aiStore.save(draft)
                 onAi(draft)
-                "✓ $reply"
+                "Saved. $reply"
             } catch (e: Exception) {
-                "⚠️ ${e.message}"
+                "Couldn't connect: ${e.message}"
             }
             aiBusy = false
         }
@@ -219,7 +209,7 @@ private fun SettingsScreen(
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("🤖 AI tutor", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("AI tutor", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Text(
                     "Talking practice uses an AI model with your own API key. Chat subscriptions (Claude Pro, ChatGPT Plus…) can't be connected to other apps; an API key is billed per use, usually cents per session. The key stays on this device, goes only to the provider you pick, and is never included in backups.",
                     color = scheme.onSurfaceVariant,
@@ -276,7 +266,7 @@ private fun SettingsScreen(
                     }
                 }
                 if (aiNote.isNotBlank()) {
-                    Text(aiNote, color = if (aiNote.startsWith("⚠️")) scheme.error else scheme.secondary)
+                    Text(aiNote, color = if (aiNote.startsWith("Couldn't")) scheme.error else scheme.secondary)
                 }
                 ai?.let { Text("Connected: ${providerOf(it.provider).name} · ${it.model}", color = scheme.onSurfaceVariant, fontSize = 13.sp) }
             }
@@ -284,7 +274,7 @@ private fun SettingsScreen(
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("⏱️ Pace", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Pace", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Text("New words per run", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (n in listOf(3, 5, 8, 10)) {
@@ -319,7 +309,7 @@ private fun SettingsScreen(
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("💾 Your data", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Your data", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Text(
                     "Progress lives on this device. Back it up to move it to another one. API keys, when they exist, are never included.",
                     color = scheme.onSurfaceVariant,
@@ -336,7 +326,7 @@ private fun SettingsScreen(
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("📜 About", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("About", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Text("Pluton is the black cat from Edgar Allan Poe's “The Black Cat” (1843), named as in Baudelaire's French translation, “Le Chat noir”.")
                 Text(
                     "Word frequencies, lemmas and verb forms: Lexique 3.83 (New & Pallier), CC BY-SA 4.0. Example sentences: Tatoeba contributors, CC BY 2.0 FR. Definitions: English Wiktionary via kaikki.org, CC BY-SA 4.0. Voice: Piper TTS, SIWIS dataset (CC BY 4.0). Classics: public-domain texts via Wikisource. Scheduling: FSRS via ts-fsrs.",
@@ -351,7 +341,7 @@ private fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { confirmRestore = false },
             title = { Text("Replace all progress?") },
-            text = { Text("The cards, reviews, saved texts and stats on this device are replaced by the backup's.") },
+            text = { Text("The cards, reviews, saved texts and stats on this device are replaced by the backup's. Newer backups also replace writing history; older backups leave it untouched.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmRestore = false
@@ -359,194 +349,6 @@ private fun SettingsScreen(
                 }) { Text("Choose backup") }
             },
             dismissButton = { TextButton(onClick = { confirmRestore = false }) { Text("Cancel") } },
-        )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun AccountScreen(
-    store: Store,
-    syncPrefs: SyncPrefs,
-    onSynced: () -> Unit,
-    onBack: () -> Unit,
-) {
-    val scheme = MaterialTheme.colorScheme
-    val scope = rememberCoroutineScope()
-    val client = remember { SupabaseClient(syncPrefs) }
-    var saved by remember { mutableStateOf(syncPrefs.config()) }
-    var config by remember { mutableStateOf(saved ?: SupabaseConfig()) }
-    var session by remember { mutableStateOf(syncPrefs.session()) }
-    var email by remember { mutableStateOf(session?.email ?: "") }
-    var code by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var note by remember { mutableStateOf("") }
-    var confirmDelete by remember { mutableStateOf(false) }
-
-    fun launchNote(block: suspend () -> String) {
-        busy = true
-        note = "…"
-        scope.launch {
-            note = try {
-                block()
-            } catch (e: Exception) {
-                "⚠️ ${e.message}"
-            }
-            busy = false
-        }
-    }
-
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        TextButton(onClick = onBack) { Text("← More") }
-        Text("Account", fontSize = 30.sp, fontWeight = FontWeight.Black)
-        Text(
-            "Progress is local-first. Sign in to share cards, reviews and your texts between devices. Stats, settings and AI keys stay on each device.",
-            color = scheme.onSurfaceVariant,
-        )
-
-        if (saved == null) {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Sync server", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text(
-                        "Use the same Supabase project (and migration) as the web app. The URL and publishable key are stored only on this device.",
-                        color = scheme.onSurfaceVariant,
-                    )
-                    OutlinedTextField(
-                        value = config.url,
-                        onValueChange = { config = config.copy(url = it) },
-                        label = { Text("Supabase URL") },
-                        placeholder = { Text("https://…supabase.co") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = config.anonKey,
-                        onValueChange = { config = config.copy(anonKey = it) },
-                        label = { Text("Anon / publishable key") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Button(
-                        onClick = {
-                            val next = config.copy(url = config.url.trim(), anonKey = config.anonKey.trim())
-                            syncPrefs.saveConfig(next)
-                            saved = next
-                            note = "Server saved."
-                        },
-                        enabled = config.url.isNotBlank() && config.anonKey.isNotBlank() && !busy,
-                    ) { Text("Save server") }
-                }
-            }
-        } else if (session == null) {
-            val server = saved!!
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Sign in", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text(server.url, color = scheme.onSurfaceVariant, fontSize = 13.sp)
-                    OutlinedTextField(
-                        value = email,
-                        onValueChange = { email = it },
-                        label = { Text("Email") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Button(
-                        onClick = {
-                            launchNote {
-                                client.sendCode(email.trim())
-                                "Code sent. Check your email."
-                            }
-                        },
-                        enabled = '@' in email && !busy,
-                    ) { Text("Email me a code") }
-                    OutlinedTextField(
-                        value = code,
-                        onValueChange = { code = it },
-                        label = { Text("6-digit code") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Button(
-                        onClick = {
-                            launchNote {
-                                val signed = client.verifyCode(email.trim(), code.trim())
-                                session = signed
-                                email = signed.email
-                                val result = withContext(Dispatchers.IO) { SyncEngine(store, client).sync() }
-                                onSynced()
-                                "✓ Signed in as ${signed.email} · ${result.pulled} pulled · ${result.pushed} pushed"
-                            }
-                        },
-                        enabled = code.trim().length >= 6 && !busy,
-                    ) { Text("Sign in") }
-                }
-            }
-        } else {
-            val active = session!!
-            val server = saved!!
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Signed in as ${active.email}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text(server.url, color = scheme.onSurfaceVariant, fontSize = 13.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                launchNote {
-                                    val result = withContext(Dispatchers.IO) { SyncEngine(store, client).sync() }
-                                    onSynced()
-                                    "✓ ${result.pulled} pulled · ${result.pushed} pushed"
-                                }
-                            },
-                            enabled = !busy,
-                        ) { Text("Sync now") }
-                        TextButton(
-                            onClick = {
-                                launchNote {
-                                    client.signOut()
-                                    session = null
-                                    "Signed out."
-                                }
-                            },
-                            enabled = !busy,
-                        ) { Text("Sign out") }
-                    }
-                    TextButton(onClick = { confirmDelete = true }, enabled = !busy) {
-                        Text("Delete my account", color = scheme.error)
-                    }
-                    Text(
-                        "Deleting removes the account and its synced records from the server; this device keeps its progress.",
-                        color = scheme.onSurfaceVariant,
-                        fontSize = 13.sp,
-                    )
-                }
-            }
-        }
-
-        if (note.isNotBlank()) {
-            Text(note, color = if (note.startsWith("⚠️")) scheme.error else scheme.secondary, fontWeight = FontWeight.Bold)
-        }
-    }
-
-    if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete your account?") },
-            text = { Text("This deletes the account and every record synced to the server. Progress on this device is not touched.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmDelete = false
-                    launchNote {
-                        client.deleteAccount()
-                        session = null
-                        "Account deleted. This device keeps its progress."
-                    }
-                }) { Text("Delete", color = scheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
 }
@@ -562,7 +364,7 @@ private fun PathScreen(path: PathState, onBack: () -> Unit) {
         TextButton(onClick = onBack) { Text("← More") }
         Text("Le Chemin", fontSize = 30.sp, fontWeight = FontWeight.Black)
         Text(
-            "Pluton's journey from Poe's wall to the Paris Opéra, A1 to C1. Nothing is locked: the goals just show the next useful step. ★ goals are a bonus.",
+            "Pluton's journey from Poe's wall to the Paris Opéra, A1 to C1. Nothing is locked: the goals just show the next useful step. Bonus goals are extra.",
             color = scheme.onSurfaceVariant,
         )
         for (s in path.stages) {
@@ -571,7 +373,7 @@ private fun PathScreen(path: PathState, onBack: () -> Unit) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(
-                            if (s.complete) "✓ Étape ${s.index + 1} · ${s.stage.level}"
+                            if (s.complete) "Étape ${s.index + 1} · ${s.stage.level} · complete"
                             else "Étape ${s.index + 1} / ${STAGES.size} · ${s.stage.level}",
                             color = if (s.complete) scheme.secondary else scheme.tertiary,
                             fontWeight = FontWeight.ExtraBold,
@@ -586,7 +388,16 @@ private fun PathScreen(path: PathState, onBack: () -> Unit) {
                         Text(s.stage.say, color = scheme.onSurfaceVariant, fontSize = 13.sp)
                         for (g in s.goals) {
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(if (g.done) "✅" else if (g.bonus) "★" else "•")
+                                Text(
+                                    when {
+                                        g.done -> "Done"
+                                        g.bonus -> "Bonus"
+                                        else -> "•"
+                                    },
+                                    color = if (g.done) scheme.secondary else scheme.onSurfaceVariant,
+                                    fontWeight = if (g.done || g.bonus) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = if (g.done || g.bonus) 11.sp else 14.sp,
+                                )
                                 Text(
                                     g.label + if (!g.done && g.kind != GoalKind.Read) " · ${minOf(g.have, g.need)} / ${g.need}" else "",
                                     color = if (g.done) scheme.onSurfaceVariant else scheme.onBackground,

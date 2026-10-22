@@ -9,7 +9,15 @@ const WRITING = JSON.stringify({
   feedback: 'Clear and natural. Watch your accents.',
   level: 'A1',
 })
-const reply = (system) => (system.includes('JSON object') ? WRITING : system.includes('Translate') ? 'I went to the market.' : CHAT)
+const STORY = JSON.stringify({
+  title: 'Le marché de minuit',
+  body: "La nuit, le marché de Paris est vide. Pluton marche entre les étals fermés. Une petite lumière brille au fond de la rue. C'est une boulangerie. La boulangère donne un pain chaud au chat noir. « Tu as faim, toi ? » demande-t-elle. Pluton mange le pain, puis il monte sur le toit. En bas, un chien maigre le regarde. « Tu viens ? » demande Pluton. Le chien monte. Ensemble, ils regardent la ville. Demain, le marché sera plein de monde, mais cette nuit, Paris appartient aux chats et aux chiens.",
+})
+const RETELL_REPLY = JSON.stringify({ score: 4, feedback: 'You got the main idea: Pluton explores the empty market and shares bread. You missed that he is joined by a thin dog on the roof.' })
+const reply = (system) => system.includes('short French stories') ? STORY
+  : system.includes('whether a French learner understood') ? RETELL_REPLY
+  : system.includes('JSON object') ? WRITING
+  : system.includes('Translate') ? 'I went to the market.' : CHAT
 const chunks = (s) => s.match(/[\s\S]{1,12}/g)
 
 export function startMockAI(port) {

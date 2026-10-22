@@ -46,7 +46,8 @@ export function goalsOf(stage, m, titles = {}) {
     have: m.grammar ?? 0, need: stage.grammar })
   for (const id of stage.read) goals.push({ kind: 'read', id, label: `Read “${titles[id] ?? id}”`, have: m.read.has(id) ? 1 : 0, need: 1 })
   goals.push({ kind: 'listen', label: `Listen for ${stage.listen} minutes in all`, have: Math.floor(m.listenMin), need: stage.listen })
-  if (stage.talk) goals.push({ kind: 'talk', bonus: true, label: `Send Pluton ${stage.talk} messages`, have: m.talked, need: stage.talk })
+  if (stage.talk) goals.push({ kind: 'talk', bonus: true, label: `Talk or speak ${stage.talk} times`,
+    have: (m.talked ?? 0) + (m.spoken ?? 0), need: stage.talk })
   if (stage.write) goals.push({ kind: 'write', bonus: true, label: `Have ${stage.write} texts corrected`, have: m.written, need: stage.write })
   return goals.map((g) => ({ ...g, done: g.have >= g.need, pct: Math.min(1, g.have / g.need) }))
 }
@@ -65,11 +66,13 @@ export function pathState(m, titles) {
 
 /**
  * The one thing to do next besides the daily run: the current stage's first unmet reading goal, else listening,
- * else bonus practice when an AI is connected. Words and verbs advance through runs, so they need no separate task.
+ * else a bonus. Speaking is free, so its bonus shows without an AI; writing needs one. Words and verbs advance
+ * through runs, so they need no separate task.
  */
 export function focus(stage, hasAI) {
   if (!stage) return null
   const open = stage.goals.filter((g) => !g.done)
+  const bonus = open.find((g) => g.bonus && (g.kind === 'talk' || hasAI))
   return open.find((g) => g.kind === 'read') ?? open.find((g) => g.kind === 'listen') ?? open.find((g) => g.kind === 'grammar')
-    ?? (hasAI ? open.find((g) => g.bonus) : null) ?? null
+    ?? bonus ?? null
 }

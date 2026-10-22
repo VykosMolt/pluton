@@ -58,6 +58,7 @@ class PathTest {
             read = STAGES.flatMap { it.read }.toSet(),
             listenMin = 1200,
             spoken = 200,
+            talked = 200,
         )
         val done = pathState(everything)
         assertEquals(10, done.current)
@@ -81,5 +82,15 @@ class PathTest {
         assertEquals(1, m.listenMin)
         assertEquals(4, m.spoken)
         assertEquals(setOf("story-0"), m.read)
+    }
+
+    @Test
+    fun speakingIsItsOwnBonusGoal() {
+        val m = PathMetrics(learned = 400, spoken = 3)
+        val p = pathState(m)
+        val goal = p.stages[2].goals.single { it.kind == GoalKind.Speak }
+        assertEquals("Speak French aloud 3 times", goal.label)
+        assertTrue(goal.done)
+        assertTrue(goal.bonus)
     }
 }

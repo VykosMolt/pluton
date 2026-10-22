@@ -2,6 +2,7 @@
 // the SDK. Sign-in is by a 6-digit code sent by email. Sync pulls what changed on other devices, then pushes local
 // changes; the server keeps the newest version of each record (see supabase/migrations). The AI key never syncs.
 import * as db from './db.js'
+import { replayCard } from './logic.js'
 import { LANG } from './lang.js'
 
 const env = import.meta.env ?? {} // undefined outside Vite (unit tests)
@@ -62,7 +63,7 @@ const iso = (ms) => new Date(ms).toISOString()
 const revive = (c) => ({ ...c, fsrs: { ...c.fsrs, due: new Date(c.fsrs.due), ...(c.fsrs.last_review && { last_review: new Date(c.fsrs.last_review) }) } })
 
 /** Remote rows → local writes. Pure apart from its inputs; exported for tests. */
-export function plan(rows, { device, cards, texts, stamps }) {
+export function plan(rows, { device, cards, texts, stamps, tomb = {} }) {
   const ops = [], stamped = {}
   const mine = `${device}:`
   for (const r of rows) {
@@ -77,13 +78,16 @@ export function plan(rows, { device, cards, texts, stamps }) {
         stamped[r.key] = at
       }
     } else {
-      const own = r.store === 'texts' && r.key.startsWith(mine)
-      const key = own ? Number(r.key.slice(mine.length)) : r.key
+      // Own text ids come back with the device prefix ("dev1:7"); map them to the local numeric key. Compare by
+      // `updated`, not ownership: another device can edit or delete this device's text under the same key.
+      const ownText = r.store === 'texts' && r.key.startsWith(mine)
+      const key = ownText ? Number(r.key.slice(mine.length)) : r.key
       const local = (r.store === 'cards' ? cards : texts).get(key)
+      const tombAt = tomb[`${r.store}\t${key}`] ?? 0 // a local delete newer than the remote edit still wins
       if (r.data.deleted) {
         if (local && (local.updated ?? 0) <= at) ops.push(['del', r.store, key])
-      } else if (!own && (!local || (local.updated ?? 0) < at)) {
-        const data = { ...r.data, updated: at, pulled: at }
+      } else if ((!local || (local.updated ?? 0) < at) && tombAt <= at) {
+        const data = { ...r.data, ...(r.store === 'texts' && { id: key }), updated: at, pulled: at }
         ops.push(['put', r.store, r.store === 'cards' ? revive(data) : data])
       }
     }
@@ -117,6 +121,51 @@ export function collect({ device, since, logPushed }, { cards, texts, log, meta,
   return { rows, maxLog }
 }
 
+/**
+ * Replace pulled card states with a deterministic replay of every review for that card (local + pulled log).
+ * Exported for tests. Own log rows are skipped: they are already in the local log under a numeric key.
+ */
+export function replayPulled(ops, localLog, rows, device, cards = new Map()) {
+  const byLemma = new Map()
+  const localKeys = new Set()
+  const add = (key, e, remote = false) => {
+    if (!e?.lemma || typeof e.at !== 'number' || typeof e.rating !== 'number') return
+    const k = String(key)
+    if (remote && localKeys.has(k)) return
+    const m = byLemma.get(e.lemma) ?? new Map()
+    m.set(k, { ...e, key: k })
+    byLemma.set(e.lemma, m)
+  }
+  for (const [k, e] of localLog) {
+    const key = typeof k === 'number' ? `${device}:${k}` : k
+    localKeys.add(key)
+    add(key, e)
+  }
+  const fresh = new Set() // lemmas with a log review we are seeing for the first time
+  for (const r of rows) {
+    if (r.store !== 'log' || r.key.startsWith(`${device}:`)) continue
+    if (!localKeys.has(r.key)) fresh.add(r.data.lemma)
+    add(r.key, r.data, true)
+  }
+  const out = ops.map((op) => {
+    if (op[0] !== 'put' || op[1] !== 'cards' || op[2].known) return op
+    const entries = byLemma.get(op[2].lemma)
+    return entries?.size ? ['put', 'cards', { ...op[2], fsrs: replayCard([...entries.values()], op[2].added) }] : op
+  })
+  // A pulled review can arrive without a card op when the other device's card state lost LWW. Rebuild the local card
+  // so that review still counts, unless the card was deleted or marked known.
+  for (const lemma of fresh) {
+    const entries = byLemma.get(lemma)
+    if (!entries?.size) continue
+    if (out.some((op) => op[0] === 'put' && op[1] === 'cards' && op[2] === lemma)) continue
+    if (out.some((op) => op[0] === 'del' && op[1] === 'cards' && op[2] === lemma)) continue
+    const card = cards.get(lemma)
+    if (!card?.fsrs || card.known) continue
+    out.push(['put', 'cards', { ...card, fsrs: replayCard([...entries.values()], card.added) }])
+  }
+  return out
+}
+
 let running = null
 /** Pull, then push. Resolves to { pulled, pushed } (null when signed out); one sync at a time. */
 export const sync = () => (running ??= run().finally(() => (running = null)))
@@ -138,8 +187,14 @@ async function run() {
     if (data.length < 1000) break
   }
   const local = { device: st.device, stamps: (await db.get('meta', '_stamps')) ?? {},
+    tomb: (await db.get('meta', '_tomb')) ?? {},
     cards: new Map((await db.getAll('cards')).map((c) => [c.lemma, c])), texts: new Map((await db.getAll('texts')).map((t) => [t.id, t])) }
-  const { ops, stamped } = plan(rows, local)
+  let { ops, stamped } = plan(rows, local)
+  const remoteLog = rows.some((r) => r.store === 'log' && !r.key.startsWith(`${st.device}:`))
+  if (remoteLog || ops.some(([op, store]) => op === 'put' && store === 'cards')) {
+    // ponytail: the whole log is read once per sync; index it by lemma if a very long history makes this slow
+    ops = replayPulled(ops, await db.entries('log'), rows, st.device, local.cards)
+  }
   if (Object.keys(stamped).length) ops.push(['put', 'meta', { ...local.stamps, ...stamped }, '_stamps'])
   await db.apply(ops)
 

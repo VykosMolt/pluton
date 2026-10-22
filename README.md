@@ -9,8 +9,8 @@ Aimed at C1: see the Road to C1 in [PLAN.md](PLAN.md) for what's covered and wha
 
 - **Le Chemin (the path)**: ten stages from A1 to C1, framed as Pluton's journey from Poe's wall to the Paris Opéra.
   Each stage has goals across skills: words learned, verb tables, its chapter of Pluton's story (written for that
-  stage's French) plus a classic from B2 on, and listening time; talking and writing are bonus ★. Home shows the
-  current stage and today's next step. **The path guides; it never locks**: every text, chapter, verb table and
+  stage's French) plus a classic from B2 on, and listening time; talking/speaking and writing are bonus ★. Home shows
+  the current stage and today's next step. **The path guides; it never locks**: every text, chapter, verb table and
   feature is open from day one.
 
 - **Runs**: ~10-minute sessions over an 8,000-word deck (spoken + written frequency). New words are introduced in
@@ -20,7 +20,9 @@ Aimed at C1: see the Road to C1 in [PLAN.md](PLAN.md) for what's covered and wha
 - **Library**: Pluton's story (10 chapters, A1 to C1), your own texts (lyrics, articles, subtitles), and a shelf of
   public-domain classics (La Fontaine, Perrault, Daudet, Maupassant, Verne). Every word is coloured by whether you know
   it; the story and classics read themselves aloud with the sentence highlighted. A text gets comfortable at 95% of
-  words known, and one tap queues exactly the words that get you there.
+  words known, and one tap queues exactly the words that get you there. Each chapter ends with a short comprehension
+  quiz — a pass is what counts it as read — and imported/classic texts can be checked by telling Pluton what they were
+  about. ✨ Story asks the AI for a new graded story at your level, built from the words you know.
 - **Norman Bridge**: nearly a third of English came from French. Read Poe and Lovecraft in English with those words
   highlighted, then woven back into French as you learn them. Tap a word for its French twin and the sound change
   that hides it (forêt → forest: the circumflex is a lost s). Classic false friends are flagged.
@@ -28,6 +30,8 @@ Aimed at C1: see the Road to C1 in [PLAN.md](PLAN.md) for what's covered and wha
   lines, pause after each line. Hours listened count toward the Road to C1.
 - **Talk** (optional, your own AI key): converse with Pluton, who answers at your level and corrects you as you go
   (typing or speaking), and get your writing marked with every error explained.
+- **Speak**: read a sentence aloud, record it, play it back beside Pluton's voice, and — where your browser has speech
+  recognition — see which words it heard. No AI key needed.
 - **Words / Verbs**: the whole deck as a collection with memory strength and next review, and every conjugation
   table of 59 verbs, with audio and a Practice button whatever your stage.
 - First launch offers a placement check, so people who know some French skip what they know.
@@ -39,7 +43,8 @@ OpenRouter, a local model through Ollama (free; start it with `OLLAMA_ORIGINS=<t
 any OpenAI-compatible server. Chat subscriptions (Claude Pro, ChatGPT Plus…) can't be connected to other apps.
 
 There is no Pluton server: the browser calls the provider directly, the key is stored only on the device, and it is
-never included in backups.
+never included in backups. The AI also writes graded stories from your known words and checks your retelling of a
+text you read.
 
 ## Accounts (optional)
 
@@ -71,9 +76,11 @@ npm run dev                  # http://localhost:5173, also on your LAN (--host)
 Checks:
 
 ```bash
-npm test                     # logic: tokenizer, grading, scheduling, coverage, conjugation, cognates, tutor prompts
+npm test                     # logic: tokenizer, grading, scheduling, coverage, conjugation, cognates, comprehension
+                             # quizzes, log replay, tutor prompts
 npm run smoke                # builds, then drives the real app in headless Chromium: runs over several days,
-                             # library, bridge, listening, placement, and the AI features against a mock provider
+                             # library + chapter quizzes, generated story + retelling, speaking record/playback,
+                             # bridge, listening, placement, and the AI features against a mock provider
                              # (first time: npx playwright install chromium)
                              # with a local Supabase (npx supabase start) and .env.smoke.local holding its
                              # VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY, also: sign-in, two-device sync, account deletion
@@ -83,6 +90,43 @@ npm run smoke                # builds, then drives the real app in headless Chro
 conjugations, cognate and false-friend spot checks).
 
 Deploy: `npm run deploy` publishes `dist/` (with the generated data) to the `gh-pages` branch.
+
+## Android & iOS apps
+
+**Native rewrite in progress (2026-10-21).** The product target is native Swift/Kotlin apps, not a WebView:
+Kotlin Multiplatform shared core + Jetpack Compose on Android + SwiftUI on iOS, in [`native/`](native/README.md).
+The Capacitor projects below remain the shipped stopgap until the native apps reach parity; new features go native.
+
+The same web build is wrapped as a native app with [Capacitor](https://capacitorjs.com); `android/` and `ios/` are
+real native projects (the copied web assets in them are gitignored). One codebase, no rewrite.
+
+```bash
+npm run native:sync    # build dist/ and copy it + the plugins into both projects
+npm run native:assets  # regenerate native icons/splashes from public/icon.svg
+npm run android        # sync, then open android/ in Android Studio
+npm run ios            # sync, then open ios/App in Xcode (macOS only)
+```
+
+**Android** needs Android Studio (SDK 36) and JDK 21: the project's Gradle 8.14 does not run on newer JDKs, so
+pick JDK 21 in Settings → Build Tools → Gradle. `cd android && ./gradlew assembleDebug` builds
+`android/app/build/outputs/apk/debug/app-debug.apk` without Android Studio.
+
+**iOS** needs macOS + Xcode: open `ios/App/App.xcodeproj`, choose your signing team, run. Dependencies are Swift
+Packages, so there is no CocoaPods step. Shipping needs the Apple Developer Program ($99/year); Google Play is a
+one-time $25 and takes an `.aab`. Bump `versionCode` / `versionName` in `android/app/build.gradle` and the version
+in Xcode for each release.
+
+The bundle id `io.github.vykosmolt.pluton` (`capacitor.config.json`) is the store identity and can't change after
+the first release. The debug APK is ~149 MB (188 MB of source data, compressed by the build) — inside Play's
+200 MB base-module cap, with the raw audio as the thing to watch as the deck grows; if a release outgrows it,
+move the audio to a Play asset pack / iOS on-demand resources.
+
+Native differences: assets are bundled (no service worker), "Download backup" writes the JSON and opens the share
+sheet instead of a browser download, external links open in the system browser, and Talk's speech input is
+typing-only (Web Speech API does not exist in Android WebView or iOS WKWebView). Speak's record/playback uses
+MediaRecorder and the native projects declare microphone permission, but that path has not been verified on a device
+yet. An Ollama or custom AI server must be reachable over https from the apps — both WebViews block plain http to
+another machine.
 
 ## Data (French)
 
@@ -117,9 +161,10 @@ src/lib/stats.js      per-device stats combined into the totals the app shows (t
 supabase/             the account backend: config, the records table + push/delete_account functions
 src/lib/sound.js      clips + sound effects through one AudioContext
 src/lib/deck.js       card changes outside runs (add, mark known)
-src/*.svelte          App, Welcome, Run, Reader, Bridge, Listen, Talk, Words, Settings, Cat + small shared pieces
+src/*.svelte          App, Welcome, Run, Reader, Speak, Bridge, Listen, Talk, Words, Settings, Cat + small shared pieces
 public/sw.js          offline cache
 scripts/              smoke test, mock AI provider, deploy
+native/               Kotlin Multiplatform shared core + Compose Android app (SwiftUI iOS next)
 ```
 
 ## Adding a language

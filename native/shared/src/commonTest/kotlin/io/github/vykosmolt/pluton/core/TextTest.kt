@@ -79,4 +79,11 @@ class TextTest {
         assertEquals("dort", blank("Le chat dort sur le mur.", "dort").second)
         assertEquals("", blank("Le chat dort.", "chien").second)
     }
+
+    @Test
+    fun comfortFollowsTheCoverageThresholds() {
+        assertEquals(CoverageComfort.Comfortable, coverageComfort(0.985))
+        assertEquals(CoverageComfort.Stretch, coverageComfort(0.96))
+        assertEquals(CoverageComfort.Challenge, coverageComfort(0.90))
+    }
 }

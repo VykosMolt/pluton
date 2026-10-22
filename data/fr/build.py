@@ -559,6 +559,14 @@ def check(words, forms, conj, cog, story):
     ch1 = story[0]
     assert len(story) == 10 and ch1["body"][slice(*ch1["sentences"][0][:2])] == "Il fait noir."
     assert all(t["body"][a:b].strip() for t in story for a, b, _ in t["sentences"])
+    # Comprehension: every chapter has at least 3 unambiguous questions, each with a valid answer index.
+    for ch in story:
+        qs = ch.get("questions", [])
+        assert len(qs) >= 3, ch["title"]
+        for q in qs:
+            assert q["q"] and q["why"] and len(q["a"]) >= 3, (ch["title"], q)
+            assert 0 <= q["ok"] < len(q["a"]), (ch["title"], q)
+            assert len(set(q["a"])) == len(q["a"]), ("duplicate option", ch["title"], q)
     assert split_sentences("« Il y a quelqu'un ? » Oui !")[0][2] == "Il y a quelqu'un ?"
     if "--no-audio" not in sys.argv:
         clips = [a for c in conj.values() for ids in c["audio"].values() for a in ids if a]

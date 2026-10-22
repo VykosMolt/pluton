@@ -3,13 +3,19 @@ import Speech
 
 /// French TTS, used for examples, read-along and listening exercises.
 final class Speaker: ObservableObject {
+    @Published var error = ""
     private let synth = AVSpeechSynthesizer()
 
     func speak(_ text: String) {
         guard !text.isEmpty else { return }
+        guard let voice = AVSpeechSynthesisVoice(language: "fr-FR") else {
+            error = "No French voice is installed on this device."
+            return
+        }
+        error = ""
         synth.stopSpeaking(at: .immediate)
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "fr-FR")
+        utterance.voice = voice
         utterance.rate = 0.48
         synth.speak(utterance)
     }
@@ -33,6 +39,9 @@ final class SpeechPractice: ObservableObject {
     private let engine = AVAudioEngine()
     private var file: URL?
     private var audioFile: AVAudioFile?
+    private var tapInstalled = false
+    private var generation = 0
+    private var player: AVAudioPlayer?
 
     init() {
         recognition = SFSpeechRecognizer(locale: Locale(identifier: "fr-FR"))
@@ -49,16 +58,24 @@ final class SpeechPractice: ObservableObject {
 
     func start() {
         guard authorized else { return }
+        guard let recognition, recognition.isAvailable else {
+            error = "French speech recognition isn't available on this device."
+            return
+        }
         reset()
         transcript = ""
         error = ""
+        let inputFormat = engine.inputNode.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            error = "No usable microphone input on this device."
+            return
+        }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("pluton-speak.caf")
         file = url
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .measurement, options: .duckOthers)
             try session.setActive(true)
-            let inputFormat = engine.inputNode.outputFormat(forBus: 0)
             let file = try AVAudioFile(forWriting: url, settings: inputFormat.settings)
             audioFile = file
             let request = SFSpeechAudioBufferRecognitionRequest()
@@ -68,56 +85,86 @@ final class SpeechPractice: ObservableObject {
                 try? file.write(from: buffer)
                 request.append(buffer)
             }
+            tapInstalled = true
             engine.prepare()
             try engine.start()
             recording = true
-            if let recognition {
-                task = recognition.recognitionTask(with: request) { [weak self] result, _ in
-                    guard let self, let result else { return }
-                    Task { @MainActor in self.transcript = result.bestTranscription.formattedString }
+            generation += 1
+            let current = generation
+            task = recognition.recognitionTask(with: request) { [weak self] result, error in
+                guard let self else { return }
+                Task { @MainActor in
+                    guard self.generation == current else { return }
+                    if let result {
+                        self.transcript = result.bestTranscription.formattedString
+                    }
+                    if let error, result == nil {
+                        self.error = "Speech recognition failed: \(error.localizedDescription)"
+                        self.recording = false
+                        self.reset()
+                    }
                 }
             }
         } catch {
             self.error = "Recording failed: \(error.localizedDescription)"
             recording = false
+            reset()
         }
     }
 
     private func reset() {
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
         if engine.isRunning {
             engine.stop()
-            engine.inputNode.removeTap(onBus: 0)
         }
         audioFile = nil
         task?.cancel()
         task = nil
         request?.endAudio()
         request = nil
+        player?.stop()
+        player = nil
     }
 
-    /// Stops recording and returns the recognized transcript once the recognizer settles.
-    func stop() async -> String {
+    /// Stops once and returns the transcript, or nil when nothing was recording. Concurrent calls are ignored.
+    func finishRecording() async -> String? {
+        guard recording else { return nil }
+        recording = false
+        let current = generation
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
         if engine.isRunning {
             engine.stop()
-            engine.inputNode.removeTap(onBus: 0)
         }
-        recording = false
         request?.endAudio()
+        let myRequest = request
+        let myTask = task
         try? await Task.sleep(nanoseconds: 700_000_000)
-        task?.cancel()
+        guard generation == current else { return "" }
+        myTask?.cancel()
+        myRequest?.endAudio()
         task = nil
         request = nil
         audioFile = nil
+        player?.stop()
+        player = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         return transcript
     }
 
     func play() {
-        guard let file else { return }
-        let player = try? AVAudioPlayer(contentsOf: file)
-        player?.play()
-        self.player = player
+        guard !recording, let file else { return }
+        do {
+            let player = try AVAudioPlayer(contentsOf: file)
+            player.play()
+            self.player = player
+        } catch {
+            self.error = "Could not play the recording."
+        }
     }
-
-    private var player: AVAudioPlayer?
 }

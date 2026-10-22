@@ -27,7 +27,7 @@ export function combine(own, others = [], today) {
   const sum = (k) => all.reduce((n, s) => n + (s[k] ?? 0), 0)
   const days = [...new Set(all.flatMap(daysOf))].sort()
   return {
-    points: sum('points'), listened: sum('listened'), talked: sum('talked'), written: sum('written'),
+    points: sum('points'), listened: sum('listened'), talked: sum('talked'), written: sum('written'), spoken: sum('spoken'),
     bestCombo: Math.max(0, ...all.map((s) => s.bestCombo ?? 0)),
     stage: Math.max(0, ...all.map((s) => s.stage ?? 0)),
     read: [...new Set(all.flatMap((s) => s.read ?? []))],

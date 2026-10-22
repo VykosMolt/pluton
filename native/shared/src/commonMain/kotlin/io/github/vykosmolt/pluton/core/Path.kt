@@ -16,6 +16,7 @@ data class Stage(
     val read: List<String> = emptyList(),
     val listen: Int = 0,
     val talk: Int? = null,
+    val speak: Int? = null,
     val write: Int? = null,
     val fr: String,
     val say: String,
@@ -34,51 +35,51 @@ val STAGES = listOf(
     ),
     Stage(
         "La Maison", "The House", "A2", 400, VerbGoal("ind:pre", 12), grammar = 1, read = listOf("story-2"),
-        listen = 20, talk = 5, write = 1,
+        listen = 20, talk = 5, speak = 3, write = 1,
         fr = "Une vieille maison, du lait, et une petite fille qui n'a pas peur.",
         say = "An old house, some milk, and a girl who isn't afraid.",
     ),
     Stage(
         "Le Village", "The Village", "A2", 700, VerbGoal("pc", 8), grammar = 4, read = listOf("story-3"),
-        listen = 40, talk = 10, write = 2,
+        listen = 40, talk = 10, speak = 5, write = 2,
         fr = "Le marché du village. Un chat noir, ça porte malheur ?",
         say = "Market day. Are black cats really bad luck?",
     ),
     Stage(
         "La Route", "The Road", "B1", 1100, VerbGoal("ind:imp", 8), grammar = 6, read = listOf("story-4"),
-        listen = 75, talk = 20, write = 3,
+        listen = 75, talk = 20, speak = 10, write = 3,
         fr = "La route de Paris est longue. Heureusement, il y a Brutus.",
         say = "The road to Paris is long. Luckily there's Brutus.",
     ),
     Stage(
         "Le Fleuve", "The River", "B1", 1600, VerbGoal("ind:fut", 8), grammar = 8, read = listOf("story-5"),
-        listen = 120, talk = 30, write = 5,
+        listen = 120, talk = 30, speak = 15, write = 5,
         fr = "Remonter la Seine à bord d'un vieux bateau.",
         say = "Up the Seine on an old boat.",
     ),
     Stage(
         "Paris", "Paris", "B2", 2300, VerbGoal("cnd:pre", 8), grammar = 10,
-        read = listOf("story-6", "Les Étoiles"), listen = 240, talk = 50, write = 8,
+        read = listOf("story-6", "Les Étoiles"), listen = 240, talk = 50, speak = 25, write = 8,
         fr = "Les toits de Montmartre, et une chatte qui connaît les règles.",
         say = "The roofs of Montmartre, and a cat who knows the rules.",
     ),
     Stage(
         "Les Catacombes", "The Catacombs", "B2", 3200, VerbGoal("sub:pre", 8), grammar = 12,
-        read = listOf("story-7", "La Parure"), listen = 420, talk = 80, write = 12,
+        read = listOf("story-7", "La Parure"), listen = 420, talk = 80, speak = 40, write = 12,
         fr = "Sous Paris, une ville de morts. Il ne fallait pas descendre.",
         say = "Under Paris, a city of the dead. He shouldn't have gone down.",
     ),
     Stage(
         "La Bibliothèque", "The Library", "C1", 4500, VerbGoal(null, 150), grammar = 13,
         read = listOf("story-8", "Le Tour du monde en quatre-vingts jours, chapitre 1"),
-        listen = 720, talk = 120, write = 16,
+        listen = 720, talk = 120, speak = 60, write = 16,
         fr = "Les notes de Baudelaire, et une lettre sans signature.",
         say = "Baudelaire's notes, and an unsigned letter.",
     ),
     Stage(
         "L'Opéra", "The Opéra", "C1", 6000, VerbGoal(null, 300), grammar = 15,
         read = listOf("story-9", "La Chèvre de monsieur Seguin"),
-        listen = 1200, talk = 200, write = 20,
+        listen = 1200, talk = 200, speak = 100, write = 20,
         fr = "Un bal masqué, un lac sous la scène, et quelqu'un qui attend.",
         say = "A masked ball, a lake under the stage, and someone waiting.",
     ),
@@ -105,7 +106,7 @@ data class PathMetrics(
     val written: Int = 0,
 )
 
-enum class GoalKind { Words, Verbs, Grammar, Read, Listen, Talk, Write }
+enum class GoalKind { Words, Verbs, Grammar, Read, Listen, Talk, Speak, Write }
 
 data class Goal(
     val kind: GoalKind,
@@ -140,7 +141,10 @@ fun goalsOf(stage: Stage, m: PathMetrics, titles: Map<String, String> = emptyMap
     }
     goals += Goal(GoalKind.Listen, null, "Listen for ${stage.listen} minutes in all", m.listenMin, stage.listen, false, false, 0.0)
     stage.talk?.let {
-        goals += Goal(GoalKind.Talk, null, "Talk or speak $it times", m.talked + m.spoken, it, true, false, 0.0)
+        goals += Goal(GoalKind.Talk, null, "Talk with Pluton $it times", m.talked, it, true, false, 0.0)
+    }
+    stage.speak?.let {
+        goals += Goal(GoalKind.Speak, null, "Speak French aloud $it times", m.spoken, it, true, false, 0.0)
     }
     stage.write?.let {
         goals += Goal(GoalKind.Write, null, "Have $it texts corrected", m.written, it, true, false, 0.0)

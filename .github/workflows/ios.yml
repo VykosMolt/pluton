@@ -33,7 +33,7 @@ jobs:
           set -e
           git fetch --depth=1 origin gh-pages
           mkdir -p public/data/fr
-          for name in words forms story shelf conj grammar; do
+          for name in words forms story shelf conj grammar cognates; do
             git show "origin/gh-pages:data/fr/$name.json" > "public/data/fr/$name.json"
           done
           ls -lh public/data/fr
@@ -105,7 +105,7 @@ jobs:
           set -e
           git fetch --depth=1 origin gh-pages
           mkdir -p public/data/fr
-          for name in words forms story shelf conj grammar; do
+          for name in words forms story shelf conj grammar cognates; do
             git show "origin/gh-pages:data/fr/$name.json" > "public/data/fr/$name.json"
           done
 

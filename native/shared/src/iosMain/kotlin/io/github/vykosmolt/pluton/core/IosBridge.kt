@@ -11,6 +11,19 @@ class IosBridge {
     fun forms(json: String): Map<String, String> = decodeForms(json)
     fun story(json: String): List<StoryChapter> = decodeStory(json)
     fun shelf(json: String): List<ShelfText> = decodeShelf(json).filter { it.lang == "fr" }
+
+    /** English texts for the Norman Bridge. */
+    fun bridgeShelf(json: String): List<ShelfText> = decodeShelf(json).filter { it.lang != "fr" }
+
+    private var cognatesCache: Pair<String, Map<String, List<String>>>? = null
+
+    fun bridgeTokens(text: String, cognatesJson: String): List<EnglishToken> {
+        val map = cognatesCache?.takeIf { it.first == cognatesJson }?.second
+            ?: io.github.vykosmolt.pluton.core.decodeCognates(cognatesJson).also { cognatesCache = cognatesJson to it }
+        return io.github.vykosmolt.pluton.core.englishTokens(text, map)
+    }
+
+    fun bridgeNote(token: EnglishToken): String = io.github.vykosmolt.pluton.core.bridgeNote(token)
     fun conj(json: String): Map<String, ConjTable> = decodeConj(json)
     fun grammar(json: String): List<GrammarTopic> = decodeGrammar(json)
 
@@ -50,6 +63,9 @@ class IosBridge {
         io.github.vykosmolt.pluton.core.coverage(tokens) { io.github.vykosmolt.pluton.core.status(cards[it], words[it]) }
     fun unlockList(tokens: List<Token>, cards: Map<String, CardState>, words: Map<String, Word>): List<String> =
         io.github.vykosmolt.pluton.core.unlockList(tokens, { io.github.vykosmolt.pluton.core.status(cards[it], words[it]) })
+
+    fun unlockList(tokens: List<Token>, cards: Map<String, CardState>, words: Map<String, Word>, target: Double): List<String> =
+        io.github.vykosmolt.pluton.core.unlockList(tokens, { io.github.vykosmolt.pluton.core.status(cards[it], words[it]) }, target)
     fun status(card: CardState?, word: Word?): WordStatus = io.github.vykosmolt.pluton.core.status(card, word)
 
     /** Swift-friendly status: 0 known, 1 learning, 2 queued, 3 new (avoids Kotlin enum interop). */
@@ -65,9 +81,9 @@ class IosBridge {
     fun wordOf(lemma: String, words: Map<String, Word>): Word = words[lemma] ?: Word(lemma, display = lemma)
     fun runWord(card: CardState, words: Map<String, Word>): Word = wordOf(card.lemma, words)
     fun runSentence(card: CardState?, words: Map<String, Word>): String =
-        card?.mined?.sentence ?: card?.lemma?.let { words[it]?.sentence } ?: ""
+        io.github.vykosmolt.pluton.core.contextSentence(card, card?.lemma?.let { words[it] })
     fun runForm(card: CardState?, words: Map<String, Word>): String =
-        card?.mined?.form ?: card?.lemma?.let { words[it]?.form } ?: card?.lemma.orEmpty()
+        io.github.vykosmolt.pluton.core.contextForm(card, card?.lemma?.let { words[it] })
     fun conjForms(table: ConjTable, tense: String): List<String> = table.t[tense]?.map { it ?: "" } ?: emptyList()
     fun conjAudioIds(table: ConjTable, tense: String): List<String> = table.audio[tense]?.map { it ?: "" } ?: emptyList()
     fun modeFor(card: Card, word: Word): String = io.github.vykosmolt.pluton.core.modeFor(card, word)
@@ -77,6 +93,10 @@ class IosBridge {
     fun gramKey(id: String): String = io.github.vykosmolt.pluton.core.gramKey(id)
     fun subject(index: Int, tense: String): String = io.github.vykosmolt.pluton.core.subject(index, tense)
     fun tenses(): List<Tense> = FRENCH_TENSES
+    fun soundLessons(): List<SoundLesson> = SOUND_LESSONS
+    fun chunks(): List<Chunk> = CHUNKS
+    fun chunksFor(lemma: String): List<Chunk> = io.github.vykosmolt.pluton.core.chunksFor(lemma)
+    fun chunkWord(chunk: Chunk): Word = io.github.vykosmolt.pluton.core.chunkWord(chunk)
 
     fun pathState(
         cards: List<CardState>,
@@ -96,7 +116,15 @@ class IosBridge {
     fun levelCode(words: Int): String = io.github.vykosmolt.pluton.core.levelOf(words).code
     fun levelWords(words: Int): Int = io.github.vykosmolt.pluton.core.levelOf(words).words
     fun chatSystem(words: Int, learning: List<String>): String = io.github.vykosmolt.pluton.core.chatSystem(io.github.vykosmolt.pluton.core.levelOf(words), learning)
+    fun chatSystemFocused(words: Int, learning: List<String>, focus: String?): String =
+        io.github.vykosmolt.pluton.core.chatSystem(io.github.vykosmolt.pluton.core.levelOf(words), learning, focus)
     fun writeSystem(words: Int, prompt: String): String = io.github.vykosmolt.pluton.core.writeSystem(io.github.vykosmolt.pluton.core.levelOf(words), prompt)
+    fun writeSystemFocused(words: Int, prompt: String, focus: String?): String =
+        io.github.vykosmolt.pluton.core.writeSystem(io.github.vykosmolt.pluton.core.levelOf(words), prompt, focus)
+    fun grammarFocus(cards: List<CardState>, grammar: List<GrammarTopic>, conj: Map<String, ConjTable>): String? =
+        io.github.vykosmolt.pluton.core.grammarFocus(cards, grammar, conj)
+    fun continueSystem(words: Int, known: List<String>, targets: List<String>, previous: String): String =
+        io.github.vykosmolt.pluton.core.continueSystem(io.github.vykosmolt.pluton.core.levelOf(words), known, targets, previous)
     fun readerSystem(words: Int, known: List<String>, targets: List<String>): String =
         io.github.vykosmolt.pluton.core.readerSystem(io.github.vykosmolt.pluton.core.levelOf(words), known, targets)
     fun retellPrompt(): String = io.github.vykosmolt.pluton.core.RETELL
@@ -107,6 +135,37 @@ class IosBridge {
     fun splitCorrection(text: String): Correction = io.github.vykosmolt.pluton.core.splitCorrection(text)
 
     fun cards(store: Store): List<CardState> = store.cards()
+    fun isOnboarded(store: Store): Boolean = store.onboardedOrExisting()
+    fun onboardingMinutes(store: Store): Int = store.onboardingMinutes()?.takeIf { it > 0 } ?: 10
+    fun saveOnboarding(store: Store, minutes: Int) = store.saveOnboarding(minutes)
+    fun lastTab(store: Store): String? = store.lastTab()
+    fun saveLastTab(store: Store, tab: String) = store.saveLastTab(tab)
+    fun planDone(store: Store, day: String): List<String> = store.planDone(day).toList()
+    fun practiceDays(store: Store): List<String> = store.practiceDays().toList()
+    fun markPlanDone(store: Store, day: String, step: String): List<String> = store.markPlanDone(day, step).toList()
+    fun unmarkPlanDone(store: Store, day: String, step: String): List<String> = store.unmarkPlanDone(day, step).toList()
+    /** -1 when there is no review history, so Swift does not deal with a nullable primitive. */
+    fun recentAccuracy(store: Store): Double = store.recentAccuracy() ?: -1.0
+    fun suggestedNewWords(current: Int, accuracy: Double): Int =
+        io.github.vykosmolt.pluton.core.suggestedNewWords(current, accuracy.takeIf { it >= 0.0 })
+    fun coverageComfortCode(pct: Double): Int = when (io.github.vykosmolt.pluton.core.coverageComfort(pct)) {
+        CoverageComfort.Comfortable -> 0
+        CoverageComfort.Stretch -> 1
+        CoverageComfort.Challenge -> 2
+    }
+    fun writings(store: Store): List<WritingRecord> = store.writings()
+    fun saveWriting(store: Store, prompt: String, draft: String, result: WritingResult, now: Long): WritingRecord =
+        store.saveWriting(prompt, draft, result, now)
+    fun updateWritingRevision(store: Store, id: Long, revised: String, now: Long) = store.updateWritingRevision(id, revised, now)
+    fun addCorrections(store: Store, source: String, errors: List<WritingError>, now: Long) = store.addCorrections(source, errors, now)
+    fun corrections(store: Store): List<CorrectionRecord> = store.corrections()
+    fun meta(store: Store, key: String): String? = store.meta(key)
+    fun putMeta(store: Store, key: String, value: String) = store.putMeta(key, value)
+    fun addWritten(store: Store): Stats = store.addWritten()
+    fun exportBackup(store: Store): String = store.export()
+    fun importBackup(store: Store, data: String): String? =
+        runCatching { store.import(data) }.exceptionOrNull()?.message
+
     fun card(store: Store, lemma: String): CardState? = store.card(lemma)
     fun saveAnswer(store: Store, card: CardState, rating: Int, mode: String, at: Long) =
         store.saveAnswer(card, ReviewEntry(card.lemma, rating, mode, at))
@@ -121,6 +180,7 @@ class IosBridge {
     fun addRead(store: Store, today: String, id: String): Stats = store.addRead(today, id)
     fun addListened(store: Store, seconds: Int): Stats = store.addListened(seconds)
     fun addSpoken(store: Store, n: Int): Stats = store.addSpoken(n)
+    fun addTalked(store: Store): Stats = store.addTalked()
     fun pace(store: Store): Pace = store.pace()
     fun savePace(store: Store, pace: Pace) = store.savePace(pace)
     fun savePace(store: Store, perRun: Int, perDay: Int) = store.savePace(Pace(perRun, perDay))

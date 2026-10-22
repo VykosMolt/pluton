@@ -89,6 +89,15 @@ fun coverage(tokens: List<Token>, statusOf: (String) -> WordStatus): Coverage {
     return Coverage(known, learning, queued, newWords, total, if (total == 0) 0.0 else (known + learning).toDouble() / total)
 }
 
+/** How comfortable a text is, from the 95%/98% coverage conventions in the reading literature. */
+enum class CoverageComfort { Comfortable, Stretch, Challenge }
+
+fun coverageComfort(pct: Double): CoverageComfort = when {
+    pct >= 0.98 -> CoverageComfort.Comfortable
+    pct >= 0.95 -> CoverageComfort.Stretch
+    else -> CoverageComfort.Challenge
+}
+
 /** The lemmas to learn (most frequent in the text first) to reach `target` coverage. */
 fun unlockList(tokens: List<Token>, statusOf: (String) -> WordStatus, target: Double = 0.95): List<String> {
     val c = coverage(tokens, statusOf)

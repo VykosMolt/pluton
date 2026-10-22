@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { STAGES, goalsOf, pathState, focus } from './path.js'
 
-const fresh = { learned: 0, tables: {}, tablesTotal: 0, read: new Set(), listenMin: 0, talked: 0, written: 0 }
+const fresh = { learned: 0, tables: {}, tablesTotal: 0, read: new Set(), listenMin: 0, talked: 0, spoken: 0, written: 0 }
 
 test('stages climb from A1 to C1 with growing targets', () => {
   assert.equal(STAGES.length, 10)
@@ -34,12 +34,19 @@ test('goals report progress and labels', () => {
   assert.ok(g.slice(6).every((x) => x.bonus))
 })
 
-test('focus: reading first, then listening, then bonus only with an AI', () => {
+test('focus: reading first, then listening, then speaking (or writing with an AI)', () => {
   const s = pathState({ ...fresh, learned: 9999 }).stages[0]
   assert.equal(focus(s, false).kind, 'read')
   const read = pathState({ ...fresh, read: new Set(['story-0']), listenMin: 0 }).stages[0]
   assert.equal(focus(read, false).kind, 'listen')
   const s3 = pathState({ ...fresh, read: new Set(['story-2']), listenMin: 999, grammar: 9 }).stages[2]
-  assert.equal(focus(s3, false), null)
-  assert.equal(focus(s3, true).kind, 'talk')
+  assert.equal(focus(s3, false).kind, 'talk') // speaking needs no AI
+  const talked = pathState({ ...fresh, talked: 999, read: new Set(['story-2']), listenMin: 999, grammar: 9 }).stages[2]
+  assert.equal(focus(talked, false), null) // only writing is left, and it needs an AI
+  assert.equal(focus(talked, true).kind, 'write')
+})
+
+test('speaking counts toward the talk bonus', () => {
+  const g = goalsOf(STAGES[2], { ...fresh, spoken: 3 })
+  assert.equal(g.find((x) => x.kind === 'talk').have, 3)
 })

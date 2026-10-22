@@ -18,6 +18,9 @@
   import { setActive } from './lib/ai.js'
   import { combine, daysOf } from './lib/stats.js'
   import * as sync from './lib/sync.js'
+  import { Capacitor } from '@capacitor/core'
+  import { Filesystem, Directory, Encoding } from '@capacitor/filesystem'
+  import { Share } from '@capacitor/share'
 
   let words = $state.raw(null) // lemma -> entry, frequency order
   let forms = $state.raw(null) // form -> lemma
@@ -115,7 +118,7 @@
       }
     }
     return { learned, tables, tablesTotal, grammar: grammarDone, read: new Set(total.read), listenMin: total.listened / 60,
-      talked: total.talked, written: total.written }
+      talked: total.talked, spoken: total.spoken, written: total.written }
   })
   const titles = $derived(Object.fromEntries(story.map((c) => [c.id, `Chapitre ${c.stage + 1} · ${c.title}`])))
   const path = $derived(pathState(metrics, titles))
@@ -230,8 +233,16 @@
   })
 
   async function backup() {
-    const blob = new Blob([JSON.stringify(await db.exportAll())], { type: 'application/json' })
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `pluton-backup-${today}.json` })
+    const json = JSON.stringify(await db.exportAll())
+    const name = `pluton-backup-${today}.json`
+    if (Capacitor.isNativePlatform()) {
+      // WebView downloads of blob: URLs don't work in a Capacitor app: write the file, then hand it to the share sheet
+      const { uri } = await Filesystem.writeFile({ path: name, data: json, directory: Directory.Cache, encoding: Encoding.UTF8 })
+      await Share.share({ title: name, url: uri })
+      return
+    }
+    const blob = new Blob([json], { type: 'application/json' })
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name })
     a.click()
     URL.revokeObjectURL(a.href)
   }
@@ -335,6 +346,7 @@
     <Path full {path} {reached} onaction={act} onjump={jump} />
   {:else if view === 'read'}
     <Reader {words} {forms} {cards} {statusOf} {shelf} {story} read={metrics.read} onread={markRead} onlisten={listened}
+      {ai} vocab={counts.known + counts.learning} onsettings={() => (view = 'settings')}
       bind:texts bind:openId={openText} bind:listenNow />
   {:else if view === 'listen'}
     <Listen {words} {forms} {cards} {statusOf} onlisten={listened} />

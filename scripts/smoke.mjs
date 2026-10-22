@@ -15,7 +15,9 @@ const URL = `http://localhost:${PORT}/`
 const deck = JSON.parse(readFileSync('public/data/fr/words.json', 'utf8')).filter((w) => w.sentence)
 const conj = JSON.parse(readFileSync('public/data/fr/conj.json', 'utf8'))
 const grammar = JSON.parse(readFileSync('public/data/fr/grammar.json', 'utf8'))
+const story = JSON.parse(readFileSync('public/data/fr/story.json', 'utf8'))
 let fixAnswer = null // the correction the AI section turns into a card
+let speaking = null // set when Chromium's fake microphone produces a playable recording
 
 const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { stdio: 'pipe' })
 process.on('exit', () => server.kill()) // also on a failed step
@@ -26,7 +28,7 @@ await new Promise((ok, fail) => {
 
 const ENGINE = process.env.BROWSER ?? 'chromium'
 const browser = await { chromium, firefox, webkit }[ENGINE].launch({
-  chromium: { args: ['--autoplay-policy=no-user-gesture-required'] },
+  chromium: { args: ['--autoplay-policy=no-user-gesture-required', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] },
   firefox: { firefoxUserPrefs: { 'media.autoplay.default': 0, 'media.autoplay.blocking_policy': 0 } },
 }[ENGINE])
 console.log(`engine: ${ENGINE} ${browser.version()}`)
@@ -116,6 +118,19 @@ async function playRun(page, { wrongFirst, override = false, prefix }) {
   return { answered, modes }
 }
 
+/** Answers a story chapter's comprehension quiz. Opens it unless the form is already showing. */
+async function answerQuiz(page, title, { wrong = false, open = true } = {}) {
+  const ch = story.find((c) => c.title === title)
+  if (!ch) throw new Error(`no chapter "${title}"`)
+  if (open) await page.getByRole('button', { name: 'Check understanding' }).click()
+  for (const [i, q] of ch.questions.entries()) {
+    const k = wrong ? (q.ok + 1) % q.a.length : q.ok
+    await page.locator(`[data-q="${i}"] input`).nth(k).check()
+  }
+  await page.getByRole('button', { name: 'Check answers' }).click()
+  await page.locator('.quiz .review').waitFor()
+}
+
 const { ctx, page } = await open('light', { clock: true })
 await page.screenshot({ path: `${OUT}/0-home.png` })
 const run1 = await playRun(page, { wrongFirst: true, prefix: '1' })
@@ -130,10 +145,18 @@ await page.locator('.text .w.hl').first().waitFor()
 await page.screenshot({ path: `${OUT}/2-chapter.png` })
 await page.waitForTimeout(1500)
 await page.getByRole('button', { name: '⏸ Pause' }).click()
-await page.getByRole('button', { name: '✓ I read it' }).click()
-await page.getByText('✓ You read this one').waitFor()
+await page.getByRole('button', { name: 'Check understanding' }).click()
+await answerQuiz(page, 'Le Mur', { wrong: true, open: false })
+const quizBlocked = (await page.getByText('Compris !').count()) === 0
+await page.getByRole('button', { name: 'Try again' }).click()
+await answerQuiz(page, 'Le Mur', { open: false })
+await page.getByText('Compris !').waitFor()
+const quizScore = await page.locator('.quiz').textContent()
+await page.screenshot({ path: `${OUT}/2-comprehension.png` })
 // Nothing is locked: the C1 chapter opens and reads at stage 1.
 await page.getByRole('button', { name: '← Library' }).click()
+await page.locator('.item.chapter', { hasText: 'Le Mur' }).getByText('✓ read').waitFor()
+const readMark = await page.locator('.item.chapter', { hasText: 'Le Mur' }).textContent()
 await page.locator('.item.chapter').last().click()
 await page.getByRole('heading', { name: "L'Opéra" }).waitFor()
 const lastChapterWords = await page.locator('.text .w').count()
@@ -314,7 +337,8 @@ await sp.evaluate((lemmas) => new Promise((ok) => {
 }), deck.slice(0, 80).map((w) => w.lemma))
 await sp.reload()
 await sp.locator('.task').click()
-await sp.getByRole('button', { name: '✓ I read it' }).click()
+await sp.getByRole('button', { name: 'Check understanding' }).click()
+await answerQuiz(sp, 'Le Mur', { open: false })
 await sp.locator('.celebrate').waitFor()
 const celebration = await sp.locator('.celebrate').textContent()
 await sp.screenshot({ path: `${OUT}/2-celebrate.png` })
@@ -377,6 +401,30 @@ await tp.getByText('✓ in your runs').waitFor()
 fixAnswer = 'à Paris'
 await tp.locator('nav').getByRole('button', { name: /Home/ }).click()
 const fixRun = await playRun(tp, { wrongFirst: false, prefix: '8f' })
+
+// More input: a story generated at the learner's level, then an AI comprehension check of the retelling.
+await tp.locator('nav').getByRole('button', { name: /Library/ }).click()
+await tp.getByRole('button', { name: '✨ Story' }).click()
+await tp.getByRole('button', { name: 'Write it' }).click()
+await tp.getByRole('heading', { name: 'Le marché de minuit' }).waitFor()
+const generatedWords = await tp.locator('.text .w').count()
+await tp.getByPlaceholder('De quoi parle ce texte ?').fill('Pluton trouve du pain et rencontre un chien sur le toit.')
+await tp.getByRole('button', { name: 'Ask Pluton' }).click()
+await tp.locator('.retell .score').waitFor()
+const retellText = await tp.locator('.retell').textContent()
+await tp.screenshot({ path: `${OUT}/8-reader.png`, fullPage: true })
+
+// Speaking practice: record through Chromium's fake microphone, then make the clip playable.
+await tp.locator('nav').getByRole('button', { name: /Talk/ }).click()
+await tp.getByRole('tab', { name: /Speaking/ }).click()
+if (ENGINE === 'chromium') {
+  await tp.getByRole('button', { name: /Record/ }).click()
+  await tp.waitForTimeout(800)
+  await tp.getByRole('button', { name: /Stop/ }).click()
+  await tp.waitForFunction(() => [...document.querySelectorAll('button')].some((b) => b.textContent.includes('Yours') && !b.disabled))
+  speaking = true
+  await tp.screenshot({ path: `${OUT}/8-speak.png` })
+}
 
 await tp.getByRole('button', { name: 'Settings' }).click()
 await tp.getByLabel('Provider').selectOption('anthropic')
@@ -460,7 +508,10 @@ server.kill()
 
 const claudeSent = { model: claude?.body.model, fallbacks: claude?.body.fallbacks, effort: claude?.body.output_config?.effort,
   beta: claude?.headers['anthropic-beta'], browser: claude?.headers['anthropic-dangerous-direct-browser-access'] }
-const report = { accounts, topics, revealed, placedRun, fixRun, offlineOk, stageTag, lastChapterWords, steps, celebration, stageAfter, placement, placedKnown, bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec, shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after, streak, level, sw, due, run2, audio, errors }
+const report = { accounts, topics, revealed, placedRun, fixRun, offlineOk, stageTag, lastChapterWords, steps, celebration, stageAfter,
+  placement, placedKnown, bridgeIntro, woven, beastNote, talkFix, writeAdds, claudeSent, dicteeMarks, lineWords, listenedSec,
+  shelfItems, byline, wordRows, searchHits, end, streakLater, run1, recap, mined: word, unlockBefore, unlockAfter, before, after,
+  streak, level, sw, due, run2, quizBlocked, quizScore, readMark, generatedWords, retellText, speaking, audio, errors }
 console.log(JSON.stringify(report, null, 2))
 const checks = {
   'no errors': !errors.length,
@@ -483,6 +534,10 @@ const checks = {
   'words search by English': searchHits.length === 1 && searchHits[0].includes('avoir'),
   'classics shelf lists 7 texts': shelfItems === 7,
   'shelf text shows author': byline.includes('Maupassant'),
+  'chapter quiz: wrong answers do not count the chapter as read': quizBlocked,
+  'chapter quiz: a pass marks it read and shows the score': /3 \/ 3/.test(quizScore) && readMark.includes('✓ read'),
+  'generated story lands in the library and opens': generatedWords > 20,
+  'retell is scored by the AI': /4 \/ 5/.test(retellText),
   'home shows stage 1 of the path': /Étape 1 \/ 10/.test(stageTag),
   'every chapter is open at stage 1 (C1 chapter readable)': lastChapterWords > 150,
   'the path map lists 10 stages': steps === 10,
@@ -511,5 +566,7 @@ if (accounts) Object.assign(checks, {
   'accounts: deleting removes the account and all its data': accounts.deleted && accounts.rowsLeft === 0,
 })
 else console.log('accounts: SKIPPED (local Supabase not reachable; npx supabase start, then npx vite build --mode smoke)')
+if (speaking !== null) checks['speaking: recording produces a playable clip'] = speaking === true
+else console.log('speaking: SKIPPED (record/playback smoke runs on Chromium only)')
 for (const [name, ok] of Object.entries(checks)) console.log(`${ok ? '✔' : '✖'} ${name}`)
 process.exit(Object.values(checks).every(Boolean) ? 0 : 1)

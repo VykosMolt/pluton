@@ -45,6 +45,26 @@ Return ONLY a JSON object, with nothing before or after it:
 
 export const TRANSLATE = 'Translate the French sentence into natural English. Reply with the translation only.'
 
+/** A short story at the learner's level, mostly from words they know, weaving in words they are learning. */
+export function readerSystem(level, known = [], targets = []) {
+  return `You write short French stories for a language learner. The learner is ${level.code} (${level.how}).
+${known.length ? `Words they already know: ${known.join(', ')}.` : 'They are just starting.'}
+${targets.length ? `Words they are learning right now (use a few naturally): ${targets.join(', ')}.` : ''}
+
+Write a new, self-contained story of 150-250 words. Aim for about 95% words the learner already knows (recycle the known list), with short sentences and clear connections. Keep it concrete and enjoyable; no lists, no grammar explanations. For A1-A2 use the present and passé composé; from B1 you can use the full range of common tenses.
+
+Return ONLY a JSON object, with nothing before or after it:
+{"title": "<a short French title>", "body": "<the story, with \\n between paragraphs>"}`
+}
+
+/** Comprehension check for a text the learner read: judge meaning, not grammar. */
+export const RETELL = `You check whether a French learner understood a text they just read. They write a short retelling in French or English. Judge comprehension only: ignore grammar, spelling and accent mistakes unless they change the meaning.
+
+Return ONLY a JSON object, with nothing before or after it:
+{"score": <1-5>, "feedback": "<two sentences in English: what they got right, and the one important thing they missed or misunderstood>"}
+Score 1 if they missed the point, 3 if they got the main idea, 5 if they got the main idea and the important details.`
+
+
 /** Writing prompts, easiest first. */
 export const PROMPTS = [
   ['A1', 'Présente-toi : qui es-tu, où habites-tu, qu\'aimes-tu faire ?', 'Introduce yourself: who you are, where you live, what you like doing.'],

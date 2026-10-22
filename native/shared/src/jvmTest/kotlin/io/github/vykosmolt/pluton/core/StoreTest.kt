@@ -149,7 +149,7 @@ class StoreTest {
             "CREATE TABLE meta (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL)",
         )
         for (sql in v1) driver.execute(null, sql, 0)
-        PlutonDb.Schema.migrate(driver, 1, 3).value
+        PlutonDb.Schema.migrate(driver, 1, 4).value
         val store = Store(PlutonDb(driver))
         store.markKnown("chat", 2000) // old tables still work
         store.addText("Titre", "Bonjour", 1000)
@@ -161,6 +161,14 @@ class StoreTest {
         assertEquals(1, store.localLog().size) // the new remote_key column is usable
         store.deleteText(store.texts().single().id, 4000)
         assertEquals(setOf("texts\t1"), store.syncTombstones().keys)
+        store.saveWriting(
+            "Raconte",
+            "je suis alle",
+            WritingResult("Je suis allé.", listOf(WritingError("je suis alle", "Je suis allé", "accent", "spelling")), "Bien", "A2"),
+            5000,
+        )
+        assertEquals(1, store.writings().size)
+        assertEquals(1, store.corrections().size)
     }
 
     @Test
@@ -248,5 +256,134 @@ class StoreTest {
         val card = store.addCard(word, "chat", "Le chat dort.", 1000)
         assertEquals(Mined("Le chat dort.", "chat"), store.card("chat")?.mined)
         assertEquals("chat", card.lemma)
+    }
+
+    @Test
+    fun writingAndCorrectionsSurviveAReload() {
+        val store = store()
+        val result = WritingResult(
+            corrected = "Je suis allé au marché.",
+            errors = listOf(WritingError("je suis alle", "je suis allé", "accent manquant", "spelling")),
+            feedback = "Bien, mais attention aux accents.",
+            level = "A2",
+        )
+        val saved = store.saveWriting("Raconte ton week-end", "je suis alle au marché", result, 1000)
+        assertEquals(1, saved.id)
+        val writing = store.writings().single()
+        assertEquals("Je suis allé au marché.", writing.corrected)
+        assertEquals("spelling", writing.errors.single().kind)
+        assertNull(writing.revised)
+        val correction = store.corrections().single()
+        assertEquals("writing", correction.source)
+        assertEquals("accent manquant", correction.why)
+
+        store.updateWritingRevision(saved.id, "Je suis allé au marché !", 2000)
+        assertEquals("Je suis allé au marché !", store.writings().single().revised)
+    }
+
+    @Test
+    fun backupRoundTripsWritingAndCorrections() {
+        val store = store()
+        val result = WritingResult(
+            corrected = "Bonjour.",
+            errors = listOf(WritingError("bonjours", "bonjour", "pas de s", "spelling")),
+            feedback = "Simple et juste.",
+            level = "A1",
+        )
+        store.saveWriting("Dis bonjour", "bonjours", result, 1000)
+        val copy = store()
+        copy.import(store.export())
+        assertEquals(store.writings().map { it.corrected }, copy.writings().map { it.corrected })
+        assertEquals(store.corrections().map { it.original }, copy.corrections().map { it.original })
+    }
+
+    @Test
+    fun onboardingPlanAndLastTabAreLocalMeta() {
+        val store = store()
+        assertNull(store.onboardingMinutes())
+        store.saveOnboarding(10)
+        assertEquals(10, store.onboardingMinutes())
+        assertEquals(emptySet(), store.planDone("2026-10-21"))
+        assertEquals(setOf("review"), store.markPlanDone("2026-10-21", "review"))
+        assertEquals(setOf("review", "speak"), store.markPlanDone("2026-10-21", "speak"))
+        assertEquals(setOf("speak"), store.unmarkPlanDone("2026-10-21", "review"))
+        assertEquals(setOf("2026-10-21"), store.practiceDays()) // unchecking a step does not erase the day
+        store.saveLastTab("Read")
+        assertEquals("Read", store.lastTab())
+    }
+
+    @Test
+    fun recentAccuracyCountsGoodAndEasy() {
+        val store = store()
+        assertNull(store.recentAccuracy())
+        val base = CardState("chat", createEmptyCard(1000).copy(state = State.Review))
+        store.saveAnswer(base, ReviewEntry("chat", 1, "cloze", 1000))
+        store.saveAnswer(base, ReviewEntry("chat", 3, "cloze", 2000))
+        store.saveAnswer(base, ReviewEntry("chat", 4, "cloze", 3000))
+        assertEquals(2.0 / 3.0, store.recentAccuracy())
+    }
+
+    @Test
+    fun saveWritingReturnsAUsableIdForEveryRecord() {
+        val store = store()
+        val result = WritingResult(corrected = "Bonjour.", feedback = "Bien", level = "A1")
+        val first = store.saveWriting("Un", "bonjour", result, 1000)
+        val second = store.saveWriting("Deux", "bonjour", result, 2000)
+        assertEquals(1, first.id)
+        assertEquals(2, second.id)
+        assertEquals(listOf(2L, 1L), store.writings().map { it.id })
+        assertEquals(0, store.stats("2026-10-21").written) // saving a writing is not a UI "written" count
+        store.addWritten()
+        val written = store.stats("2026-10-21").written
+        store.updateWritingRevision(first.id, "Bonjour !", 3000)
+        assertEquals(written, store.stats("2026-10-21").written)
+    }
+
+    @Test
+    fun version1BackupKeepsLocalWritingsAndCorrections() {
+        val store = store()
+        val result = WritingResult(
+            corrected = "Je suis allé.",
+            errors = listOf(WritingError("je suis alle", "je suis allé", "accent", "spelling")),
+            feedback = "Bien",
+            level = "A2",
+        )
+        store.saveWriting("Raconte", "je suis alle", result, 1000)
+        val legacy = kotlinx.serialization.json.Json.encodeToString(Backup(version = 1))
+        store.import(legacy)
+        assertEquals(1, store.writings().size)
+        assertEquals(1, store.corrections().size)
+        assertEquals("Je suis allé.", store.writings().single().corrected)
+    }
+
+    @Test
+    fun onboardingSkipsExistingProgressAndKeepsThePace() {
+        val store = store()
+        assertTrue(!store.onboardedOrExisting())
+        store.savePace(Pace(8, 30))
+        store.markKnown("chat", 1000)
+        assertTrue(store.onboardedOrExisting())
+        assertEquals(0, store.onboardingMinutes())
+        assertEquals(Pace(8, 30), store.pace())
+    }
+
+    @Test
+    fun planAndPracticeAreIndependentPerDay() {
+        val store = store()
+        store.markPlanDone("2026-10-20", "review")
+        assertEquals(setOf("review"), store.planDone("2026-10-20"))
+        assertEquals(emptySet(), store.planDone("2026-10-21"))
+        assertEquals(setOf("2026-10-20"), store.practiceDays())
+    }
+
+    @Test
+    fun addingAnExistingCardNeverErasesProgress() {
+        val store = store()
+        val word = Word("chat", pos = "noun", display = "le chat", gloss = "cat")
+        store.addCard(word, "chat", "Le chat dort.", 1000)
+        store.markKnown("chat", 2000)
+        store.addCard(word, "chat", "Un autre chat.", 3000)
+        assertEquals(true, store.card("chat")?.known)
+        assertEquals("Le chat dort.", store.card("chat")?.mined?.sentence)
     }
 }

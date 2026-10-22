@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { tokenize, coverage, unlockList, grade, gradeProduce, produceAnswer, hintOf, modeFor, levelFor, brief, playable, gradeDictee, gradeGram, newGrammar, gramKey, fixCard, firstChange, gradeConj, newConj, conjKey, parseConj, isWord, points, nextCombo, blank, buildRun, requeue,
-  fromSubtitles, sentenceAt, wordDiff, enLookup, englishTokens, parseCues, cueAt, listenGoal, status, createEmptyCard, LEARN_AHEAD_MS, MAX_SEEN_PER_RUN, NEW_PER_RUN } from './logic.js'
+  fromSubtitles, sentenceAt, sentencesOf, wordDiff, enLookup, englishTokens, parseCues, cueAt, listenGoal, status, createEmptyCard, gradeQuiz, replayCard, Rating, LEARN_AHEAD_MS, MAX_SEEN_PER_RUN, NEW_PER_RUN } from './logic.js'
 
 const forms = new Map(Object.entries({ homme: 'homme', il: 'il', voit: 'voir', "aujourd'hui": "aujourd'hui", dit: 'dire',
   a: 'avoir', 'à': 'à', ou: 'ou', 'où': 'où', es: 'être', est: 'être', suis: 'être', parle: 'parler', parles: 'parler',
@@ -298,4 +298,37 @@ test('subtitles and sentence extraction', () => {
   const long = 'mot '.repeat(100) + 'cible ' + 'mot '.repeat(100)
   const s = sentenceAt(long, long.indexOf('cible'))
   assert.ok(s.includes('cible') && s.length < 170, s)
+})
+
+test('comprehension quiz passes at two thirds', () => {
+  const qs = [{ ok: 1 }, { ok: 2 }, { ok: 0 }]
+  assert.deepEqual(gradeQuiz(qs, [1, 2, 0]), { right: 3, total: 3, pass: true })
+  assert.deepEqual(gradeQuiz(qs, [1, 2, 1]), { right: 2, total: 3, pass: true })
+  assert.deepEqual(gradeQuiz(qs, [1, 0, 1]), { right: 1, total: 3, pass: false })
+  assert.deepEqual(gradeQuiz(qs, [-1, -1, -1]), { right: 0, total: 3, pass: false })
+  assert.deepEqual(gradeQuiz([{ ok: 0 }, { ok: 0 }], [0, 0]), { right: 2, total: 2, pass: true })
+})
+
+test('sentencesOf: offsets point at the text, quotes are not spoken', () => {
+  const text = "Il fait noir. Très noir.\n« Il y a quelqu'un ? » Oui !"
+  const out = sentencesOf(text)
+  assert.equal(out.length, 4)
+  for (const [a, b, id] of out) {
+    assert.equal(id, null)
+    assert.ok(text.slice(a, b).trim())
+  }
+  assert.equal(text.slice(...out[2].slice(0, 2)), "Il y a quelqu'un ?")
+  assert.equal(out[2][2], null)
+})
+
+test('replayCard applies both devices reviews in time order', () => {
+  const a = { key: 'devA:1', at: 1000, rating: Rating.Good }
+  const b = { key: 'devB:1', at: 2000, rating: Rating.Good }
+  const both = replayCard([b, a], 0)
+  assert.equal(both.reps, 2)
+  assert.deepEqual(replayCard([a, b], 0), both) // input order does not matter
+  // a tie is broken by key so every device lands on the same state
+  const t1 = { key: 'devA:1', at: 1000, rating: Rating.Good }
+  const t2 = { key: 'devB:1', at: 1000, rating: Rating.Again }
+  assert.deepEqual(replayCard([t1, t2], 0), replayCard([t2, t1], 0))
 })

@@ -5,6 +5,7 @@ import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,12 +14,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Icon
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +58,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.vykosmolt.pluton.core.CHUNKS
 import io.github.vykosmolt.pluton.core.CardState
 import io.github.vykosmolt.pluton.core.ConjTable
 import io.github.vykosmolt.pluton.core.DicteeMark
@@ -59,6 +68,7 @@ import io.github.vykosmolt.pluton.core.GradeResult
 import io.github.vykosmolt.pluton.core.GrammarTopic
 import io.github.vykosmolt.pluton.core.Pace
 import io.github.vykosmolt.pluton.core.PathState
+import io.github.vykosmolt.pluton.core.PlanStep
 import io.github.vykosmolt.pluton.core.Rating
 import io.github.vykosmolt.pluton.core.STAGES
 import io.github.vykosmolt.pluton.core.Stats
@@ -73,6 +83,12 @@ import io.github.vykosmolt.pluton.core.WordStatus
 import io.github.vykosmolt.pluton.core.db.PlutonDb
 import io.github.vykosmolt.pluton.core.blank
 import io.github.vykosmolt.pluton.core.buildRun
+import io.github.vykosmolt.pluton.core.chunkWord
+import io.github.vykosmolt.pluton.core.contextForm
+import io.github.vykosmolt.pluton.core.contextSentence
+import io.github.vykosmolt.pluton.core.decodeCognates
+import io.github.vykosmolt.pluton.core.grammarFocus
+import io.github.vykosmolt.pluton.core.suggestedNewWords
 import io.github.vykosmolt.pluton.core.decodeConj
 import io.github.vykosmolt.pluton.core.decodeForms
 import io.github.vykosmolt.pluton.core.decodeGrammar
@@ -99,6 +115,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -135,6 +152,7 @@ private class Loaded(
     val shelf: List<ShelfText>,
     val conj: Map<String, ConjTable>,
     val grammar: List<GrammarTopic>,
+    val cognates: Map<String, List<String>>,
     val cards: List<CardState>,
     val newToday: Int,
     val read: Set<String>,
@@ -147,7 +165,6 @@ private fun PlutonApp() {
     val driver = remember { AndroidSqliteDriver(PlutonDb.Schema, context, "pluton.db") }
     val store = remember(driver) { Store(PlutonDb(driver)) }
     val aiStore = remember { AiStore(context) }
-    val syncPrefs = remember { SyncPrefs(context) }
     DisposableEffect(driver) { onDispose { driver.close() } }
     var loaded by remember { mutableStateOf<Loaded?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -161,13 +178,15 @@ private fun PlutonApp() {
                 val shelf = context.assets.open("fr/shelf.json").bufferedReader().use { it.readText() }
                 val conj = context.assets.open("fr/conj.json").bufferedReader().use { it.readText() }
                 val grammar = context.assets.open("fr/grammar.json").bufferedReader().use { it.readText() }
+                val cognates = context.assets.open("fr/cognates.json").bufferedReader().use { it.readText() }
                 val stats = store.stats(todayString())
                 Loaded(
-                    deck = Deck(decodeWords(words), decodeForms(forms)),
+                    deck = Deck(decodeWords(words) + CHUNKS.map { chunkWord(it) }, decodeForms(forms)),
                     story = decodeStory(story),
-                    shelf = decodeShelf(shelf).filter { it.lang == "fr" },
+                    shelf = decodeShelf(shelf),
                     conj = decodeConj(conj),
                     grammar = decodeGrammar(grammar),
+                    cognates = decodeCognates(cognates),
                     cards = store.cards(),
                     newToday = stats.newCount,
                     read = stats.read.toSet(),
@@ -181,7 +200,7 @@ private fun PlutonApp() {
     when {
         error != null -> ErrorScreen(error!!)
         loaded == null -> LoadingScreen()
-        else -> MainScreen(loaded!!, store, aiStore, syncPrefs)
+        else -> MainScreen(loaded!!, store, aiStore)
     }
 }
 
@@ -207,7 +226,7 @@ private fun ErrorScreen(message: String) {
 }
 
 @Composable
-private fun MainScreen(loaded: Loaded, store: Store, aiStore: AiStore, syncPrefs: SyncPrefs) {
+private fun MainScreen(loaded: Loaded, store: Store, aiStore: AiStore) {
     val deck = loaded.deck
     val cards = remember {
         mutableStateMapOf<String, CardState>().apply { loaded.cards.forEach { put(it.lemma, it) } }
@@ -217,11 +236,38 @@ private fun MainScreen(loaded: Loaded, store: Store, aiStore: AiStore, syncPrefs
     var newToday by remember { mutableStateOf(loaded.newToday) }
     var read by remember { mutableStateOf(loaded.read) }
     var pace by remember { mutableStateOf(loaded.pace) }
-    var tab by remember { mutableStateOf(Tab.Home) }
+    var day by remember { mutableStateOf(todayString()) }
+    var dailyMinutes by remember { mutableStateOf(store.onboardingMinutes()?.takeIf { it > 0 } ?: 10) }
+    var onboarded by remember { mutableStateOf(store.onboardedOrExisting()) }
+    var tab by remember {
+        mutableStateOf(
+            if (onboarded) Tab.entries.firstOrNull { it.name == store.lastTab() } ?: Tab.Home else Tab.Home,
+        )
+    }
+    var planDone by remember { mutableStateOf(store.planDone(day)) }
+    var practiceDays by remember { mutableStateOf(store.practiceDays()) }
+    var accuracy by remember { mutableStateOf(store.recentAccuracy()) }
+    var speakMode by remember { mutableStateOf(0) }
+    var speakRequest by remember { mutableStateOf(0) }
     var ai by remember { mutableStateOf(aiStore.load()) }
     // Listening/speaking write straight to the store, so re-read the stats when the user comes back to a tab.
-    var stats by remember { mutableStateOf(Stats(day = todayString())) }
-    LaunchedEffect(tab, running) { if (!running) stats = store.stats(todayString()) }
+    var stats by remember { mutableStateOf(Stats(day = day)) }
+    LaunchedEffect(tab, running, day) { if (!running) stats = store.stats(day) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            val now = todayString()
+            if (now != day) {
+                day = now
+                planDone = store.planDone(day)
+                practiceDays = store.practiceDays()
+                stats = store.stats(day)
+                newToday = stats.newCount
+                accuracy = store.recentAccuracy()
+            }
+        }
+    }
+    LaunchedEffect(tab) { if (onboarded) store.saveLastTab(tab.name) }
     val titles = remember(loaded.story) {
         loaded.story.mapIndexed { i, c -> "story-$i" to "Chapitre ${i + 1} · ${c.title}" }.toMap()
     }
@@ -229,17 +275,43 @@ private fun MainScreen(loaded: Loaded, store: Store, aiStore: AiStore, syncPrefs
         pathMetrics(cards.values.toList(), read, stats.listened, stats.spoken, talked = stats.talked, written = stats.written),
         titles,
     )
+    val grammarFocusLabel = grammarFocus(cards.values.toList(), loaded.grammar, loaded.conj)
 
     fun reloadFromStore() {
         val fresh = store.cards()
         cards.clear()
         fresh.forEach { cards[it.lemma] = it }
-        val current = store.stats(todayString())
+        day = todayString()
+        val current = store.stats(day)
         read = current.read.toSet()
         newToday = current.newCount
         stats = current
         pace = store.pace()
+        accuracy = store.recentAccuracy()
+        planDone = store.planDone(day)
+        practiceDays = store.practiceDays()
         summary = null
+    }
+
+    fun markStep(step: String) {
+        planDone = store.markPlanDone(day, step)
+        practiceDays = store.practiceDays()
+    }
+
+    if (!onboarded) {
+        OnboardingScreen { minutes ->
+            val chosen = onboardingPace(minutes)
+            store.saveOnboarding(minutes)
+            store.savePace(chosen)
+            dailyMinutes = minutes
+            pace = chosen
+            planDone = store.planDone(day)
+            practiceDays = store.practiceDays()
+            onboarded = true
+            tab = Tab.Home
+            store.saveLastTab(Tab.Home.name)
+        }
+        return
     }
 
     BackHandler(enabled = running) { running = false }
@@ -248,7 +320,9 @@ private fun MainScreen(loaded: Loaded, store: Store, aiStore: AiStore, syncPrefs
         RunScreen(deck, cards, loaded.conj, loaded.grammar, newToday, pace, onSave = { card, entry -> store.saveAnswer(card, entry) }) { result ->
             running = false
             summary = result
-            newToday = store.addIntroduced(todayString(), result.introduced).newCount
+            newToday = store.addIntroduced(day, result.introduced).newCount
+            if (result.done > 0) markStep(PlanStep.Review.id)
+            accuracy = store.recentAccuracy()
         }
     } else {
         Scaffold(
@@ -257,52 +331,91 @@ private fun MainScreen(loaded: Loaded, store: Store, aiStore: AiStore, syncPrefs
                     NavigationBarItem(
                         selected = tab == Tab.Home,
                         onClick = { tab = Tab.Home },
-                        icon = { Text("🏠", fontSize = 20.sp) },
+                        icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
                         label = { Text("Home") },
                     )
                     NavigationBarItem(
                         selected = tab == Tab.Read,
                         onClick = { tab = Tab.Read },
-                        icon = { Text("📖", fontSize = 20.sp) },
+                        icon = { Icon(PlutonIcons.Book, contentDescription = null) },
                         label = { Text("Read") },
                     )
                     NavigationBarItem(
                         selected = tab == Tab.Listen,
                         onClick = { tab = Tab.Listen },
-                        icon = { Text("🎧", fontSize = 20.sp) },
+                        icon = { Icon(PlutonIcons.Headphones, contentDescription = null) },
                         label = { Text("Listen") },
                     )
                     NavigationBarItem(
                         selected = tab == Tab.Speak,
                         onClick = { tab = Tab.Speak },
-                        icon = { Text("🗣", fontSize = 20.sp) },
+                        icon = { Icon(PlutonIcons.Mic, contentDescription = null) },
                         label = { Text("Speak") },
                     )
                     NavigationBarItem(
                         selected = tab == Tab.More,
                         onClick = { tab = Tab.More },
-                        icon = { Text("⋯", fontSize = 20.sp) },
+                        icon = { Icon(Icons.Outlined.MoreVert, contentDescription = null) },
                         label = { Text("More") },
                     )
                 }
             },
         ) { padding ->
             when (tab) {
-                Tab.Home -> HomeScreen(deck, cards, loaded.conj, loaded.grammar, path, newToday, pace, summary, Modifier.padding(padding)) {
-                    summary = null
-                    running = true
-                }
+                Tab.Home -> HomeScreen(
+                    deck = deck,
+                    cards = cards,
+                    conj = loaded.conj,
+                    grammar = loaded.grammar,
+                    path = path,
+                    newToday = newToday,
+                    pace = pace,
+                    summary = summary,
+                    planDone = planDone,
+                    practiceDays = practiceDays,
+                    dailyMinutes = dailyMinutes,
+                    accuracy = accuracy,
+                    modifier = Modifier.padding(padding),
+                    onStart = {
+                        summary = null
+                        running = true
+                    },
+                    onTogglePlan = { id ->
+                        if (id in planDone) planDone = store.unmarkPlanDone(day, id) else markStep(id)
+                    },
+                    onUseSuggested = { n ->
+                        val next = pace.copy(perRun = n)
+                        store.savePace(next)
+                        pace = next
+                    },
+                    onRead = { tab = Tab.Read },
+                    onSpeak = {
+                        speakMode = 0
+                        speakRequest++
+                        tab = Tab.Speak
+                    },
+                    onWrite = {
+                        speakMode = 2
+                        speakRequest++
+                        tab = Tab.Speak
+                    },
+                )
                 Tab.Read -> ReaderScreen(
                     words = deck.wordMap,
                     forms = deck.forms,
                     story = loaded.story,
                     shelf = loaded.shelf,
+                    cognates = loaded.cognates,
                     cards = cards,
                     read = read,
                     store = store,
                     ai = ai,
+                    focus = grammarFocusLabel,
                     onSettings = { tab = Tab.More },
-                    onRead = { id -> read = store.addRead(todayString(), id).read.toSet() },
+                    onRead = { id ->
+                        read = store.addRead(day, id).read.toSet()
+                        markStep(PlanStep.Read.id)
+                    },
                     modifier = Modifier.padding(padding),
                 )
                 Tab.Listen -> ListenScreen(
@@ -317,9 +430,22 @@ private fun MainScreen(loaded: Loaded, store: Store, aiStore: AiStore, syncPrefs
                     cards = cards,
                     store = store,
                     ai = ai,
+                    focus = grammarFocusLabel,
+                    initialMode = speakMode,
+                    modeRequest = speakRequest,
                     onSettings = { tab = Tab.More },
-                    onTalked = { stats = store.stats(todayString()) },
-                    onWritten = { stats = store.stats(todayString()) },
+                    onTalked = {
+                        stats = store.stats(day)
+                        markStep(PlanStep.Speak.id)
+                    },
+                    onSpoken = {
+                        stats = store.stats(day)
+                        markStep(PlanStep.Speak.id)
+                    },
+                    onWritten = {
+                        stats = store.stats(day)
+                        markStep(PlanStep.Write.id)
+                    },
                     modifier = Modifier.padding(padding),
                 )
                 Tab.More -> MoreScreen(
@@ -337,11 +463,148 @@ private fun MainScreen(loaded: Loaded, store: Store, aiStore: AiStore, syncPrefs
                     ai = ai,
                     aiStore = aiStore,
                     onAi = { ai = it },
-                    syncPrefs = syncPrefs,
-                    onSynced = ::reloadFromStore,
                     onRestored = ::reloadFromStore,
                     modifier = Modifier.padding(padding),
                 )
+            }
+        }
+    }
+}
+
+private fun lastSevenDays(): List<String> {
+    val format = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    val now = Calendar.getInstance()
+    return (6 downTo 0).map { back ->
+        val day = now.clone() as Calendar
+        day.add(Calendar.DAY_OF_YEAR, -back)
+        format.format(day.time)
+    }
+}
+
+@Composable
+private fun OnboardingScreen(onStart: (Int) -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    var minutes by remember { mutableStateOf(10) }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        Text("Bienvenue", fontSize = 38.sp, fontWeight = FontWeight.Black)
+        Text(
+            "Pluton is a black cat from Poe's story, now your French guide. Each day mixes four things: a short review, something to read, something to say, and something to write.",
+            color = scheme.onSurfaceVariant,
+        )
+        Text("How long can you practise on a normal day?", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (m in listOf(5, 10, 20, 30)) {
+                TextButton(onClick = { minutes = m }) {
+                    Text(
+                        "$m min",
+                        color = if (minutes == m) scheme.primary else scheme.onSurfaceVariant,
+                        fontWeight = if (minutes == m) FontWeight.Bold else FontWeight.Normal,
+                    )
+                }
+            }
+        }
+        Text("You can change the pace later in Settings.", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+        Button(onClick = { onStart(minutes) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Start with $minutes minutes", fontSize = 18.sp)
+        }
+        Text(
+            "No account, no server. Your words, texts and corrections stay on this device.",
+            color = scheme.onSurfaceVariant,
+            fontSize = 13.sp,
+        )
+    }
+}
+
+private fun onboardingPace(minutes: Int): Pace = when (minutes) {
+    5 -> Pace(3, 10)
+    10 -> Pace(5, 20)
+    20 -> Pace(8, 30)
+    else -> Pace(10, 40)
+}
+
+@Composable
+private fun TodayCard(
+    done: Set<String>,
+    practiceDays: Set<String>,
+    minutes: Int,
+    accuracy: Double?,
+    pace: Pace,
+    due: Int,
+    fresh: Int,
+    onToggle: (String) -> Unit,
+    onUseSuggested: (Int) -> Unit,
+    onStart: () -> Unit,
+    onRead: () -> Unit,
+    onSpeak: () -> Unit,
+    onWrite: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val suggested = suggestedNewWords(pace.perRun, accuracy)
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Today", fontSize = 21.sp, fontWeight = FontWeight.Black)
+                Text("${done.size} / ${PlanStep.entries.size}", color = scheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+            }
+            Text("About $minutes minutes · four small steps", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+            LinearProgressIndicator(
+                progress = { done.size.toFloat() / PlanStep.entries.size },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            val week = lastSevenDays()
+            val practiced = week.count { it in practiceDays }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("This week", color = scheme.onSurfaceVariant, fontSize = 12.sp)
+                for (day in week) {
+                    Box(
+                        Modifier
+                            .size(9.dp)
+                            .background(if (day in practiceDays) scheme.secondary else scheme.surfaceVariant, CircleShape),
+                    )
+                }
+                Text("$practiced / 7", color = scheme.onSurfaceVariant, fontSize = 12.sp)
+            }
+            for (step in PlanStep.entries) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = step.id in done, onCheckedChange = { onToggle(step.id) })
+                    Column(Modifier.weight(1f)) {
+                        Text(step.title, fontWeight = FontWeight.Bold)
+                        Text(
+                            when (step) {
+                                PlanStep.Review -> if (due + fresh == 0) "Nothing due; a bonus review is fine" else "$due due · $fresh new"
+                                PlanStep.Read -> "A story, a classic or a Bridge text"
+                                PlanStep.Speak -> "Read a sentence aloud or talk with Pluton"
+                                PlanStep.Write -> "One paragraph, then one correction"
+                            },
+                            color = scheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            when (step) {
+                                PlanStep.Review -> onStart()
+                                PlanStep.Read -> onRead()
+                                PlanStep.Speak -> onSpeak()
+                                PlanStep.Write -> onWrite()
+                            }
+                        },
+                    ) { Text(if (step.id in done) "Again" else "Open") }
+                }
+            }
+            if (accuracy != null && suggested != pace.perRun) {
+                Text(
+                    "Recent reviews: ${(accuracy * 100).toInt()}%. Try $suggested new words per run.",
+                    color = scheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                )
+                TextButton(onClick = { onUseSuggested(suggested) }) { Text("Use $suggested") }
+            }
+            if (done.size == PlanStep.entries.size) {
+                Text("Pluton purrs. Today is done — anything else is a bonus.", color = scheme.secondary, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -357,8 +620,17 @@ private fun HomeScreen(
     newToday: Int,
     pace: Pace,
     summary: Summary?,
+    planDone: Set<String>,
+    practiceDays: Set<String>,
+    dailyMinutes: Int,
+    accuracy: Double?,
     modifier: Modifier = Modifier,
     onStart: () -> Unit,
+    onTogglePlan: (String) -> Unit,
+    onUseSuggested: (Int) -> Unit,
+    onRead: () -> Unit,
+    onSpeak: () -> Unit,
+    onWrite: () -> Unit,
 ) {
     val known = cards.values.count { status(it, deck.wordMap[it.lemma]) == WordStatus.Known }
     val learning = cards.values.count { status(it, deck.wordMap[it.lemma]) == WordStatus.Learning }
@@ -382,14 +654,30 @@ private fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text("Pluton", fontSize = 36.sp, fontWeight = FontWeight.Black)
-        Text("Native · ${deck.words.size} words loaded", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("${deck.words.size} words, all on this device", color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        TodayCard(
+            done = planDone,
+            practiceDays = practiceDays,
+            minutes = dailyMinutes,
+            accuracy = accuracy,
+            pace = pace,
+            due = due,
+            fresh = fresh,
+            onToggle = onTogglePlan,
+            onUseSuggested = onUseSuggested,
+            onStart = onStart,
+            onRead = onRead,
+            onSpeak = onSpeak,
+            onWrite = onWrite,
+        )
 
         val stage = path.stages.getOrNull(path.current)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (stage == null) {
                     Text("LE CHEMIN · DONE", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.tertiary)
-                    Text("L'Opéra ✓", fontSize = 24.sp, fontWeight = FontWeight.Black)
+                    Text("L'Opéra · complete", fontSize = 24.sp, fontWeight = FontWeight.Black)
                     Text("Keep reading, listening and talking: C1 is a habit, not a finish line.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     Text(
@@ -422,7 +710,7 @@ private fun HomeScreen(
                 Text("Your deck", fontWeight = FontWeight.Bold)
                 Text("$known known · $learning learning · ${cards.size} cards saved")
                 Text(
-                    "Progress is saved on this device; sync comes later.",
+                    "Everything is saved on this device. No account, no server.",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -495,8 +783,8 @@ private fun RunScreen(
     // A word added from the reader may carry its own mined sentence; otherwise use the deck's example.
     val base = deck.wordMap[lemma]
     val card = cards[lemma]
-    val sentence = card?.mined?.sentence ?: base?.sentence ?: ""
-    val form = card?.mined?.form ?: base?.form ?: base?.lemma ?: lemma
+    val sentence = contextSentence(card, base)
+    val form = contextForm(card, base)
     val display = base?.display ?: lemma
     val gloss = base?.gloss ?: ""
     val translation = card?.mined?.translation?.takeIf { it.isNotBlank() } ?: base?.translation
@@ -568,7 +856,7 @@ private fun RunScreen(
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Run · ${done + 1} / ${done + queue.size}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("✓ ${tally.right}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+            Text("${tally.right} right", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
         }
 
         if (item.phase == "intro") {
@@ -577,7 +865,7 @@ private fun RunScreen(
             when {
                 topic != null -> Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("🧩 NEW GRAMMAR TOPIC · ${topic.level}", fontSize = 13.sp, fontWeight = tag, color = scheme.tertiary)
+                        Text("GRAMMAR TOPIC · ${topic.level}", fontSize = 13.sp, fontWeight = tag, color = scheme.tertiary)
                         Text(topic.name, fontSize = 30.sp, fontWeight = FontWeight.Black)
                         Text(topic.en, color = scheme.onSurfaceVariant)
                         Text(topic.how)
@@ -593,7 +881,7 @@ private fun RunScreen(
                 }
                 conjPair != null -> Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("📐 NEW TABLE", fontSize = 13.sp, fontWeight = tag, color = scheme.tertiary)
+                        Text("CONJUGATION · ${tense?.name ?: tid}", fontSize = 13.sp, fontWeight = tag, color = scheme.tertiary)
                         Text("${conjPair.first} · ${tense?.name ?: tid}", fontSize = 32.sp, fontWeight = FontWeight.Black)
                         Text(
                             listOfNotNull(tense?.en, gloss.takeIf { it.isNotBlank() }).joinToString(" · "),
@@ -618,7 +906,7 @@ private fun RunScreen(
                 }
                 else -> Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("✨ NEW WORD", fontSize = 13.sp, fontWeight = tag, color = scheme.tertiary)
+                        Text("NEW WORD", fontSize = 13.sp, fontWeight = tag, color = scheme.tertiary)
                         Text(
                             display,
                             fontSize = 40.sp,
@@ -653,7 +941,7 @@ private fun RunScreen(
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     when {
                         topic != null -> {
-                            Text("🧩 GRAMMAR", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = scheme.onSurfaceVariant)
+                            Text("GRAMMAR", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = scheme.onSurfaceVariant)
                             Text(
                                 listOfNotNull(topic.name, exercise?.ask?.takeIf { it.isNotBlank() }).joinToString(" · "),
                                 color = scheme.onSurfaceVariant,
@@ -673,7 +961,7 @@ private fun RunScreen(
                             }
                         }
                         conjPair != null -> {
-                            Text("📐 CONJUGATE", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = scheme.onSurfaceVariant)
+                            Text("CONJUGATE", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = scheme.onSurfaceVariant)
                             Text("${conjPair.first} · ${tense?.name ?: tid}", fontSize = 24.sp, fontWeight = FontWeight.Bold)
                             if (feedback == null) {
                                 Text("${subject(person, tid)} ______", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
@@ -702,10 +990,10 @@ private fun RunScreen(
                         else -> {
                             Text(
                                 when (mode) {
-                                    "dictation" -> "🎧 LISTEN, TYPE THE MISSING WORD"
-                                    "dictee" -> "📝 DICTÉE: WRITE THE WHOLE SENTENCE"
-                                    "produce" -> "💬 SAY IT IN FRENCH"
-                                    else -> "✍️ FILL THE GAP"
+                                    "dictation" -> "LISTEN, TYPE THE MISSING WORD"
+                                    "dictee" -> "DICTÉE: WRITE THE WHOLE SENTENCE"
+                                    "produce" -> "SAY IT IN FRENCH"
+                                    else -> "FILL THE GAP"
                                 },
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.ExtraBold,
@@ -725,7 +1013,7 @@ private fun RunScreen(
                                 mode == "dictation" || mode == "dictee" -> base?.audioSentence
                                 else -> base?.audioSentence ?: base?.audioWord
                             }
-                            if (hear != null) TextButton(onClick = { clip.play(hear) }) { Text("🔊 Hear it") }
+                            if (hear != null) TextButton(onClick = { clip.play(hear) }) { Text("Hear it") }
                             if (feedback == null) {
                                 AnswerInput(typed, { typed = it }, ::submit)
                             } else {
