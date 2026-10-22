@@ -446,7 +446,7 @@ struct WordDetailView: View {
                 HStack {
                     Button("+ Add to deck") {
                         let text = form.isEmpty ? (word?.form ?? lemma) : form
-                        let token = Token(start: 0, end: Int32(text.count), text: text, lemma: lemma, name: false)
+                        let token = Token(start: 0, end: Int32(text.utf16.count), text: text, lemma: lemma, name: false)
                         model.addWord(token: token, word: word, sentence: sentence)
                         dismiss()
                     }

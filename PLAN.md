@@ -486,3 +486,9 @@ emulator/device, so the APK is built but not launched.
   empty/graduated grammar focus, story parsing, and a Robolectric word-sheet test that clicks a chunk's Add.
   Verified: 113 shared JVM tests, 24 Android JVM tests, 0 failures; APK builds; Swift parses; CI for the preceding
   commit was green (build + simulator launch).
+- 2026-10-22: final CI and review note. `ed42a2fd` is green for both the unsigned-IPA build and the simulator
+  launch (run 39744484091); `afe33049` failed only because the iOS context helper still took `CardState` while
+  `RunItem` carries the FSRS card, fixed in `ed42a2fd`. A second adversarial pass focused on the iOS Listen delta
+  was started but terminated before it could report (reviewer provider returned HTTP 402, insufficient balance);
+  the delta therefore rests on the first P2 review, local Swift syntax checks and the macOS type-check. Android's
+  auto-pause baseline now syncs to the player's actual position on resume when no seek happened.

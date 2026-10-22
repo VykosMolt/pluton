@@ -113,6 +113,7 @@ internal fun ListenScreen(
     fun start() {
         if (videoUri != null) {
             val v = video ?: return
+            var sought = false
             if (autoPause) {
                 val t = v.currentPosition / 1000.0
                 val k = cueAt(cues, t)
@@ -124,15 +125,18 @@ internal fun ListenScreen(
                     v.seekTo(targetMs)
                     positionMs = targetMs.toLong()
                     lastTick = target
+                    sought = true
                 }
             }
             v.start()
+            if (!sought) positionMs = maxOf(v.currentPosition, 0).toLong()
             if (listenStarted == 0L) listenStarted = System.currentTimeMillis()
             lastTick = positionMs / 1000.0
             playing = true
             return
         }
         val mp = media ?: return
+        var sought = false
         if (autoPause) {
             // The line we stopped on is over; replay the last line or start the next one.
             val t = mp.currentPosition / 1000.0
@@ -144,10 +148,12 @@ internal fun ListenScreen(
                 mp.seekTo(targetMs)
                 positionMs = targetMs.toLong()
                 lastTick = target
+                sought = true
             }
         }
         runCatching { mp.setPlaybackParams(mp.playbackParams.setSpeed(rate)) }
         mp.start()
+        if (!sought) positionMs = maxOf(mp.currentPosition, 0).toLong()
         if (listenStarted == 0L) listenStarted = System.currentTimeMillis()
         lastTick = positionMs / 1000.0
         playing = true
