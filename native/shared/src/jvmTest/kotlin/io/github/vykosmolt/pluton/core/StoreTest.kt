@@ -151,7 +151,7 @@ class StoreTest {
             "CREATE TABLE meta (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL)",
         )
         for (sql in v1) driver.execute(null, sql, 0)
-        PlutonDb.Schema.migrate(driver, 1, 4).value
+        PlutonDb.Schema.migrate(driver, 1, 5).value
         val store = Store(PlutonDb(driver))
         store.markKnown("chat", 2000) // old tables still work
         store.addText("Titre", "Bonjour", 1000)
@@ -171,6 +171,7 @@ class StoreTest {
         )
         assertEquals(1, store.writings().size)
         assertEquals(1, store.corrections().size)
+        assertEquals(1, store.reviewError(store.corrections().single().id, "right", 6000)?.reps)
     }
 
     @Test
@@ -332,6 +333,34 @@ class StoreTest {
         store.saveAnswer(base, ReviewEntry("chat", 3, "cloze", 2000))
         store.saveAnswer(base, ReviewEntry("chat", 4, "cloze", 3000))
         assertEquals(2.0 / 3.0, store.recentAccuracy())
+    }
+
+    @Test
+    fun errorReviewsAdvanceScheduleAndRetire() {
+        val store = store()
+        val result = WritingResult(
+            corrected = "Je suis allé.",
+            errors = listOf(WritingError("je suis alle", "je suis allé", "accent", "spelling")),
+            feedback = "Bien",
+            level = "A2",
+        )
+        store.saveWriting("Raconte", "je suis alle", result, 1000)
+        val id = store.corrections().single().id
+        val start = 10_000L
+        val first = store.reviewError(id, "right", start)!!
+        assertEquals(1, first.reps)
+        assertEquals(start + 86_400_000L, first.nextDue)
+        assertTrue(!first.resolved)
+
+        val reset = store.reviewError(id, "wrong", start)!!
+        assertEquals(0, reset.reps)
+        assertEquals(start, reset.nextDue)
+
+        var last = reset
+        repeat(6) { last = store.reviewError(id, "right", start)!! }
+        assertEquals(6, last.reps)
+        assertTrue(last.resolved)
+        assertTrue(errorDrills(store.corrections(), start).isEmpty())
     }
 
     @Test

@@ -76,7 +76,9 @@ CREATE TABLE corrections (
   fix TEXT NOT NULL,
   why TEXT NOT NULL,
   at INTEGER NOT NULL,
-  resolved INTEGER NOT NULL DEFAULT 0
+  resolved INTEGER NOT NULL DEFAULT 0,
+  next_due INTEGER NOT NULL DEFAULT 0,
+  reps INTEGER NOT NULL DEFAULT 0
 );
 
 selectAllCards:
@@ -183,8 +185,11 @@ selectAllCorrections:
 SELECT * FROM corrections ORDER BY at DESC;
 
 insertCorrection:
-INSERT INTO corrections(source, kind, original, fix, why, at, resolved)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO corrections(source, kind, original, fix, why, at, resolved, next_due, reps)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateCorrectionSchedule:
+UPDATE corrections SET next_due = ?, reps = ?, resolved = ? WHERE id = ?;
 
 deleteAllCorrections:
 DELETE FROM corrections;

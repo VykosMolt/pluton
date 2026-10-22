@@ -23,13 +23,13 @@ class ErrorReviewScreenTest {
     val rule = createComposeRule()
 
     private val drills = listOf(
-        ErrorDrill("je suis alle", "je suis allé", "Le participe s'accorde.", "grammar"),
-        ErrorDrill("les chats", "les chat", "Un seul chat.", "grammar"),
+        ErrorDrill(1, "je suis alle", "je suis allé", "Le participe s'accorde.", "grammar", 0, 0),
+        ErrorDrill(2, "les chats", "les chat", "Un seul chat.", "grammar", 0, 0),
     )
 
     @Test
     fun checkingAnAnswerShowsTheFixAndReasonThenAdvances() {
-        rule.setContent { MaterialTheme { ErrorReviewScreen(drills, onBack = {}) } }
+        rule.setContent { MaterialTheme { ErrorReviewScreen(drills, hasCorrections = true, onGraded = { _, _ -> }, onBack = {}) } }
         rule.onNodeWithText("je suis alle").assertIsDisplayed()
         rule.onNode(hasSetTextAction()).performScrollTo().performTextInput("je suis allé")
         rule.onNodeWithText("Check").performScrollTo().performClick()
@@ -42,7 +42,7 @@ class ErrorReviewScreenTest {
 
     @Test
     fun startOverResetsTheSessionScoreOnASingleDrill() {
-        rule.setContent { MaterialTheme { ErrorReviewScreen(listOf(drills.first()), onBack = {}) } }
+        rule.setContent { MaterialTheme { ErrorReviewScreen(listOf(drills.first()), hasCorrections = true, onGraded = { _, _ -> }, onBack = {}) } }
         rule.onNode(hasSetTextAction()).performScrollTo().performTextInput("je suis allé")
         rule.onNodeWithText("Check").performScrollTo().performClick()
         rule.onNodeWithText("1 right", substring = true).assertExists()
@@ -52,7 +52,7 @@ class ErrorReviewScreenTest {
 
     @Test
     fun emptyStateExplainsHowCorrectionsArrive() {
-        rule.setContent { MaterialTheme { ErrorReviewScreen(emptyList(), onBack = {}) } }
+        rule.setContent { MaterialTheme { ErrorReviewScreen(emptyList(), hasCorrections = false, onGraded = { _, _ -> }, onBack = {}) } }
         rule.onNodeWithText("Nothing to review yet").assertIsDisplayed()
         rule.onNodeWithText("Speak → Write", substring = true).assertIsDisplayed()
     }

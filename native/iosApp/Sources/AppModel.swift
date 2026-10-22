@@ -316,10 +316,17 @@ final class AppModel: ObservableObject {
 
     func chunks(for lemma: String) -> [Chunk] { bridge.chunksFor(lemma: lemma) }
 
-    func errorDrills() -> [ErrorDrill] { bridge.errorDrills(corrections: corrections, limit: 20) }
+    func errorDrills() -> [ErrorDrill] {
+        bridge.errorDrills(corrections: corrections, now: Self.now(), limit: 20)
+    }
 
     func gradeError(_ typed: String, _ expected: String) -> GradeResult {
         bridge.gradeError(typed: typed, expected: expected)
+    }
+
+    func reviewError(id: Int64, result: String) {
+        _ = bridge.reviewError(store: store, id: id, result: result, now: Self.now())
+        refresh()
     }
 
     func addChunk(_ chunk: Chunk) {

@@ -4,13 +4,13 @@ import PlutonCore
 /// Retrieval practice for the learner's own writing corrections: see the mistake, type the fix, read why.
 struct ErrorReviewView: View {
     @EnvironmentObject var model: AppModel
+    let drills: [ErrorDrill]
     @SwiftUI.State private var index = 0
     @SwiftUI.State private var typed = ""
     @SwiftUI.State private var result: GradeResult?
     @SwiftUI.State private var right = 0
 
     var body: some View {
-        let drills = model.errorDrills()
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Type the corrected version of your own sentence. The fix and the reason appear after you check.")
@@ -18,8 +18,11 @@ struct ErrorReviewView: View {
                     .foregroundStyle(.secondary)
                 if drills.isEmpty {
                     card {
-                        Text("Nothing to review yet").font(.headline)
-                        Text("Write a paragraph in Speak → Write and get it corrected; the fixes will land here.")
+                        Text(model.corrections.isEmpty ? "Nothing to review yet" : "No drills due right now")
+                            .font(.headline)
+                        Text(model.corrections.isEmpty
+                             ? "Write a paragraph in Speak → Write and get it corrected; the fixes will land here."
+                             : "Scheduled corrections come back when they are due.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -46,6 +49,7 @@ struct ErrorReviewView: View {
                                 let graded = model.gradeError(typed, drill.fix)
                                 result = graded
                                 if graded.result == "right" { right += 1 }
+                                model.reviewError(id: drill.id, result: graded.result)
                             }
                             .buttonStyle(.borderedProminent)
                             .disabled(typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || result != nil)
@@ -79,18 +83,6 @@ struct ErrorReviewView: View {
         }
         .navigationTitle("Error review")
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: drillRevision) { _, _ in
-            // New corrections can arrive from Write while this pushed view is alive; never grade old text
-            // against a different drill.
-            index = 0
-            typed = ""
-            result = nil
-            right = 0
-        }
-    }
-
-    private var drillRevision: Int64 {
-        model.corrections.map(\.id).max() ?? 0
     }
 
     private func outcome(_ result: GradeResult) -> String {

@@ -47,7 +47,11 @@ class IosBridge {
     fun gradeGram(typed: String, answers: List<String>): GradeResult = io.github.vykosmolt.pluton.core.gradeGram(typed, answers)
     fun gradeProduce(typed: String, word: Word, forms: Map<String, String>): GradeResult = io.github.vykosmolt.pluton.core.gradeProduce(typed, word, forms)
     fun gradeDictee(typed: String, sentence: String): DicteeResult = io.github.vykosmolt.pluton.core.gradeDictee(typed, sentence)
-    fun errorDrills(corrections: List<CorrectionRecord>, limit: Int): List<ErrorDrill> = io.github.vykosmolt.pluton.core.errorDrills(corrections, limit)
+    fun errorDrills(corrections: List<CorrectionRecord>, now: Long, limit: Int): List<ErrorDrill> =
+        io.github.vykosmolt.pluton.core.errorDrills(corrections, now, limit)
+
+    fun reviewError(store: Store, id: Long, result: String, now: Long): CorrectionRecord? =
+        store.reviewError(id, result, now)
     fun gradeError(typed: String, expected: String): GradeResult = io.github.vykosmolt.pluton.core.gradeError(typed, expected)
     fun dicteeScore(result: DicteeResult): Int = io.github.vykosmolt.pluton.core.dicteeScore(result)
     fun gradeQuiz(questions: List<QuizQuestion>, answers: List<Int>): QuizResult = io.github.vykosmolt.pluton.core.gradeQuiz(questions, answers)

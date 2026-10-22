@@ -532,3 +532,11 @@ emulator/device, so the APK is built but not launched.
   the duplicate drill asserts the newest why/kind, the limit asserts the newest two, a start-over score-reset UI
   test, and œ/oe grading. Verified: 119 shared JVM tests, 28 Android JVM tests, 0 failures; APK builds; Swift
   parses; CI 39754767727 (`3413200c`) green for build and simulator launch. This follow-up commit awaits its own CI.
+- 2026-10-22: P5 spaced error review. Schema v5 (`4.sqm`) adds `next_due`/`reps` to corrections; the data class,
+  backup fields, inserts and migration test carry them. `errorDrills(corrections, now, limit)` now returns only
+  unresolved drills whose due time has passed, earliest due first. `Store.reviewError` applies a simple interval
+  ladder (1/3/7/16/35/60 days after correct answers, 1 day after almost, now after wrong) and retires a correction
+  after six correct reviews. Android More counts only due drills and passes a snapshot to the screen; iOS passes a
+  snapshot from MoreView, so scheduling refreshes cannot mutate the drill under the learner. Tests: due/resolved
+  filtering, the full schedule/reset/retire path, migration 1→5, and the existing screen tests updated. Verified:
+  121 shared JVM tests, 28 Android JVM tests, 0 failures; APK builds; Swift parses. Next: adversarial review of P5.

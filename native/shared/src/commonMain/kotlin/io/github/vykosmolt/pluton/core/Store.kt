@@ -64,6 +64,8 @@ data class CorrectionRecord(
     val why: String,
     val at: Long,
     val resolved: Boolean,
+    val nextDue: Long = 0,
+    val reps: Int = 0,
 )
 
 /** New-word pace; the same JSON shape as the web app's settings meta. */
@@ -111,6 +113,8 @@ data class BackupCorrection(
     val why: String,
     val at: Long,
     val resolved: Boolean = false,
+    val nextDue: Long = 0,
+    val reps: Int = 0,
 )
 
 @Serializable
@@ -309,7 +313,7 @@ class Store(private val db: PlutonDb) {
             )
             val id = db.plutonQueries.lastWritingId().executeAsOne()
             for (e in result.errors) {
-                db.plutonQueries.insertCorrection("writing", e.kind, e.original, e.fix, e.why, now, 0)
+                db.plutonQueries.insertCorrection("writing", e.kind, e.original, e.fix, e.why, now, 0, 0, 0)
             }
             WritingRecord(id, prompt, draft, result.corrected, result.feedback, result.level, result.errors, null, now, now)
         }
@@ -320,13 +324,32 @@ class Store(private val db: PlutonDb) {
     fun addCorrections(source: String, errors: List<WritingError>, now: Long) {
         db.transaction {
             for (e in errors) {
-                db.plutonQueries.insertCorrection(source, e.kind, e.original, e.fix, e.why, now, 0)
+                db.plutonQueries.insertCorrection(source, e.kind, e.original, e.fix, e.why, now, 0, 0, 0)
             }
         }
     }
 
     fun corrections(): List<CorrectionRecord> = db.plutonQueries.selectAllCorrections().executeAsList().map {
-        CorrectionRecord(it.id, it.source, it.kind, it.original, it.fix, it.why, it.at, it.resolved != 0L)
+        CorrectionRecord(it.id, it.source, it.kind, it.original, it.fix, it.why, it.at, it.resolved != 0L, it.next_due, it.reps.toInt())
+    }
+
+    /** Advance one writing correction through a small fixed interval ladder; six right reviews retire it. */
+    fun reviewError(id: Long, result: String, now: Long): CorrectionRecord? {
+        val current = corrections().firstOrNull { it.id == id } ?: return null
+        val reps = when (result) {
+            "right" -> current.reps + 1
+            "wrong" -> 0
+            else -> current.reps
+        }
+        val days = when (result) {
+            "right" -> ERROR_INTERVALS[current.reps.coerceIn(0, ERROR_INTERVALS.lastIndex)]
+            "almost" -> 1
+            else -> 0
+        }
+        val resolved = result == "right" && reps >= ERROR_RETIRE
+        val due = if (resolved) 0 else now + days * 86_400_000L
+        db.plutonQueries.updateCorrectionSchedule(due, reps.toLong(), if (resolved) 1L else 0L, id)
+        return corrections().firstOrNull { it.id == id }
     }
 
     fun texts(): List<TextRecord> = db.plutonQueries.selectAllTexts().executeAsList().map {
@@ -370,7 +393,7 @@ class Store(private val db: PlutonDb) {
                 BackupWriting(it.prompt, it.draft, it.corrected, it.feedback, it.level, it.errors, it.revised, it.created, it.updated)
             },
             corrections = corrections().map {
-                BackupCorrection(it.source, it.kind, it.original, it.fix, it.why, it.at, it.resolved)
+                BackupCorrection(it.source, it.kind, it.original, it.fix, it.why, it.at, it.resolved, it.nextDue, it.reps)
             },
             stats = rawStats(),
             canDo = canDoDone().toList(),
@@ -408,7 +431,10 @@ class Store(private val db: PlutonDb) {
                     )
                 }
                 for (c in backup.corrections) {
-                    db.plutonQueries.insertCorrection(c.source, c.kind, c.original, c.fix, c.why, c.at, if (c.resolved) 1L else 0L)
+                    db.plutonQueries.insertCorrection(
+                        c.source, c.kind, c.original, c.fix, c.why, c.at,
+                        if (c.resolved) 1L else 0L, c.nextDue, c.reps.toLong(),
+                    )
                 }
                 db.plutonQueries.putMeta("writing_draft", "")
                 db.plutonQueries.putMeta("writing_prompt", "0")
@@ -560,6 +586,9 @@ class Store(private val db: PlutonDb) {
 
     private fun putStats(s: Stats) = db.plutonQueries.putMeta("stats", json.encodeToString(s))
 }
+
+private val ERROR_INTERVALS = listOf(1, 3, 7, 16, 35, 60)
+private const val ERROR_RETIRE = 6
 
 private fun Cards.toState() = CardState(
     lemma = lemma,

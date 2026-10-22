@@ -122,11 +122,16 @@ internal fun MoreScreen(
                 modifier = modifier,
             )
         }
-        Section.Errors -> ErrorReviewScreen(
-            drills = errorDrills(store.corrections()),
-            onBack = { section = Section.Hub },
-            modifier = modifier,
-        )
+        Section.Errors -> {
+            val all = store.corrections()
+            ErrorReviewScreen(
+                drills = errorDrills(all, System.currentTimeMillis()),
+                hasCorrections = all.isNotEmpty(),
+                onGraded = { drill, result -> store.reviewError(drill.id, result.result, System.currentTimeMillis()) },
+                onBack = { section = Section.Hub },
+                modifier = modifier,
+            )
+        }
         Section.Hub -> Column(
             modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -139,15 +144,17 @@ internal fun MoreScreen(
                     Text("Level estimate, can-do checks and milestones", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            val correctionCount = errorDrills(store.corrections()).size
+            val allCorrections = store.corrections()
+            val dueDrills = errorDrills(allCorrections, System.currentTimeMillis()).size
             Card(Modifier.fillMaxWidth().clickable { section = Section.Errors }) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Error review", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     Text(
                         when {
-                            correctionCount == 0 -> "No error drills yet"
-                            correctionCount == 1 -> "1 error drill from your writing"
-                            else -> "$correctionCount error drills from your writing"
+                            dueDrills == 0 && allCorrections.isEmpty() -> "No error drills yet"
+                            dueDrills == 0 -> "No error drills due right now"
+                            dueDrills == 1 -> "1 error drill due"
+                            else -> "$dueDrills error drills due"
                         },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

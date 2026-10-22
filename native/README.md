@@ -150,7 +150,7 @@ live in the app's SQLite database; the AI key lives in private prefs (Android ba
 and is excluded from the JSON backup. Speech recognition and text-to-speech are platform services (on-device or
 system-provided, depending on the device); only the recognized transcript is sent to the AI. The only network calls are the AI requests you trigger (and the media files
 you pick in Listen are read locally). The shared `Sync.kt` merge rules remain for reference but nothing in either
-app wires them up. 119 shared JVM tests and 28 Android JVM tests pass (5 AI, 23 Robolectric UI). The APK is 55 MB with 3,053 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
+app wires them up. 121 shared JVM tests and 28 Android JVM tests pass (5 AI, 23 Robolectric UI). The APK is 55 MB with 3,053 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
 core-library desugaring for `java.time` on minSdk 24.
 `AppLaunchTest` launches the real Activity under Robolectric on the JVM and verifies the deck/shelf assets, SQLite,
 Home (with the path stage), all five tabs, the story + classics list, the Your texts section, the Listen pickers, the
@@ -170,7 +170,7 @@ answers in the last 30 reviews; the last tab returns on launch; reading cards la
 stretch (95–98%) or challenge (<95%) and the queue action targets 98%; Le Chemin has separate Talk and Speak bonus goals;
 writing is saved locally with its errors, a revision flow and an error summary; both platforms have a Write tab (iOS
 previously had none). SQLDelight schema v4 adds `writing` and `corrections`; backups include both (version 3 also carries can-do
-ticks), and both platforms now have an export/import UI.
+ticks and correction schedules), and both platforms now have an export/import UI.
 
 P1 adds the speaking loop: Talk has a microphone (Android SpeechRecognizer / iOS SFSpeechRecognizer), sends the transcript to the AI and can speak the reply with French TTS; Speak also has a **Fluency** mode (shadowing, plus 4/3/2 with a countdown and recording) and a **Sounds** mode (nine curated lessons: nasals, /y/–/u/, /ʁ/, /s/–/z/, /ʃ/–/ʒ/, final consonants, liaison, silent letters, e caduc) with a minimal-pair quiz, phrase playback and recording. The Android manifest already had RECORD_AUDIO; iOS already had the microphone/speech usage strings. No new server, no new account, no new permission beyond the existing microphone.
 
@@ -187,5 +187,10 @@ shows the fragment or sentence you actually wrote, you type the fix, and it grad
 the correction, the reason and the error kind. The shared `errorDrills` de-duplicates by normalised pair and keeps
 the newest 20; `gradeError` reuses the existing grading rules. No new storage or network path: it reads the
 corrections already in SQLite.
+
+P5 spaces the error loop: schema v5 adds `next_due`/`reps` to corrections. Error review shows only drills that
+are due now. A correct answer moves the next review 1 → 3 → 7 → 16 → 35 → 60 days out; "almost" comes back
+tomorrow; wrong resets it to now; six correct reviews retire a correction. The More entry counts due drills, and
+backups carry the schedule.
 
 Next: more curated chunks, a broader story series, and device polish.

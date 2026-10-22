@@ -31,6 +31,8 @@ import io.github.vykosmolt.pluton.core.gradeError
 @Composable
 internal fun ErrorReviewScreen(
     drills: List<ErrorDrill>,
+    hasCorrections: Boolean,
+    onGraded: (ErrorDrill, GradeResult) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -49,16 +51,22 @@ internal fun ErrorReviewScreen(
         TextButton(onClick = onBack) { Text("← More") }
         Text("Error review", fontSize = 30.sp, fontWeight = FontWeight.Black)
         Text(
-            "Type the corrected version of your own sentence. The fix and the reason appear after you check.",
+            "Type the corrected version of your own sentence. Correct drills return after a day, then less often; " +
+                "six correct reviews retire a correction.",
             color = scheme.onSurfaceVariant,
         )
 
         if (drill == null) {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Nothing to review yet", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Text(
-                        "Write a paragraph in Speak → Write and get it corrected; the fixes will land here.",
+                        if (hasCorrections) "No drills due right now" else "Nothing to review yet",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                    )
+                    Text(
+                        if (hasCorrections) "Scheduled corrections come back when they are due."
+                        else "Write a paragraph in Speak → Write and get it corrected; the fixes will land here.",
                         color = scheme.onSurfaceVariant,
                     )
                 }
@@ -91,6 +99,7 @@ internal fun ErrorReviewScreen(
                                 val graded = gradeError(typed, drill.fix)
                                 result = graded
                                 if (graded.result == "right") right++
+                                onGraded(drill, graded)
                             },
                             enabled = typed.isNotBlank() && result == null,
                         ) { Text("Check") }
