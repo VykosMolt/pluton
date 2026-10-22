@@ -251,8 +251,11 @@ private struct TalkView: View {
     }
 
     private func stopAndSend() {
+        let seconds = practice.speechSeconds
         Task {
             if let text = await practice.finishRecording(), !text.isEmpty {
+                let wpm = model.bridge.speechRate(text: text, seconds: seconds)
+                if wpm > 0 { model.addSpeechRate(wpm) }
                 sendText(text)
             }
         }

@@ -209,6 +209,21 @@ class Store(private val db: PlutonDb) {
         ReviewEntry(it.lemma, it.rating.toInt(), it.mode, it.at, it.overridden != 0L)
     }
 
+    /** Recent voice-Talk words-per-minute samples, oldest first (max 20). */
+    fun speechRates(): List<Int> =
+        meta("speech_wpm")?.split(',')?.mapNotNull { it.toIntOrNull() } ?: emptyList()
+
+    fun addSpeechRate(wpm: Int) {
+        if (wpm !in 40..300) return
+        putMeta("speech_wpm", (speechRates() + wpm).takeLast(20).joinToString(","))
+    }
+
+    /** Upper median of the recent samples, or 0 when there are none. */
+    fun medianSpeechRate(): Int {
+        val sorted = speechRates().sorted()
+        return if (sorted.isEmpty()) 0 else sorted[sorted.size / 2]
+    }
+
     /** Daily known/learning snapshots, oldest first; capped at 60 days. */
     fun progressSnapshots(): List<ProgressSnapshot> =
         meta("progress_snapshots")?.let {
@@ -471,8 +486,9 @@ class Store(private val db: PlutonDb) {
                 db.plutonQueries.putMeta("revision_id", "")
             }
             db.plutonQueries.putMeta("stats", json.encodeToString(backup.stats))
-            // Growth history belongs to the replaced cards, not the incoming backup.
+            // Growth and voice history belong to the replaced device, not the incoming backup.
             db.plutonQueries.putMeta("progress_snapshots", "[]")
+            db.plutonQueries.putMeta("speech_wpm", "")
             // A v1/v2 file predates the can-do self-assessment, so it must not erase the local ticks.
             if (backup.version >= 3) db.plutonQueries.putMeta("cando", backup.canDo.joinToString(","))
             // A restored device starts from scratch: old deletions must not wipe the account, and pulled records

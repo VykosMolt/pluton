@@ -42,6 +42,13 @@ final class SpeechPractice: ObservableObject {
     private var tapInstalled = false
     private var generation = 0
     private var player: AVAudioPlayer?
+    private var speechStartedAt: Date?
+
+    /// Seconds from the first recognized word until now; 0 when nothing was heard.
+    var speechSeconds: TimeInterval {
+        guard let speechStartedAt else { return 0 }
+        return Date().timeIntervalSince(speechStartedAt)
+    }
 
     init() {
         recognition = SFSpeechRecognizer(locale: Locale(identifier: "fr-FR"))
@@ -97,6 +104,9 @@ final class SpeechPractice: ObservableObject {
                     guard self.generation == current else { return }
                     if let result {
                         self.transcript = result.bestTranscription.formattedString
+                        if self.speechStartedAt == nil, !self.transcript.isEmpty {
+                            self.speechStartedAt = Date()
+                        }
                     }
                     if let error, result == nil {
                         self.error = "Speech recognition failed: \(error.localizedDescription)"
@@ -127,6 +137,7 @@ final class SpeechPractice: ObservableObject {
         request = nil
         player?.stop()
         player = nil
+        speechStartedAt = nil
     }
 
     /// Stops once and returns the transcript, or nil when nothing was recording. Concurrent calls are ignored.

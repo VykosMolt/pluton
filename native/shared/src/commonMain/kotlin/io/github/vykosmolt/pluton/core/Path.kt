@@ -78,7 +78,7 @@ val STAGES = listOf(
     ),
     Stage(
         "L'Opéra", "The Opéra", "C1", 6000, VerbGoal(null, 300), grammar = 15,
-        read = listOf("story-9", "La Chèvre de monsieur Seguin"),
+        read = listOf("story-9", "story-10", "story-11", "La Chèvre de monsieur Seguin"),
         listen = 1200, talk = 200, speak = 100, write = 20,
         fr = "Un bal masqué, un lac sous la scène, et quelqu'un qui attend.",
         say = "A masked ball, a lake under the stage, and someone waiting.",

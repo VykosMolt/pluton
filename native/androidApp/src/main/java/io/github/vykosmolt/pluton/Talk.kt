@@ -2,6 +2,7 @@ package io.github.vykosmolt.pluton
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -42,6 +43,7 @@ import io.github.vykosmolt.pluton.core.WordStatus
 import io.github.vykosmolt.pluton.core.isChunk
 import io.github.vykosmolt.pluton.core.chatSystem
 import io.github.vykosmolt.pluton.core.levelOf
+import io.github.vykosmolt.pluton.core.speechRate
 import io.github.vykosmolt.pluton.core.splitCorrection
 import io.github.vykosmolt.pluton.core.status
 import kotlinx.coroutines.launch
@@ -162,20 +164,32 @@ internal fun TalkScreen(
 
     fun send() = sendText(draft)
 
+    fun listen() {
+        tts.stop()
+        voice.start { text ->
+            val seconds = if (voice.speechStartedAt > 0) {
+                (SystemClock.elapsedRealtime() - voice.speechStartedAt) / 1000.0
+            } else {
+                0.0
+            }
+            val wpm = speechRate(text, seconds)
+            if (wpm > 0) store.addSpeechRate(wpm)
+            sendText(text)
+        }
+    }
+
     fun startVoice() {
         if (!permitted) {
             permission.launch(Manifest.permission.RECORD_AUDIO)
             return
         }
-        tts.stop()
-        voice.start { text -> sendText(text) }
+        listen()
     }
 
     LaunchedEffect(pendingVoice) {
         if (pendingVoice) {
             pendingVoice = false
-            tts.stop()
-            voice.start { text -> sendText(text) }
+            listen()
         }
     }
 

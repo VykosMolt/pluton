@@ -297,8 +297,13 @@ final class AppModel: ObservableObject {
             week: bridge.weekActivity(store: store, now: Self.now()),
             canDoDone: Array(Set(bridge.canDoDone(store: store))),
             stageLevel: stageLevel,
+            speechWpm: bridge.medianSpeechRate(store: store),
             snapshots: bridge.progressSnapshots(store: store)
         )
+    }
+
+    func addSpeechRate(_ wpm: Int32) {
+        bridge.addSpeechRate(store: store, wpm: wpm)
     }
 
     func setCanDo(_ id: String, _ done: Bool) -> [String] {

@@ -175,6 +175,7 @@ class AppLaunchTest {
         }
         rule.onNodeWithText("Vocabulary estimate").assertExists()
         rule.onNodeWithText("Last 7 days").assertExists()
+        rule.onNodeWithText("Speaking rate").assertExists()
         rule.onNodeWithText("Vocabulary growth").assertExists()
         rule.onNodeWithText("Error log · 30 days").assertExists()
         rule.onNodeWithText("Cabinet").assertExists()

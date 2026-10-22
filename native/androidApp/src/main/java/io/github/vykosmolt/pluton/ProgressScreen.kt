@@ -91,6 +91,18 @@ internal fun ProgressScreen(
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Speaking rate", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                if (report.speechWpm <= 0) {
+                    Text("Use voice in Talk; a few sentences give a rough words-per-minute rate.", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+                } else {
+                    Text("${report.speechWpm} words/min", fontSize = 22.sp, fontWeight = FontWeight.Black, color = scheme.secondary)
+                    Text("Median of your recent voice-Talk turns. A rough trend, not a fluency score.", color = scheme.onSurfaceVariant, fontSize = 13.sp)
+                }
+            }
+        }
+
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Vocabulary growth", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 val growth = report.growth
                 if (growth.size < 2) {

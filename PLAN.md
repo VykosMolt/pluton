@@ -567,3 +567,13 @@ emulator/device, so the APK is built but not launched.
   history; error kinds are grouped case-insensitively; the cefrEstimate KDoc is back on its function. Verified:
   128 shared JVM tests, 30 Android JVM tests, 0 failures; APK builds; Swift parses; CI 642fb6bc green for build and
   simulator launch. This review-fix commit awaits CI.
+- 2026-10-23: P7 story series and speech-rate metric. Two epilogue chapters (“La Lettre”, “Le Chat Noir”)
+  extend `data/fr/story.json` from 10 to 12; the final Chemin stage reads story-9/10/11; `build.py` asserts 12 and
+  resumed TTS rendered the 28 new sentence clips (3,081 bundled clips, 184 story sentences). Shared
+  `spokenWords`/`speechRate(text, seconds)` accepts 3+ words after 3+ seconds and returns -1 outside 40–300 wpm;
+  `Store.speechRates/addSpeechRate/medianSpeechRate` keeps the last 20 valid samples in local meta (upper median),
+  cleared on backup import like growth snapshots. `ProgressReport.speechWpm` feeds a new Progress card on Android
+  and iOS; voice Talk on both platforms times from first recognized speech to the stop tap and records a sample.
+  Tests: speechRate word/time/range and report pass-through, sample filtering/cap/median/import clearing. Verified:
+  130 shared JVM tests, 30 Android JVM tests, 0 failures; APK builds; data build and checks pass. Next: adversarial
+  review of P7, then CI.

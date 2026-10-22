@@ -56,6 +56,10 @@ class IosBridge {
     fun errorKindCounts(corrections: List<CorrectionRecord>, since: Long, limit: Int): List<ErrorKindCount> =
         io.github.vykosmolt.pluton.core.errorKindCounts(corrections, since, limit)
 
+    fun speechRate(text: String, seconds: Double): Int = io.github.vykosmolt.pluton.core.speechRate(text, seconds)
+    fun addSpeechRate(store: Store, wpm: Int) = store.addSpeechRate(wpm)
+    fun medianSpeechRate(store: Store): Int = store.medianSpeechRate()
+
     fun studyCounts(cards: List<CardState>, words: Map<String, Word>): StudyCounts =
         io.github.vykosmolt.pluton.core.studyCounts(cards, words)
 
@@ -175,6 +179,7 @@ class IosBridge {
         week: WeekActivity,
         canDoDone: List<String>,
         stageLevel: String,
+        speechWpm: Int,
         snapshots: List<ProgressSnapshot>,
     ): ProgressReport = io.github.vykosmolt.pluton.core.progressReport(
         cards,
@@ -187,6 +192,7 @@ class IosBridge {
         week,
         canDoDone.toSet(),
         stageLevel,
+        speechWpm,
         snapshots,
     )
     fun practiceDays(store: Store): List<String> = store.practiceDays().toList()

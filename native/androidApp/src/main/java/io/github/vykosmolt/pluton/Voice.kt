@@ -5,6 +5,7 @@ import android.content.Intent
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Bundle
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -174,16 +175,22 @@ internal class VoiceInput(private val context: Context) {
         private set
     var error by mutableStateOf("")
         private set
+    /** Elapsed-realtime millis when the recognizer first heard speech, or 0. */
+    var speechStartedAt by mutableStateOf(0L)
+        private set
     private var recognizer: SpeechRecognizer? = null
 
     fun start(onResult: (String) -> Unit) {
         if (listening) return
         error = ""
+        speechStartedAt = 0
         val r = SpeechRecognizer.createSpeechRecognizer(context)
         recognizer = r
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
+            override fun onBeginningOfSpeech() {
+                speechStartedAt = SystemClock.elapsedRealtime()
+            }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}

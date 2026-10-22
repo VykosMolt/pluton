@@ -53,6 +53,22 @@ struct ProgressView: View {
                 }
 
                 card {
+                    Text("Speaking rate").font(.headline)
+                    if report.speechWpm <= 0 {
+                        Text("Use voice in Talk; a few sentences give a rough words-per-minute rate.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("\(report.speechWpm) words/min")
+                            .font(.system(size: 22, weight: .black))
+                            .foregroundStyle(.green)
+                        Text("Median of your recent voice-Talk turns. A rough trend, not a fluency score.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                card {
                     Text("Vocabulary growth").font(.headline)
                     let growth = report.growth
                     if growth.count < 2 {

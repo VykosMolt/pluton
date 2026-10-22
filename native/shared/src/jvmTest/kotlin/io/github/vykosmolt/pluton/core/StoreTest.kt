@@ -438,11 +438,13 @@ class StoreTest {
     }
 
     @Test
-    fun backupImportClearsGrowthHistory() {
+    fun backupImportClearsLocalHistory() {
         val target = store()
         target.saveProgressSnapshot("2026-10-20", 9, 1)
+        target.addSpeechRate(95)
         target.import(store().export())
         assertTrue(target.progressSnapshots().isEmpty())
+        assertTrue(target.speechRates().isEmpty())
     }
 
     @Test
@@ -532,6 +534,19 @@ class StoreTest {
         assertEquals(setOf("review"), store.planDone("2026-10-20"))
         assertEquals(emptySet(), store.planDone("2026-10-21"))
         assertEquals(setOf("2026-10-20"), store.practiceDays())
+    }
+
+    @Test
+    fun speechRateSamplesAreFilteredCappedAndMediated() {
+        val store = store()
+        assertEquals(emptyList(), store.speechRates())
+        assertEquals(0, store.medianSpeechRate())
+        store.addSpeechRate(20)
+        store.addSpeechRate(400)
+        assertEquals(emptyList(), store.speechRates())
+        for (i in 1..25) store.addSpeechRate(60 + i)
+        assertEquals((66..85).toList(), store.speechRates())
+        assertEquals(76, store.medianSpeechRate())
     }
 
     @Test

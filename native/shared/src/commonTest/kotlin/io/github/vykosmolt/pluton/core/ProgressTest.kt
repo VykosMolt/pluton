@@ -68,6 +68,7 @@ class ProgressTest {
             week = WeekActivity(reviews = 12, good = 9),
             canDoDone = setOf("A1-1"),
             stageLevel = "A1",
+            speechWpm = 118,
             snapshots = listOf(ProgressSnapshot("2026-10-22", 1, 1), ProgressSnapshot("2026-10-20", 1, 0)),
         )
         assertEquals(1, report.knownWords)
@@ -82,6 +83,18 @@ class ProgressTest {
         assertEquals(Checkpoint("A1", 1, 4), report.checkpoint)
         assertTrue(!report.checkpoint.complete)
         assertEquals(0.75, report.week.accuracy)
+        assertEquals(118, report.speechWpm)
         assertEquals(listOf("2026-10-20", "2026-10-22"), report.growth.map { it.day })
+    }
+
+    @Test
+    fun speechRateNeedsEnoughWordsAndTime() {
+        assertEquals(5, spokenWords("Il fait noir. Très noir."))
+        assertEquals(4, spokenWords("Bonjour, je m'appelle Pluton."))
+        assertEquals(80, speechRate("Bonjour, je m'appelle Pluton.", 3.0))
+        assertEquals(-1, speechRate("Bonjour.", 3.0))
+        assertEquals(-1, speechRate("Bonjour, je m'appelle Pluton.", 2.9))
+        val tooFast = (1..50).joinToString(" ") { "mot" }
+        assertEquals(-1, speechRate(tooFast, 3.0))
     }
 }

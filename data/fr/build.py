@@ -492,7 +492,7 @@ def main():
     print(f"cognates: {len(cog)} English words with a French counterpart")
     # Read-along audio for Pluton's story and the French classics: one clip per sentence, with its offsets.
     shelf = json.loads((Path(__file__).parent / "shelf.json").read_text())  # from data/fr/shelf.py
-    story = json.loads((Path(__file__).parent / "story.json").read_text())  # hand-written, one chapter per stage
+    story = json.loads((Path(__file__).parent / "story.json").read_text())  # hand-written; the first ten track the ten stages
     for text in story + [t for t in shelf if t.get("lang") == "fr"]:
         text["sentences"] = [[a, b, audio_id(s)] for a, b, s in split_sentences(text["body"])]
         tts += [s for _, _, s in split_sentences(text["body"])]
@@ -557,7 +557,7 @@ def check(words, forms, conj, cog, story):
     assert "door" not in cog and "window" not in cog  # Germanic, not Norman
     # read-along: sentence offsets cover the text and point at real sentences
     ch1 = story[0]
-    assert len(story) == 10 and ch1["body"][slice(*ch1["sentences"][0][:2])] == "Il fait noir."
+    assert len(story) == 12 and ch1["body"][slice(*ch1["sentences"][0][:2])] == "Il fait noir."
     assert all(t["body"][a:b].strip() for t in story for a, b, _ in t["sentences"])
     # Comprehension: every chapter has at least 3 unambiguous questions, each with a valid answer index.
     for ch in story:

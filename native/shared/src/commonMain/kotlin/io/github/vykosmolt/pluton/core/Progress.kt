@@ -1,6 +1,7 @@
 package io.github.vykosmolt.pluton.core
 
 import kotlinx.serialization.Serializable
+import kotlin.math.roundToInt
 
 // A small, honest progress report: vocabulary is a rough CEFR waypoint, not a test; can-do statements are
 // self-assessment; milestones celebrate concrete things the learner has done.
@@ -52,6 +53,7 @@ data class ProgressReport(
     val accuracy: Double,
     val week: WeekActivity,
     val checkpoint: Checkpoint,
+    val speechWpm: Int,
     val growth: List<ProgressSnapshot>,
     val canDos: List<CanDo>,
     val canDoDone: Set<String>,
@@ -74,6 +76,19 @@ fun studyCounts(cards: List<CardState>, words: Map<String, Word>): StudyCounts {
         }
     }
     return StudyCounts(known, learning)
+}
+
+private val SPOKEN_WORD = Regex("[\\p{L}\\p{N}'’-]+")
+
+fun spokenWords(text: String): Int = SPOKEN_WORD.findAll(text).count()
+
+/** Rough words-per-minute for a voice turn; -1 when the turn is too short to say anything useful. */
+fun speechRate(text: String, seconds: Double): Int {
+    if (seconds < 3.0) return -1
+    val words = spokenWords(text)
+    if (words < 3) return -1
+    val wpm = (words * 60.0 / seconds).roundToInt()
+    return if (wpm in 40..300) wpm else -1
 }
 
 /** A deliberately broad receptive vocabulary estimate; the app labels it as an estimate, never a CEFR test. */
@@ -132,6 +147,7 @@ fun progressReport(
     week: WeekActivity,
     canDoDone: Set<String>,
     stageLevel: String,
+    speechWpm: Int = 0,
     snapshots: List<ProgressSnapshot> = emptyList(),
 ): ProgressReport {
     val counts = studyCounts(cards, words)
@@ -164,6 +180,7 @@ fun progressReport(
         accuracy = accuracy ?: -1.0,
         week = week,
         checkpoint = Checkpoint(stageLevel, canDos.count { it.id in canDoDone }, canDos.size),
+        speechWpm = speechWpm,
         growth = snapshots.sortedBy { it.day }.takeLast(14),
         canDos = canDos,
         canDoDone = canDoDone,

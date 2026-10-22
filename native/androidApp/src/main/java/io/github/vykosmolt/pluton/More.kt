@@ -118,6 +118,7 @@ internal fun MoreScreen(
                     week = store.weekActivity(System.currentTimeMillis()),
                     canDoDone = store.canDoDone(),
                     stageLevel = path.stages.getOrNull(path.current)?.stage?.level ?: "C1",
+                    speechWpm = store.medianSpeechRate(),
                     snapshots = store.progressSnapshots(),
                 ),
                 store = store,

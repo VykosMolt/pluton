@@ -388,5 +388,83 @@
     "why": "“Elle voulait que je fasse le chemin moi-même.”"
    }
   ]
+ },
+ {
+  "title": "La Lettre",
+  "body": "Léa habitait un petit appartement au-dessus d'une librairie, rue des Martyrs. Il y avait des livres partout : sur les étagères, sur la table, sur le parquet, et même dans la baignoire.\n« Ici, chaque mur raconte une histoire, m'a-t-elle dit en riant. Paris est un livre ouvert. Il suffit de savoir tourner les pages. »\nElle m'a montré la lettre qui m'avait conduit à l'Opéra. Je l'avais imaginée de la main d'un poète mort ; elle était de la sienne. En bas de la page, elle avait simplement écrit : « Pour Pluton, qui a traversé la nuit. — Léa. »\nJ'ai posé une patte sur le papier. Brutus, allongé près de la fenêtre, a soupiré comme un chien qui comprend tout et ne dit rien.\nDehors, les toits de Paris brillaient sous la pluie. Pour la première fois, je me suis senti chez moi.",
+  "questions": [
+   {
+    "q": "Where does Léa live?",
+    "a": [
+     "In a small apartment above a bookshop",
+     "In the catacombs",
+     "On a boat on the Seine",
+     "At the Opéra"
+    ],
+    "ok": 0,
+    "why": "« un petit appartement au-dessus d'une librairie »"
+   },
+   {
+    "q": "Who wrote the letter that led Pluton to the Opéra?",
+    "a": [
+     "Baudelaire",
+     "The Comtesse",
+     "Léa",
+     "Brutus"
+    ],
+    "ok": 2,
+    "why": "« elle était de la sienne » — Léa l'avait écrite."
+   },
+   {
+    "q": "What does Léa compare Paris to?",
+    "a": [
+     "A dark lake",
+     "A long road",
+     "A closed door",
+     "An open book"
+    ],
+    "ok": 3,
+    "why": "« Paris est un livre ouvert. »"
+   }
+  ]
+ },
+ {
+  "title": "Le Chat Noir",
+  "body": "L'hiver est arrivé sans prévenir. Un matin, Paris s'est réveillé blanc, et les toits sont devenus des pages vides.\nLéa nous a emmenés dans une vieille librairie du quartier, qui s'appelait Le Chat Noir. À l'intérieur, il faisait chaud ; une odeur de papier et de café flottait entre les rayons. Derrière le comptoir, une femme âgée lisait, un chat roux endormi sur ses genoux.\n« Vous cherchez quelque chose ? a-t-elle demandé sans lever les yeux.\n— Un livre pour lui, a répondu Léa en me désignant. Il aime les histoires où les chats parlent.\nLa femme a souri et m'a tendu un mince recueil sans titre. Sur la première page, une seule phrase était écrite à la main : « Le noir n'est pas l'absence de lumière ; c'est la lumière qui attend. »\nDehors, la neige tombait sans bruit. J'ai regardé Brutus, puis Léa, puis la phrase. Je n'ai rien dit. Les chats n'ont pas besoin de tout expliquer.",
+  "questions": [
+   {
+    "q": "Where does this chapter take place?",
+    "a": [
+     "At the Opéra",
+     "In a bookshop called Le Chat Noir",
+     "In the catacombs",
+     "On a boat"
+    ],
+    "ok": 1,
+    "why": "« une vieille librairie du quartier, qui s'appelait Le Chat Noir »"
+   },
+   {
+    "q": "What is written on the first page of the book?",
+    "a": [
+     "A list of names",
+     "A drawing of a cat",
+     "A single handwritten sentence",
+     "Nothing at all"
+    ],
+    "ok": 2,
+    "why": "« une seule phrase était écrite à la main »"
+   },
+   {
+    "q": "What is happening outside?",
+    "a": [
+     "It is snowing",
+     "It is raining",
+     "The sun is shining",
+     "A storm is coming"
+    ],
+    "ok": 0,
+    "why": "« la neige tombait sans bruit »"
+   }
+  ]
  }
 ]

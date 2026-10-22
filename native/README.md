@@ -104,7 +104,7 @@ sentence extraction, run queue + requeue, FSRS-6 scheduler with parity fixtures 
 shelf decoding, `gradeDictee`, and a SQLDelight store (`cards`, append-only `reviews`, `meta` stats with
 read/listening/spoken history). The Android app has Home / Read / Listen / Speak / More tabs, loads the real 20k-word deck and saved
 cards, plays a run with the web app's exercise cycle (cloze → dictation → recall from English with the right
-article → full-sentence dictée), reads Pluton's 10 story chapters, the 7 French classics and any text you paste in
+article → full-sentence dictée), reads Pluton's 12 story chapters, the 7 French classics and any text you paste in
 (coloured by word status, tappable for gloss/add/known, queue-to-unlock, comprehension quiz for the story, sentence
 audio with highlighting), and practises speaking with French TTS, MediaRecorder record/playback, and Android speech
 recognition with word-level dictation marks and a recognizer-match percentage (`dicteeScore`: full credit per word
@@ -150,7 +150,7 @@ live in the app's SQLite database; the AI key lives in private prefs (Android ba
 and is excluded from the JSON backup. Speech recognition and text-to-speech are platform services (on-device or
 system-provided, depending on the device); only the recognized transcript is sent to the AI. The only network calls are the AI requests you trigger (and the media files
 you pick in Listen are read locally). The shared `Sync.kt` merge rules remain for reference but nothing in either
-app wires them up. 128 shared JVM tests and 30 Android JVM tests pass (5 AI, 25 Robolectric UI). The APK is 55 MB with 3,053 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
+app wires them up. 130 shared JVM tests and 30 Android JVM tests pass (5 AI, 25 Robolectric UI). The APK is 53 MB with 3,081 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
 core-library desugaring for `java.time` on minSdk 24.
 `AppLaunchTest` launches the real Activity under Robolectric on the JVM and verifies the deck/shelf assets, SQLite,
 Home (with the path stage), all five tabs, the story + classics list, the Your texts section, the Listen pickers, the
@@ -197,4 +197,10 @@ P6 broadens the depth and the dashboard: the chunk shelf grows to 36, and More�
 (last 30 days of corrections by kind) and Vocabulary growth (one known/learning snapshot per day, up to 60 local
 days, drawn as a 14-day bar row). Snapshots live in local meta and are not part of the JSON backup.
 
-Next: a broader story series and device polish.
+P7 broadens the story and measures speaking: two epilogue chapters, “La Lettre” and “Le Chat Noir”, join the series
+(12 chapters, 184 read-along sentences; the final stage now asks for both). Voice Talk measures an approximate
+words-per-minute rate from the first recognised word to the stop tap, keeps the last 20 valid samples in local meta
+(3–300 s, at least 3 words, 40–300 wpm) and shows the upper median in Progress. Speech history is not part of the
+JSON backup and is cleared on import, like vocabulary growth.
+
+Next: device polish and a learning-experiment loop.

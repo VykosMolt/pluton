@@ -27,7 +27,7 @@ A simulator build needs no Apple account. A device build needs a signing team in
   stage, a pace suggestion from recent review accuracy, and the last tab restored on launch.
 - **Run**: intro cards then cloze, listen-and-type, English→French recall, or full-sentence dictée; grading and FSRS
   replay come from the shared core.
-- **Read**: Pluton's ten chapters with coverage, comfortable/stretch/challenge labels, a "queue to 98%" action,
+- **Read**: Pluton's twelve chapters with coverage, comfortable/stretch/challenge labels, a "queue to 98%" action,
   coloured/tappable words (a `pluton://word/<lemma>` link opens the gloss/add/known sheet, which now offers common
   chunks), a grammar notice from the current card state, the story comprehension quiz, the French classics, the
   **Norman Bridge** (English texts with the French-derived words marked, woven into French as your deck grows), and
