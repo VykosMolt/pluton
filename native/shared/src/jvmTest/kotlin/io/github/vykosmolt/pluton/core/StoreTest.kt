@@ -313,6 +313,15 @@ class StoreTest {
     }
 
     @Test
+    fun canDoTicksPersistLocally() {
+        val store = store()
+        assertEquals(emptySet(), store.canDoDone())
+        assertEquals(setOf("A1-1"), store.setCanDo("A1-1", true))
+        assertEquals(setOf("A1-1", "A1-2"), store.setCanDo("A1-2", true))
+        assertEquals(setOf("A1-2"), store.setCanDo("A1-1", false))
+    }
+
+    @Test
     fun recentAccuracyCountsGoodAndEasy() {
         val store = store()
         assertNull(store.recentAccuracy())

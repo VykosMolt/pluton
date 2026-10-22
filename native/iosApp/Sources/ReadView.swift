@@ -351,7 +351,7 @@ private struct ReadingView: View {
     }
 }
 
-private struct IdentifiedString: Identifiable {
+struct IdentifiedString: Identifiable {
     let value: String
     var id: String { value }
 }
@@ -403,7 +403,7 @@ private struct QuizView: View {
     }
 }
 
-private struct WordDetailView: View {
+struct WordDetailView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let lemma: String

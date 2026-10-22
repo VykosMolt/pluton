@@ -158,6 +158,22 @@ class AppLaunchTest {
     }
 
     @Test
+    fun moreTabShowsProgressAndCanDos() {
+        waitForHome()
+        rule.onNodeWithText("More").performClick()
+        rule.waitUntil(timeoutMillis = 20_000) {
+            rule.onAllNodesWithText("Progress").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("Progress").performScrollTo().performClick()
+        rule.waitUntil(timeoutMillis = 20_000) {
+            rule.onAllNodesWithText("Vocabulary estimate").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("Vocabulary estimate").assertExists()
+        rule.onNodeWithText("Milestones").performScrollTo().assertExists()
+        rule.onNodeWithText("Can you…?", substring = true).assertExists()
+    }
+
+    @Test
     fun moreTabShowsThePath() {
         waitForHome()
         rule.onNodeWithText("More").performClick()

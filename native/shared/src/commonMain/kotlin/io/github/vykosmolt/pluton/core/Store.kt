@@ -232,6 +232,15 @@ class Store(private val db: PlutonDb) {
         return existing
     }
 
+    fun canDoDone(): Set<String> =
+        meta("cando")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
+
+    fun setCanDo(id: String, done: Boolean): Set<String> {
+        val next = if (done) canDoDone() + id else canDoDone() - id
+        putMeta("cando", next.joinToString(","))
+        return next
+    }
+
     fun lastTab(): String? = meta("lastTab")
 
     fun saveLastTab(tab: String) = putMeta("lastTab", tab)

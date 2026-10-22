@@ -32,25 +32,28 @@ A simulator build needs no Apple account. A device build needs a signing team in
   chunks), a grammar notice from the current card state, the story comprehension quiz, the French classics, the
   **Norman Bridge** (English texts with the French-derived words marked, woven into French as your deck grows), and
   your own pasted texts (add/continue/delete). French TTS reads the whole text.
+- **Listen**: play a local audio or video file with an `.srt`/`.vtt` subtitle track; the current line is coloured and
+  tappable like the reader, previous/replay/next jump by line, speed is 0.75–1.25×, "pause after each line" turns
+  playback into line-by-line listening practice, and a dictogloss checks a typed line word by word. Time played counts
+  toward listening hours.
 - **Speak**: read-aloud practice with device TTS, `AVAudioRecorder` playback, and `SFSpeechRecognizer` transcript
   checked by the shared `gradeDictee` (recognizer-match percentage, not phonemes); Talk using the shared `chatSystem`
   prompt with a BYOK provider over `URLSession` (Anthropic or OpenAI-compatible), key in the Keychain, with a mic
   button for voice turns and spoken replies; Write with prompts, AI correction, local history, revision and an error
   summary; **Fluency** with shadowing and 4/3/2; and **Sounds** with curated minimal pairs, phrase playback and a
   recording to compare.
-- **More**: Le Chemin with goals, the deck browser, all conjugation tables (tap a form to hear it), grammar topics,
-  and Settings (pace; AI provider/model/key).
+- **More**: Progress (vocabulary estimate, can-do checks, milestones), Le Chemin with goals, the deck browser, all
+  conjugation tables (tap a form to hear it), grammar topics, and Settings (pace; backup; AI provider/model/key).
 
 ## Status: built by CI, not on this machine
 
 This machine is Linux and has no Xcode or Swift toolchain, so the Swift sources cannot be compiled here. The
 `iOS unsigned IPA` workflow compiles the shared framework, generates the project with XcodeGen, builds the app,
-packages the unsigned IPA, and separately installs and launches it in a simulator; the last run before the P0/P1 changes was green. The next run is the first compile of the new Today/onboarding, writing, voice, Fluency and Sounds code.
+packages the unsigned IPA, and separately installs and launches it in a simulator. The run for `cc6dda09` was green;
+the Listen tab is the first change it did not compile.
 
 Everything is local: no account, no sync server. Progress is in the app's SQLite store and the AI key is in the
 Keychain, never in UserDefaults or a backup.
 
-Known gaps versus Android: no Listen media tab, no story generator/retell, runs are word cards only
-(no conjugation/grammar drills), and no bundled sentence audio (TTS stands in). The P0 changes (Today/onboarding,
-coverage labels, writing persistence) are in the sources but have not been compiled on this Linux machine; the next
-macOS CI run is their first type-check.
+Known gaps versus Android: no story generator/retell, runs are word cards only (no conjugation/grammar drills), and
+no bundled sentence audio (TTS stands in).

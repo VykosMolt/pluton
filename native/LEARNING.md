@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-21
 **Scope:** How adults actually learn a second language, how Pluton compares, and what to add or interweave. Written for the native app (Android + iOS, local-only, BYOK AI).
-**Status (2026-10-21):** P0 shipped — daily Today loop/onboarding/adaptive pace/weekly consistency, coverage labels and 98% target, writing persistence/revision/error log, and separate speaking goals. P1 source-complete — voice Talk, shadowing, 4/3/2, and a curated French Sounds module on Android and iOS (iOS pending the macOS CI type-check). P2 first slice: chunks as SRS cards, mined/dictionary context alternation, grammar focus in AI prompts and reading notices, Android dictogloss, and local text continuation on both platforms. Remaining P2: iOS active listening when the Listen tab arrives, more chunks, and a broader story series.
+**Status (2026-10-21):** P0 shipped — daily Today loop/onboarding/adaptive pace/weekly consistency, coverage labels and 98% target, writing persistence/revision/error log, and separate speaking goals. P1 built by CI — voice Talk, shadowing, 4/3/2, and a curated French Sounds module on Android and iOS. P2: chunks as SRS cards, mined/dictionary context alternation, grammar focus in AI prompts and reading notices, dictogloss and active listening on both platforms, and local text continuation. P3 first slice: a local Progress report with a broad CEFR vocabulary estimate, last-30-review accuracy, stage can-do self-assessment and milestones. Remaining: more chunks, a broader story series, and deeper assessment checkpoints. The iOS Listen tab is the newest code and awaits its first CI compile.
 
 ---
 

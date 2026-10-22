@@ -455,6 +455,7 @@ private fun MainScreen(loaded: Loaded, store: Store, aiStore: AiStore) {
                     cards = cards,
                     store = store,
                     path = path,
+                    shelf = loaded.shelf,
                     pace = pace,
                     onPace = { next ->
                         store.savePace(next)

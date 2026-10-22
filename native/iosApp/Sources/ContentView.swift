@@ -16,11 +16,14 @@ struct ContentView: View {
                     ReadView()
                         .tag(1)
                         .tabItem { Label("Read", systemImage: "book") }
-                    SpeakView(mode: $speakMode)
+                    ListenView()
                         .tag(2)
+                        .tabItem { Label("Listen", systemImage: "headphones") }
+                    SpeakView(mode: $speakMode)
+                        .tag(3)
                         .tabItem { Label("Speak", systemImage: "mic") }
                     MoreView()
-                        .tag(3)
+                        .tag(4)
                         .tabItem { Label("More", systemImage: "ellipsis.circle") }
                 }
                 .tint(.blue)
@@ -60,8 +63,9 @@ struct ContentView: View {
     private func restoreTab() {
         switch model.lastTab() {
         case "Read": tab = 1
-        case "Speak": tab = 2
-        case "More": tab = 3
+        case "Listen": tab = 2
+        case "Speak": tab = 3
+        case "More": tab = 4
         default: tab = 0
         }
     }
@@ -69,8 +73,9 @@ struct ContentView: View {
     private static func name(_ tab: Int) -> String {
         switch tab {
         case 1: return "Read"
-        case 2: return "Speak"
-        case 3: return "More"
+        case 2: return "Listen"
+        case 3: return "Speak"
+        case 4: return "More"
         default: return "Home"
         }
     }

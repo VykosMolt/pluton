@@ -90,6 +90,7 @@ internal fun ListenScreen(
     var dragging by remember { mutableStateOf<Float?>(null) }
     var sel by remember { mutableStateOf<Token?>(null) }
     var listenStarted by remember { mutableStateOf(0L) }
+    var lastTick by remember { mutableStateOf(0.0) }
     var dictCue by remember { mutableStateOf<Cue?>(null) }
     var dictation by remember { mutableStateOf("") }
     var dictResult by remember { mutableStateOf<DicteeResult?>(null) }
@@ -116,24 +117,39 @@ internal fun ListenScreen(
                 val t = v.currentPosition / 1000.0
                 val k = cueAt(cues, t)
                 val cue = cues.getOrNull(k)
-                if (cue != null && t >= cue.end) cues.getOrNull(k + 1)?.let { v.seekTo((it.start * 1000).toInt()) }
+                if (cue != null && t >= cue.end) {
+                    // The line we stopped on is over; replay the last line or start the next one.
+                    val target = cues.getOrNull(k + 1)?.start ?: cue.start
+                    val targetMs = (target * 1000).toInt()
+                    v.seekTo(targetMs)
+                    positionMs = targetMs.toLong()
+                    lastTick = target
+                }
             }
             v.start()
             if (listenStarted == 0L) listenStarted = System.currentTimeMillis()
+            lastTick = positionMs / 1000.0
             playing = true
             return
         }
         val mp = media ?: return
         if (autoPause) {
-            // The line we stopped on is over; resume at the start of the next one instead of pausing again.
+            // The line we stopped on is over; replay the last line or start the next one.
             val t = mp.currentPosition / 1000.0
             val k = cueAt(cues, t)
             val cue = cues.getOrNull(k)
-            if (cue != null && t >= cue.end) cues.getOrNull(k + 1)?.let { mp.seekTo((it.start * 1000).toInt()) }
+            if (cue != null && t >= cue.end) {
+                val target = cues.getOrNull(k + 1)?.start ?: cue.start
+                val targetMs = (target * 1000).toInt()
+                mp.seekTo(targetMs)
+                positionMs = targetMs.toLong()
+                lastTick = target
+            }
         }
         runCatching { mp.setPlaybackParams(mp.playbackParams.setSpeed(rate)) }
         mp.start()
         if (listenStarted == 0L) listenStarted = System.currentTimeMillis()
+        lastTick = positionMs / 1000.0
         playing = true
     }
 
@@ -141,11 +157,13 @@ internal fun ListenScreen(
         if (videoUri != null) {
             video?.seekTo(ms.toInt())
             positionMs = ms
+            lastTick = ms / 1000.0
             return
         }
         val mp = media ?: return
         mp.seekTo(ms.toInt())
         positionMs = ms
+        lastTick = ms / 1000.0
     }
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -160,6 +178,7 @@ internal fun ListenScreen(
                 listenStarted = 0
                 positionMs = 0
                 durationMs = 0
+                lastTick = 0.0
                 val mime = context.contentResolver.getType(uri)
                 if (mime?.startsWith("video/") == true) {
                     videoUri = uri
@@ -218,16 +237,20 @@ internal fun ListenScreen(
                 break
             }
             positionMs = position
+            val t = positionMs / 1000.0
+            val previous = lastTick
+            lastTick = t
             val stillPlaying = if (mp != null) mp.isPlaying else v?.isPlaying == true
             if (!stillPlaying) {
                 playing = false
                 countListen()
                 break
             }
-            if (autoPause) {
-                val t = positionMs / 1000.0
-                val cue = cues.getOrNull(cueAt(cues, t))
-                if (cue != null && t >= cue.end) pause()
+            // Pause at the end of any line, including back-to-back cues; ignore seek jumps.
+            if (autoPause && t > previous && t - previous <= 0.6 &&
+                cues.any { it.end > previous && it.end <= t }
+            ) {
+                pause()
             }
             delay(120)
         }

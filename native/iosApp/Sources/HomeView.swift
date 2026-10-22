@@ -115,11 +115,11 @@ struct HomeView: View {
             step("read", "Read something", "A story, a classic or a Bridge text") { tab = 1 }
             step("speak", "Speak aloud", "Read a sentence aloud or talk with Pluton") {
                 speakMode = 0
-                tab = 2
+                tab = 3
             }
             step("write", "Write a little", "One paragraph, then one correction") {
                 speakMode = 2
-                tab = 2
+                tab = 3
             }
             if model.accuracy >= 0 && suggested != Int(model.pace.perRun) {
                 Text("Recent reviews: \(Int(model.accuracy * 100))%. Try \(suggested) new words per run.")

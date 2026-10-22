@@ -126,6 +126,22 @@ final class AppModel: ObservableObject {
         bridge.tokenize(text: body, forms: forms)
     }
 
+    func parseCues(_ text: String) -> [Cue] {
+        bridge.parseCues(text: text)
+    }
+
+    func cueIndex(_ cues: [Cue], at time: Double) -> Int {
+        Int(bridge.cueAt(cues: cues, t: time))
+    }
+
+    func gradeDictee(_ typed: String, _ sentence: String) -> DicteeResult {
+        bridge.gradeDictee(typed: typed, sentence: sentence)
+    }
+
+    func dicteeScore(_ result: DicteeResult) -> Int {
+        Int(bridge.dicteeScore(result: result))
+    }
+
     private var bridgeCache: [String: [EnglishToken]] = [:]
 
     func bridgeTokens(_ body: String) -> [EnglishToken] {
@@ -248,6 +264,26 @@ final class AppModel: ObservableObject {
             .filter { statusCode(for: $0.lemma) == 0 }
             .prefix(40)
             .map { $0.lemma }
+    }
+
+    func progressReport() -> ProgressReport {
+        let path = self.path()
+        let stageLevel = Int(path.current) < path.stages.count ? path.stages[Int(path.current)].stage.level : "C1"
+        return bridge.progressReport(
+            cards: Array(cards.values),
+            words: words,
+            stats: stats,
+            read: Array(read),
+            classicTitles: shelf.filter { $0.lang == "fr" }.map { $0.title },
+            bridgeTitles: shelf.filter { $0.lang != "fr" }.map { $0.title },
+            accuracy: accuracy,
+            canDoDone: Array(Set(bridge.canDoDone(store: store))),
+            stageLevel: stageLevel
+        )
+    }
+
+    func setCanDo(_ id: String, _ done: Bool) -> [String] {
+        bridge.setCanDo(store: store, id: id, done: done)
     }
 
     func grammarFocusLabel() -> String? {

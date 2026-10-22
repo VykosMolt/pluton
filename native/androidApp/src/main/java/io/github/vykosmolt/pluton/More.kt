@@ -44,12 +44,14 @@ import io.github.vykosmolt.pluton.core.GrammarTopic
 import io.github.vykosmolt.pluton.core.Pace
 import io.github.vykosmolt.pluton.core.PathState
 import io.github.vykosmolt.pluton.core.STAGES
+import io.github.vykosmolt.pluton.core.ShelfText
 import io.github.vykosmolt.pluton.core.Store
 import io.github.vykosmolt.pluton.core.Word
 import io.github.vykosmolt.pluton.core.conjKey
 import io.github.vykosmolt.pluton.core.createEmptyCard
 import io.github.vykosmolt.pluton.core.gramKey
 import io.github.vykosmolt.pluton.core.isWord
+import io.github.vykosmolt.pluton.core.progressReport
 import io.github.vykosmolt.pluton.core.subject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -58,7 +60,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private enum class Section { Hub, Path, Words, Verbs, Grammar, Settings }
+private enum class Section { Hub, Progress, Path, Words, Verbs, Grammar, Settings }
 
 /** The reference shelf: conjugation tables and grammar topics, both open from day one. */
 @Composable
@@ -69,6 +71,7 @@ internal fun MoreScreen(
     cards: SnapshotStateMap<String, CardState>,
     store: Store,
     path: PathState,
+    shelf: List<ShelfText>,
     pace: Pace,
     onPace: (Pace) -> Unit,
     ai: AiConfig?,
@@ -86,12 +89,39 @@ internal fun MoreScreen(
     }
     BackHandler(enabled = section != Section.Hub) { section = Section.Hub }
     when (section) {
+        Section.Progress -> {
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            val stats = store.stats(today)
+            val read = stats.read.toSet()
+            ProgressScreen(
+                report = progressReport(
+                    cards = cards.values.toList(),
+                    words = words,
+                    stats = stats,
+                    read = read,
+                    classicTitles = shelf.filter { it.lang == "fr" }.map { it.title }.toSet(),
+                    bridgeTitles = shelf.filter { it.lang != "fr" }.map { it.title }.toSet(),
+                    accuracy = store.recentAccuracy(),
+                    canDoDone = store.canDoDone(),
+                    stageLevel = path.stages.getOrNull(path.current)?.stage?.level ?: "C1",
+                ),
+                store = store,
+                onBack = { section = Section.Hub },
+                modifier = modifier,
+            )
+        }
         Section.Hub -> Column(
             modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("More", fontSize = 30.sp, fontWeight = FontWeight.Black)
             Text("Reference and practice, all open from day one.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Card(Modifier.fillMaxWidth().clickable { section = Section.Progress }) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Progress", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text("Level estimate, can-do checks and milestones", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             Card(Modifier.fillMaxWidth().clickable { section = Section.Path }) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Path", fontSize = 22.sp, fontWeight = FontWeight.Bold)

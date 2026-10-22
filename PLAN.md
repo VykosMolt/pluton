@@ -457,3 +457,17 @@ emulator/device, so the APK is built but not launched.
   disable Hear/Play while recording; Android permission grants resume the pending action; Sounds' "Next pair" is
   gated on TTS; iOS French-voice errors are surfaced; the Sounds test now asserts the exact nine ids and distinct
   pairs. Verified: 104 shared JVM tests, 22 Android JVM tests, 0 failures; APK builds; Swift syntax-clean.
+- 2026-10-22: P3 assessment/polish slice. Shared `Progress.kt` computes a broad receptive CEFR range from graduated
+  words, last-30-review accuracy, stage can-do statements, and milestones (words, reading, classics, Bridge texts,
+  listening hours, recordings, talk, writing). Can-do ticks persist in local meta (`cando`). Android More→Progress and
+  iOS More→Progress show the report; no accounts, no leaderboards. Tests: CEFR bands, report counts/milestones, and an
+  Android Robolectric Progress screen test. Verified: 107 shared JVM tests, 23 Android JVM tests, 0 failures; APK
+  builds; Swift syntax-clean. The can-do tick round-trip has its own Store test.
+- 2026-10-22: iOS Listen parity. `IosBridge` now exposes `parseCues`/`cueAt`; a new `ListenView` plays a local
+  audio/video file through `AVPlayer` (bare `AVPlayerLayer` so the app owns the controls), reads `.srt`/`.vtt`,
+  shows the tapped/coloured current line, jumps by line, supports 0.75–1.25× and pause-after-line, runs a
+  dictogloss, and counts real playback seconds as listening. The tab sits between Read and Speak; Home's Speak/Write
+  shortcuts and last-tab restore were renumbered. Also fixed Android's resume-after-auto-pause on the last subtitle
+  line (replay that line instead of pausing instantly). Verified: 107 shared JVM tests, 23 Android JVM tests,
+  0 failures; APK builds; Swift files parse clean. CI run 39741005344 (commit `cc6dda09`) was green for both the
+  unsigned-IPA build and the simulator launch; the Listen changes are pending their first CI compile.

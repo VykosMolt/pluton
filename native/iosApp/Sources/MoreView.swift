@@ -9,6 +9,9 @@ struct MoreView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Progress") {
+                    NavigationLink { ProgressView() } label: { Label("Progress", systemImage: "chart.bar") }
+                }
                 Section("Reference") {
                     NavigationLink { PathView() } label: { Label("Path", systemImage: "map") }
                     NavigationLink { WordsView() } label: { Label("Words · \(model.cards.count)", systemImage: "text.book.closed") }

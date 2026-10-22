@@ -59,6 +59,8 @@ class IosBridge {
         io.github.vykosmolt.pluton.core.buildRun(store.cards(), words, now, newToday, perRun = pace.perRun, perDay = pace.perDay)
 
     fun tokenize(text: String, forms: Map<String, String>): List<Token> = io.github.vykosmolt.pluton.core.tokenize(text, forms, FRENCH_ELISION)
+    fun parseCues(text: String): List<Cue> = io.github.vykosmolt.pluton.core.parseCues(text)
+    fun cueAt(cues: List<Cue>, t: Double): Int = io.github.vykosmolt.pluton.core.cueAt(cues, t)
     fun coverage(tokens: List<Token>, cards: Map<String, CardState>, words: Map<String, Word>): Coverage =
         io.github.vykosmolt.pluton.core.coverage(tokens) { io.github.vykosmolt.pluton.core.status(cards[it], words[it]) }
     fun unlockList(tokens: List<Token>, cards: Map<String, CardState>, words: Map<String, Word>): List<String> =
@@ -141,6 +143,29 @@ class IosBridge {
     fun lastTab(store: Store): String? = store.lastTab()
     fun saveLastTab(store: Store, tab: String) = store.saveLastTab(tab)
     fun planDone(store: Store, day: String): List<String> = store.planDone(day).toList()
+    fun canDoDone(store: Store): List<String> = store.canDoDone().toList()
+    fun setCanDo(store: Store, id: String, done: Boolean): List<String> = store.setCanDo(id, done).toList()
+    fun progressReport(
+        cards: List<CardState>,
+        words: Map<String, Word>,
+        stats: Stats,
+        read: List<String>,
+        classicTitles: List<String>,
+        bridgeTitles: List<String>,
+        accuracy: Double,
+        canDoDone: List<String>,
+        stageLevel: String,
+    ): ProgressReport = io.github.vykosmolt.pluton.core.progressReport(
+        cards,
+        words,
+        stats,
+        read.toSet(),
+        classicTitles.toSet(),
+        bridgeTitles.toSet(),
+        accuracy.takeIf { it >= 0.0 },
+        canDoDone.toSet(),
+        stageLevel,
+    )
     fun practiceDays(store: Store): List<String> = store.practiceDays().toList()
     fun markPlanDone(store: Store, day: String, step: String): List<String> = store.markPlanDone(day, step).toList()
     fun unmarkPlanDone(store: Store, day: String, step: String): List<String> = store.unmarkPlanDone(day, step).toList()
