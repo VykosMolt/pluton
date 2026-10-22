@@ -373,19 +373,23 @@ class StoreTest {
         store.saveWriting("Raconte", "je suis alle", result, 1000)
         val id = store.corrections().single().id
         val start = 10_000L
-        val first = store.reviewError(id, "right", start)!!
-        assertEquals(1, first.reps)
-        assertEquals(start + 86_400_000L, first.nextDue)
-        assertTrue(!first.resolved)
-
         val reset = store.reviewError(id, "wrong", start)!!
         assertEquals(0, reset.reps)
         assertEquals(start, reset.nextDue)
 
-        var last = reset
-        repeat(6) { last = store.reviewError(id, "right", start)!! }
-        assertEquals(6, last.reps)
+        val first = store.reviewError(id, "right", start)!!
+        assertEquals(1, first.reps)
+        assertEquals(start + 86_400_000L, first.nextDue)
+        assertTrue(!first.resolved)
+        assertEquals(1, store.reviewError(id, "right", start)!!.reps) // not due yet: no farming
+
+        var last = first
+        var guard = 0
+        while (!last.resolved && guard++ < 10) {
+            last = store.reviewError(id, "right", store.corrections().single().nextDue)!!
+        }
         assertTrue(last.resolved)
+        assertEquals(6, last.reps)
         assertTrue(store.reviewError(id, "wrong", start)!!.resolved) // retired stays retired
         assertTrue(errorDrills(store.corrections(), start).isEmpty())
     }
