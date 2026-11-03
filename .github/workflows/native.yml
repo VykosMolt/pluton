@@ -38,6 +38,20 @@ jobs:
           "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
 
+      # Android's unit tests decode the real bundled deck, story, classics and conjugation clips.
+      - name: Fetch the deployed data bundle
+        run: |
+          set -e
+          git fetch --depth=1 origin gh-pages
+          mkdir -p public/data
+          git archive origin/gh-pages data/fr | tar -x -C public
+          test -f public/data/fr/words.json
+          test -d public/data/fr/audio
+
       - name: Shared JVM tests
         working-directory: native
         run: ./gradlew :shared:jvmTest --stacktrace --no-daemon
+
+      - name: Android unit tests
+        working-directory: native
+        run: ./gradlew :androidApp:testDebugUnitTest --stacktrace --no-daemon
