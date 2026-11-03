@@ -26,12 +26,14 @@ struct ReadView: View {
     private enum ReadSheet: Identifiable {
         case reading(Reading)
         case add
+        case story
         case bridge(ShelfText)
 
         var id: String {
             switch self {
             case .reading(let reading): return "reading-\(reading.id)"
             case .add: return "add"
+            case .story: return "story"
             case .bridge(let text): return "bridge-\(text.title)"
             }
         }
@@ -41,7 +43,11 @@ struct ReadView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Library").font(.largeTitle.bold())
+                    HStack {
+                        Text("Library").font(.largeTitle.bold())
+                        Spacer()
+                        Button { sheet = .story } label: { Label("Story", systemImage: "sparkles") }
+                    }
                     Text("Everything is open. The colours show the words you know.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -102,6 +108,9 @@ struct ReadView: View {
                     sheet = nil
                 }
                 .environmentObject(model)
+            case .story:
+                StoryGeneratorView()
+                    .environmentObject(model)
             case .bridge(let text):
                 BridgeView(text: text)
                     .environmentObject(model)
@@ -178,6 +187,10 @@ private struct ReadingView: View {
     @SwiftUI.State private var addable: [String] = []
     @SwiftUI.State private var contBusy = false
     @SwiftUI.State private var contError = ""
+    @SwiftUI.State private var retellText = ""
+    @SwiftUI.State private var retellBusy = false
+    @SwiftUI.State private var retellError = ""
+    @SwiftUI.State private var retellResult: RetellFeedback?
     let reading: Reading
 
     private var coverage: Coverage { model.coverage(reading.body) }
@@ -279,6 +292,44 @@ private struct ReadingView: View {
                         Button("Mark as read") { model.addRead(reading.id) }
                             .buttonStyle(.bordered)
                     }
+                    if reading.questions.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Did you understand it?").font(.headline)
+                            if !AIClient.ready() {
+                                Text("Connect an AI with your own key and Pluton will check your retelling. Reading stays open without one.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            } else if let result = retellResult {
+                                Text("Pluton's score: \(result.score) / 5").bold()
+                                Text(result.feedback)
+                                Button("Try again") {
+                                    retellResult = nil
+                                    retellText = ""
+                                }
+                                .buttonStyle(.bordered)
+                            } else {
+                                Text("Tell Pluton what this text was about, in your own words. He checks the meaning, not your grammar.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                TextEditor(text: $retellText)
+                                    .frame(minHeight: 90)
+                                    .overlay(alignment: .topLeading) {
+                                        if retellText.isEmpty {
+                                            Text("De quoi parle ce texte ?").foregroundStyle(.secondary).padding(.top, 8)
+                                        }
+                                    }
+                                Button(retellBusy ? "Reading…" : "Ask Pluton") { askRetell() }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(retellBusy || retellText.trimmingCharacters(in: .whitespacesAndNewlines).count < 10)
+                                if !retellError.isEmpty {
+                                    Text(retellError).font(.footnote).foregroundStyle(.red)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    }
                     if reading.userTextId != nil {
                         Button("Delete this text", role: .destructive) { confirmDelete = true }
                     }
@@ -341,6 +392,29 @@ private struct ReadingView: View {
                 contError = error.localizedDescription
             }
             contBusy = false
+        }
+    }
+
+    private func askRetell() {
+        guard AIClient.ready(), !retellBusy else { return }
+        retellBusy = true
+        retellError = ""
+        Task {
+            do {
+                let body = String(reading.body.prefix(6000))
+                let reply = try await AIClient.chat(
+                    system: model.bridge.retellPrompt(),
+                    turns: [ChatTurn(role: "user", content: "TEXT:\n\(body)\n\nLEARNER'S RETELLING:\n\(retellText.trimmingCharacters(in: .whitespacesAndNewlines))")],
+                    effort: "medium"
+                )
+                guard let parsed = model.bridge.parseRetell(reply: reply) else {
+                    throw AIError.message("The model returned an unexpected format. Try again.")
+                }
+                retellResult = parsed
+            } catch {
+                retellError = error.localizedDescription
+            }
+            retellBusy = false
         }
     }
 
@@ -472,6 +546,71 @@ struct WordDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
         .presentationDetents([.medium])
+    }
+}
+
+private struct StoryGeneratorView: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @SwiftUI.State private var busy = false
+    @SwiftUI.State private var error = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Pluton writes 150–250 words at your level, recycling words you know and weaving in a few you are learning. The story lands in Your texts.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                if !AIClient.ready() {
+                    Section {
+                        Text("Connect an AI with your own key in Settings first. Reading stays open without one.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Section {
+                        Button(busy ? "Writing…" : "Write a story") { generate() }
+                            .disabled(busy)
+                        if !error.isEmpty {
+                            Text(error).font(.footnote).foregroundStyle(.red)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("A story at your level")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func generate() {
+        guard !busy else { return }
+        busy = true
+        error = ""
+        Task {
+            do {
+                let system = model.bridge.readerSystem(
+                    words: Int32(model.vocab()),
+                    known: model.knownWords(),
+                    targets: model.targetWords()
+                )
+                let reply = try await AIClient.chat(system: system, turns: [ChatTurn(role: "user", content: "Write a new story for me.")])
+                guard let story = model.bridge.parseStory(reply: reply) else {
+                    throw AIError.message("The model returned an unexpected story. Try again.")
+                }
+                model.addText(title: story.title, body: story.body)
+                dismiss()
+            } catch {
+                error = error.localizedDescription
+            }
+            busy = false
+        }
     }
 }
 

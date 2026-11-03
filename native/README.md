@@ -96,9 +96,9 @@ cd iosApp && xcodegen generate && open Pluton.xcodeproj
 
 A simulator build needs Xcode, not a paid account; device/store builds need the Apple Developer Program.
 **The Swift sources cannot be compiled on this Linux machine.** The GitHub Actions workflow builds the unsigned IPA
-and installs/launches it in a simulator on macOS; the run for `cc6dda09` was green. The Listen tab is the first
-change that run did not compile. See `iosApp/README.md` for the feature list, build prerequisites and known gaps
-(story generator/retell and the writing live-tools remain Android-first).
+and installs/launches it in a simulator on macOS; see `iosApp/README.md` for the feature list, build prerequisites and
+known gaps. The story/retell UI is now mirrored on iOS; device audio and permission behavior still need a phone or
+simulator pass.
 
 ## Status
 

@@ -58,6 +58,6 @@ the Listen tab is the first change it did not compile.
 Everything is local: no account, no sync server. Progress is in the app's SQLite store and the AI key is in the
 Keychain, never in UserDefaults or a backup.
 
-Known gaps versus Android: no story generator/retell, and no bundled sentence audio (TTS stands in). Conjugation
-and grammar practice now use the same run queue as Android; the Swift sources for that path are awaiting the next
-macOS CI compile.
+Known gaps versus Android: no bundled sentence audio (TTS stands in). Story generation, retell checks,
+conjugation and grammar practice now use the same prompts and run queue as Android; the macOS CI build is the
+verification gate for the Swift changes.
