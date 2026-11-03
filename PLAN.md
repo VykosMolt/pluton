@@ -605,3 +605,11 @@ emulator/device, so the APK is built but not launched.
   33 Android JVM tests, `scripts/check-data.py` (20,000 words, 17,650 referenced clips), and the full 45-check
   Chromium smoke (accounts skipped: no local Supabase). Swift files parse with tree-sitter; iOS compilation still
   needs macOS CI.
+- 2026-11-03: release and parity close-out. Web Le Chemin now has separate Talk and Speak bonus goals matching
+  native; a Speak goal opens Talk directly in Speaking mode. Web reading uses the native 98% comfort/queue target.
+  iOS gained the graded story generator and retell check for classics/user texts, plus conjugation/grammar
+  practice cards. The web-to-native backup hand-off is unit-tested and smoke-tested. Fixed the Node 22 test glob
+  and the native CI Android SDK setup; all three new workflows (Web, Native shared, iOS) are green. Deployed
+  `fac723fc` to gh-pages: live story data has 12 chapters, and Pages is serving the new bundle. Follow-up checks:
+  66 web tests, 135 shared JVM tests, 33 Android JVM tests, 45-check Chromium smoke, data check; iOS build and
+  simulator smoke green on macOS CI.

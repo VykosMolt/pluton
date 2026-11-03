@@ -130,6 +130,8 @@ The release-safety pass fixed the issues that could be fixed and verified locall
 - Migration: the web Settings screen now writes a native backup version 4, and a JVM round-trip test imports the
   generated fixture into the shared store. The PWA-to-native hand-off no longer requires a separate script.
 
-Still open before a release: commit the review work, deploy the 12-chapter bundle and current data, run
-device/simulator checks for the new iOS drill path, and make smoke a required CI check. iOS compilation and
-real-device audio/permission behavior were not available on this Linux machine.
+Released on 2026-11-03: the review work is committed and pushed, `gh-pages` serves the 12-chapter/current-data
+bundle, and the new Web, Native shared and iOS workflows are green. The iOS story generator/retell and
+conjugation/grammar run branches compiled and launched in the simulator. Remaining: real-device audio, permissions,
+TTS/ASR and interruption behavior; live Supabase account integration; and making the Chromium smoke a required CI
+check (it passes locally).
