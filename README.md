@@ -47,23 +47,11 @@ There is no Pluton server: the browser calls the provider directly, the key is s
 never included in backups. The AI also writes graded stories from your known words and checks your retelling of a
 text you read.
 
-## Accounts (optional)
+## No accounts
 
-Settings → Account. Sign in with a 6-digit code sent by email (no password) and your progress syncs between devices:
-cards, reviews, your texts, settings, and the stats (each device keeps its own counters; the app adds them up, so
-two devices never overwrite each other). The app stays local-first and works signed out or offline. The AI key never
-syncs. "Delete my account" removes the account and everything stored with it on the server.
-
-The backend is [Supabase](https://supabase.com) (Postgres with row-level security + email-code auth); the whole
-server side is `supabase/` (one table, two functions). To run your own:
-
-```bash
-npx supabase login && npx supabase link --project-ref <ref> && npx supabase db push
-# in the dashboard: Auth → URL configuration → site URL = where the app is served; Auth → SMTP for real email volume
-VITE_SUPABASE_URL=https://<ref>.supabase.co VITE_SUPABASE_ANON_KEY=<publishable key> npm run deploy
-```
-
-Without those two variables the account section is hidden and nothing loads the Supabase SDK.
+Pluton has no account system, no server and no sync. Progress, texts, review history, settings and the AI key stay on
+the device. Move a device by using **Download backup** (or **Download for native app** when moving to the native apps)
+and restoring the file on the other device.
 
 ## Run it
 
@@ -83,8 +71,6 @@ npm run smoke                # builds, then drives the real app in headless Chro
                              # library + chapter quizzes, generated story + retelling, speaking record/playback,
                              # bridge, listening, placement, and the AI features against a mock provider
                              # (first time: npx playwright install chromium)
-                             # with a local Supabase (npx supabase start) and .env.smoke.local holding its
-                             # VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY, also: sign-in, two-device sync, account deletion
 ```
 
 `data/fr/build.py` also asserts on its own output (deck size, unambiguous gaps, every audio clip exists, known
@@ -161,11 +147,9 @@ src/lib/tutor.js      what Pluton asks the AI (levels, prompts)
 src/lib/path.js       the ten stages, their goals, and today's next step (tested)
 data/fr/story.json    Pluton's story, hand-written, one chapter per stage
 src/lib/ai.js         bring-your-own-key client (Anthropic SDK + OpenAI-compatible)
-src/lib/db.js         IndexedDB: cards, append-only review log, texts, meta (+ change stamps for sync)
+src/lib/db.js         IndexedDB: cards, append-only review log, texts, meta
 src/lib/native-backup.js  web export → native backup version 4 (cards, reviews, texts, writings, pace)
-src/lib/sync.js       accounts: email-code sign-in, pull/push against supabase/ (merge rules tested)
-src/lib/stats.js      per-device stats combined into the totals the app shows (tested)
-supabase/             the account backend: config, the records table + push/delete_account functions
+src/lib/stats.js      local counters, streak and today's new-word budget (tested)
 src/lib/sound.js      clips + sound effects through one AudioContext
 src/lib/deck.js       card changes outside runs (add, mark known)
 src/*.svelte          App, Welcome, Run, Reader, Speak, Bridge, Listen, Talk, Words, Settings, Cat + small shared pieces

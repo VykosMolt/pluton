@@ -17,7 +17,6 @@
   import Welcome from './Welcome.svelte'
   import { setActive } from './lib/ai.js'
   import { combine, daysOf } from './lib/stats.js'
-  import * as sync from './lib/sync.js'
   import { toNativeBackup } from './lib/native-backup.js'
   import { Capacitor } from '@capacitor/core'
   import { Filesystem, Directory, Encoding } from '@capacitor/filesystem'
@@ -37,7 +36,6 @@
   let listenNow = $state(false)
   let celebrate = $state(null) // index of the stage just reached
   let stats = $state({ points: 0, bestCombo: 0, newDay: null, newCount: 0, days: [] }) // this device's record
-  let others = $state.raw([]) // other devices' records, from account sync
   let view = $state('home')
   let now = $state(new Date())
   let error = $state('')
@@ -69,16 +67,14 @@
       grammar = gr
       for (const c of cs) cards.set(c.lemma, c)
       if (st) stats = st
-      others = await otherStats()
       texts = ts
-      syncSoon()
     } catch (e) {
       error = `Pluton couldn't load his words (${e.message}). Check your connection and reload.`
     }
   })
 
   const today = $derived(dayOf(now))
-  const total = $derived(combine(stats, others, today)) // what the app shows: every device's progress
+  const total = $derived(combine(stats, today))
   const newToday = $derived(total.newToday)
   const statusOf = (l) => status(cards.get(l), words.get(l))
   const TENSES = LANG.tenses.map((t) => t.id)
@@ -201,7 +197,6 @@
       summary = { ...s, levelUp: after > before ? after : 0 }
     }
     await db.put('meta', $state.snapshot(stats), 'stats')
-    syncSoon()
   }
 
   async function listened(seconds) {
@@ -213,37 +208,6 @@
     stats[kind] = (stats[kind] ?? 0) + 1
     await db.put('meta', $state.snapshot(stats), 'stats')
   }
-
-  // Account sync: other devices' stats live under meta "stats:<device>".
-  async function otherStats() {
-    return (await db.entries('meta')).filter(([k]) => k.startsWith('stats:')).map(([, v]) => v)
-  }
-
-  /** Re-read everything a sync may have changed (not during a run: it holds its own queue). */
-  async function reload() {
-    if (view === 'run') return
-    const [cs, ts, st, settings] = await Promise.all([db.getAll('cards'), db.getAll('texts'), db.get('meta', 'stats'), db.get('meta', 'settings')])
-    cards.clear()
-    for (const c of cs) cards.set(c.lemma, c)
-    texts = ts
-    if (st) stats = st
-    others = await otherStats()
-    pace = { ...pace, ...settings }
-    onboarded = onboarded || !!(await db.get('meta', 'onboarded')) || cs.length > 0
-    now = new Date()
-  }
-
-  function syncSoon() {
-    // A run keeps its own queue and card snapshots. Applying a pull mid-run could make the next answer
-    // overwrite a newer card state; finish() calls syncSoon again once the run has closed.
-    if (view === 'run') return
-    if (sync.hasSession()) sync.sync().then((r) => r && reload()).catch((e) => console.warn('sync:', e.message))
-  }
-  onMount(() => {
-    const hidden = () => document.visibilityState === 'hidden' && syncSoon()
-    document.addEventListener('visibilitychange', hidden)
-    return () => document.removeEventListener('visibilitychange', hidden)
-  })
 
   async function saveFile(json, name) {
     if (Capacitor.isNativePlatform()) {
@@ -284,8 +248,7 @@
 {:else if !words}
   <div class="loading"><Cat mood="sleep" size={100} /><p class="muted">Chargement…</p></div>
 {:else if !onboarded}
-  <Welcome {words} {cards} ondone={() => (onboarded = true)} account={sync.configured}
-    onaccount={() => { onboarded = true; view = 'settings' }} />
+  <Welcome {words} {cards} ondone={() => (onboarded = true)} />
 {:else if view === 'run'}
   <Run {words} {forms} {cards} {conj} {grammar} {newToday} {pace} onexit={finish} />
 {:else}
@@ -373,7 +336,7 @@
   {:else if view === 'talk'}
     <Talk {ai} {words} {forms} {cards} {statusOf} vocab={counts.known + counts.learning} onsettings={() => (view = 'settings')} oncount={count} initialMode={talkMode} />
   {:else if view === 'settings'}
-    <Settings bind:ai bind:pace onbackup={backup} onnative={nativeBackup} onrestore={restore} onsynced={reload} />
+    <Settings bind:ai bind:pace onbackup={backup} onnative={nativeBackup} onrestore={restore} />
   {:else}
     <Words {words} {cards} {now} {conj} {grammar} bind:tab={wordsTab} />
   {/if}

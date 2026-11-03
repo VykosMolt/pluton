@@ -8,7 +8,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
-// SQLite persistence. Cards are derived state; the review table is append-only and will be unioned for sync.
+// SQLite persistence. Cards are derived state; the review table is append-only for deterministic replay and backups.
 // Writes are synchronous and tiny; move them to a writer coroutine if UI profiling ever shows jank.
 // ponytail: synchronous SQLite writes on the caller's thread.
 
@@ -38,7 +38,6 @@ data class TextRecord(
     val body: String,
     val added: Long,
     val updated: Long = added,
-    val remoteKey: String? = null,
 )
 
 /** A saved writing attempt and its first correction. `revised` is the learner's second draft. */
@@ -73,24 +72,9 @@ data class CorrectionRecord(
 @Serializable
 data class Pace(val perRun: Int = NEW_PER_RUN, val perDay: Int = NEW_PER_DAY)
 
-/** Sync bookkeeping: one device id forever, plus the watermarks for pull/push. */
-@Serializable
-data class SyncState(
-    val device: String = "",
-    val pulledAt: Long = 0,
-    val pushedAt: Long = 0,
-    val logPushed: Long = 0,
-)
-
-private const val DEVICE_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
-
-private fun newDeviceId(): String = buildString {
-    repeat(8) { append(DEVICE_ALPHABET[kotlin.random.Random.nextInt(DEVICE_ALPHABET.length)]) }
-}
-
 private const val BACKUP_VERSION = 4
 
-/** Backup file contents. Credentials and sync bookkeeping are deliberately excluded. */
+/** Backup file contents. Credentials are deliberately excluded. */
 @Serializable
 data class BackupText(
     val title: String,
@@ -218,10 +202,7 @@ class Store(private val db: PlutonDb) {
     }
 
     fun deleteCard(lemma: String, now: Long = nowMillis()) {
-        db.transaction {
-            db.plutonQueries.insertTombstone("cards", lemma, now)
-            db.plutonQueries.deleteCard(lemma)
-        }
+        db.plutonQueries.deleteCard(lemma)
     }
 
     private fun writeCard(card: CardState, updated: Long) {
@@ -438,7 +419,7 @@ class Store(private val db: PlutonDb) {
     }
 
     fun texts(): List<TextRecord> = db.plutonQueries.selectAllTexts().executeAsList().map {
-        TextRecord(it.id, it.title, it.body, it.added, it.updated, it.remote_key)
+        TextRecord(it.id, it.title, it.body, it.added, it.updated)
     }
 
     fun addText(title: String, body: String, now: Long): TextRecord {
@@ -453,11 +434,7 @@ class Store(private val db: PlutonDb) {
     }
 
     fun deleteText(id: Long, now: Long = nowMillis()) {
-        val text = db.plutonQueries.selectTextById(id).executeAsOneOrNull()
-        db.transaction {
-            db.plutonQueries.insertTombstone("texts", text?.remote_key ?: id.toString(), now)
-            db.plutonQueries.deleteText(id)
-        }
+        db.plutonQueries.deleteText(id)
     }
 
     fun pace(): Pace {
@@ -551,85 +528,6 @@ class Store(private val db: PlutonDb) {
             if (backup.version >= 4) {
                 backup.pace?.let { savePace(it) }
                 db.plutonQueries.putMeta("practice", backup.practiceDays.joinToString(","))
-            }
-            // A restored device starts from scratch: old deletions must not wipe the account, and pulled records
-            // must be re-fetched. The device identity is kept.
-            db.plutonQueries.deleteAllTombstones()
-            val state = syncState()
-            db.plutonQueries.putMeta("_sync", json.encodeToString(state.copy(pulledAt = 0, pushedAt = 0, logPushed = 0)))
-        }
-    }
-
-    fun syncState(): SyncState {
-        val raw = db.plutonQueries.getMeta("_sync").executeAsOneOrNull()
-        val parsed = raw?.let { runCatching { json.decodeFromString<SyncState>(it) }.getOrNull() }
-        if (parsed != null && parsed.device.isNotBlank()) return parsed
-        val fresh = SyncState(device = newDeviceId())
-        db.plutonQueries.putMeta("_sync", json.encodeToString(fresh))
-        return fresh
-    }
-
-    fun saveSyncState(state: SyncState) = db.plutonQueries.putMeta("_sync", json.encodeToString(state))
-
-    fun syncCards(): List<SyncCard> = cards().map {
-        SyncCard(it.lemma, it.updated, it.known, it.added, it.fsrs, it.mined)
-    }
-
-    fun syncTexts(): List<SyncText> = texts().map {
-        SyncText(it.id, it.remoteKey, it.title, it.body, it.added, it.updated)
-    }
-
-    fun syncTombstones(): Map<String, Long> = db.plutonQueries.selectAllTombstones().executeAsList()
-        .associate { "${it.store}\t${it.key}" to it.at }
-
-    /** This device's own review rows (remote reviews are not pushed back). */
-    fun localLog(): List<Pair<Long, ReviewEntry>> = db.plutonQueries.selectLocalReviews().executeAsList().map {
-        it.id to ReviewEntry(it.lemma, it.rating.toInt(), it.mode, it.at, it.overridden != 0L)
-    }
-
-    /** Every review with its sync key: own rows by local id, pulled rows by their remote key. */
-    fun allLog(): List<Pair<String, ReviewEntry>> = db.plutonQueries.selectReviews().executeAsList().map {
-        val key = it.remote_key ?: it.id.toString()
-        key to ReviewEntry(it.lemma, it.rating.toInt(), it.mode, it.at, it.overridden != 0L)
-    }
-
-    /** Apply pulled ops in one transaction; deletions here are remote, so they don't create local tombstones. */
-    fun applySync(ops: List<SyncOp>) {
-        if (ops.isEmpty()) return
-        db.transaction {
-            for (op in ops) {
-                when (op) {
-                    is SyncOp.PutCard -> writeCard(
-                        CardState(op.card.lemma, op.card.fsrs, op.card.known, op.card.added, op.card.mined, op.card.updated),
-                        op.card.updated,
-                    )
-                    is SyncOp.DeleteCard -> db.plutonQueries.deleteCardSilent(op.lemma)
-                    is SyncOp.PutText -> {
-                        val t = op.text
-                        val existing = if (t.id != 0L) {
-                            db.plutonQueries.selectTextById(t.id).executeAsOneOrNull()
-                        } else {
-                            t.remoteKey?.let { db.plutonQueries.selectTextByRemote(it).executeAsOneOrNull() }
-                        }
-                        if (existing != null) {
-                            db.plutonQueries.updateRemoteText(t.title, t.body, t.updated, t.remoteKey, existing.id)
-                        } else {
-                            db.plutonQueries.insertRemoteText(t.title, t.body, t.added, t.updated, t.remoteKey)
-                        }
-                    }
-                    is SyncOp.DeleteText -> {
-                        if (op.localId != null) db.plutonQueries.deleteTextSilent(op.localId)
-                        else op.remoteKey?.let { db.plutonQueries.deleteTextByRemote(it) }
-                    }
-                    is SyncOp.PutLog -> db.plutonQueries.insertPulledReview(
-                        op.entry.lemma,
-                        op.entry.rating.toLong(),
-                        op.entry.mode,
-                        op.entry.at,
-                        if (op.entry.overridden) 1L else 0L,
-                        op.remoteKey,
-                    )
-                }
             }
         }
     }

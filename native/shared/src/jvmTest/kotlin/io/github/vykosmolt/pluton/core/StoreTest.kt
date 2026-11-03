@@ -89,7 +89,6 @@ class StoreTest {
         val undone = store.unmark("maison", 3000)
         assertNull(undone) // never reviewed -> deleted
         assertNull(store.card("maison"))
-        assertEquals(3000, store.syncTombstones()["cards\tmaison"])
         // The review log is append-only and independent of card deletion.
         store.addCard(word, "maison", null, 4000)
         val reviewedCard = store.card("maison")!!.copy(fsrs = store.card("maison")!!.fsrs.copy(state = State.Review, stability = 3.0))
@@ -233,9 +232,7 @@ class StoreTest {
             CardState("chat", createEmptyCard(3000).copy(state = State.Review)),
             ReviewEntry("chat", 3, "cloze", 3000),
         )
-        assertEquals(1, store.localLog().size) // the new remote_key column is usable
         store.deleteText(store.texts().single().id, 4000)
-        assertEquals(setOf("texts\t1"), store.syncTombstones().keys)
         store.saveWriting(
             "Raconte",
             "je suis alle",
@@ -245,71 +242,6 @@ class StoreTest {
         assertEquals(1, store.writings().size)
         assertEquals(1, store.corrections().size)
         assertEquals(1, store.reviewError(store.corrections().single().id, "right", 6000)?.reps)
-    }
-
-    @Test
-    fun syncTombstonesLogsAndStateRoundTrip() {
-        val store = store()
-        val state = store.syncState()
-        assertEquals(8, state.device.length)
-        assertEquals(state.device, store.syncState().device) // stable across calls
-        store.saveAnswer(
-            CardState("chat", createEmptyCard(1000).copy(state = State.Review), added = 1000),
-            ReviewEntry("chat", 3, "cloze", 1000),
-        )
-        store.addCard(Word("chien", pos = "noun", sentence = "Le chien dort.", form = "chien"), "chien", null, 2000)
-        val text = store.addText("Titre", "Corps", 3000)
-        store.deleteCard("chien", 4000)
-        store.deleteText(text.id, 5000)
-        assertEquals(mapOf("cards\tchien" to 4000L, "texts\t${text.id}" to 5000L), store.syncTombstones())
-        assertEquals(listOf("1"), store.localLog().map { it.first.toString() })
-        assertEquals(1, store.allLog().size)
-        assertEquals("1", store.allLog().single().first)
-    }
-
-    @Test
-    fun pulledOpsApplyWithoutLocalTombstones() {
-        val store = store()
-        store.applySync(
-            listOf(
-                SyncOp.PutCard(SyncCard("chat", 5000, added = 1000, fsrs = createEmptyCard(0).copy(reps = 2))),
-                SyncOp.PutText(SyncText(0, "dev2:7", "Theirs", "Texte", 1000, 7000)),
-                SyncOp.PutLog("dev2:1", ReviewEntry("chat", 3, "cloze", 6000)),
-            ),
-        )
-        assertEquals(2, store.card("chat")?.fsrs?.reps)
-        assertEquals(5000, store.card("chat")?.updated)
-        assertEquals(listOf("Theirs"), store.texts().map { it.title })
-        assertEquals("dev2:7", store.texts().single().remoteKey)
-        assertEquals(1, store.allLog().size)
-        // Pulling the same log again is ignored (unique remote key), and the remote text updates in place.
-        store.applySync(
-            listOf(
-                SyncOp.PutLog("dev2:1", ReviewEntry("chat", 3, "cloze", 6000)),
-                SyncOp.PutText(SyncText(0, "dev2:7", "Edited", "Texte", 1000, 8000)),
-            ),
-        )
-        assertEquals(1, store.allLog().size)
-        assertEquals(listOf("Edited"), store.texts().map { it.title })
-        assertEquals(1, store.texts().size)
-        // Remote deletions do not create tombstones of our own.
-        store.applySync(listOf(SyncOp.DeleteText(null, "dev2:7")))
-        assertEquals(emptyMap(), store.syncTombstones())
-        assertEquals(emptyList(), store.texts())
-    }
-
-    @Test
-    fun backupImportResetsSyncWatermarksButKeepsTheDevice() {
-        val store = store()
-        val state = store.syncState().copy(pulledAt = 1000, pushedAt = 2000, logPushed = 3)
-        store.saveSyncState(state)
-        store.addText("Keep", "Corps", 1)
-        store.import(store.export())
-        val reset = store.syncState()
-        assertEquals(state.device, reset.device)
-        assertEquals(0, reset.pulledAt)
-        assertEquals(0, reset.pushedAt)
-        assertEquals(0, reset.logPushed)
     }
 
     @Test

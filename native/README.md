@@ -152,8 +152,7 @@ texts survive restarts.
 live in the app's SQLite database; the AI key lives in private prefs (Android backup disabled) or the iOS Keychain
 and is excluded from the JSON backup. Speech recognition and text-to-speech are platform services (on-device or
 system-provided, depending on the device); only the recognized transcript is sent to the AI. The only network calls are the AI requests you trigger (and the media files
-you pick in Listen are read locally). The shared `Sync.kt` merge rules remain for reference but nothing in either
-app wires them up. As of the 2026-11-03 pass, 135 shared JVM tests and 33 Android JVM tests pass. The APK is 54 MB with 3,081 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
+you pick in Listen are read locally). As of the 2026-11-03 pass, 123 shared JVM tests and 33 Android JVM tests pass. The APK is 54 MB with 3,081 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
 core-library desugaring for `java.time` on minSdk 24.
 `AppLaunchTest` launches the real Activity under Robolectric on the JVM and verifies the deck/shelf assets, SQLite,
 Home (with the path stage), all five tabs, the story + classics list, the Your texts section, the Listen pickers, the

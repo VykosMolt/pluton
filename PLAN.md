@@ -23,9 +23,10 @@ made current from the map. Nothing is gated: chapters, classics, verbs (Verbs ta
   and Capacitor ships the plugins this app needs (share/files for backup, browser for external links) with SPM on
   iOS, so the iOS project can be generated and versioned from Linux. iOS still needs a Mac + Xcode to compile and
   an Apple Developer account to ship; Android builds anywhere with the SDK + JDK 21.
+- **No accounts or sync** (user, 2026-11-03): every platform is local-only. The Supabase backend, account UI and sync client were removed; backups and the web-to-native hand-off are the only device-transfer path.
 - **Vite + Svelte 5 (plain JS)** — least ceremony.
 - **Raw IndexedDB with a ~30-line wrapper** instead of Dexie — 4 stores, get/put/getAll is all we need.
-- **Append-only review log** (`log` store) next to derived card state — sync later = union logs + replay FSRS.
+- **Append-only review log** (`log` store) next to derived card state — kept for deterministic replay and backup, not sync.
 - **ts-fsrs** for scheduling. One card per lemma; exercise mode alternates cloze/dictation.
 - **Data**: Lexique 3.83 (frequency + form→lemma), Tatoeba fra-eng (sentences), kaikki Wiktionary (glosses),
   Piper `fr_FR-siwis-medium` TTS → mp3. Built by `data/fr/build.py`, output in `public/data/fr/` (generated, gitignored).
@@ -59,9 +60,6 @@ made current from the map. Nothing is gated: chapters, classics, verbs (Verbs ta
   exists. No pronunciation scoring yet; that needs a real ASR/phoneme model.
 - **Unlimited graded input** (2026-10-21): the AI writes 150–250-word stories at the learner's level from their known
   words plus a few they are learning; saved like any text, with browser-voice read-along.
-- **Sync pulls replay the log** (2026-10-21): two devices can review the same card offline; the pulled card is rebuilt
-  by replaying the unioned review log deterministically (no fuzz), not by trusting one device's last write. Text rows
-  compare `updated` regardless of which device created them, so edits/deletes of another device's text apply.
 
 ## MVP checklist
 - [x] data/fr/build.py → words.json (10k lemmas, 9816 glossed; 1930 with sentence+translation+audio), forms.json, 3.7k mp3s
@@ -106,27 +104,17 @@ per-skill level estimate from real performance.
 - Reading: more static classics, current news.
 - Second language + picker; precache all audio for full offline listening.
 - Native apps: the Swift/Kotlin rewrite is in phase 0 (see "Native rewrite"); the Capacitor apps remain the
-  store-ready stopgap. Still missing on native: the real deck/FSRS/storage, audio/speech, store accounts/listing.
+  store-ready stopgap. Still missing on native: the real deck/FSRS/storage, audio/speech, store listings.
 - Not verified yet: the native apps on a real device (no device/emulator here, and iOS cannot be built on Linux),
   real AI keys (mock only), Safari/WebKit engine (can't run on Arch), native-speaker review of the story.
 
-## Accounts / sync (2026-10-18)
-Done: grammar topics + mistake cards (commit abb7248e). Accounts (committed; verified against the local stack):
-- `src/lib/sync.js`: email-code sign-in (Supabase OTP), pull by `synced_at` (60 s overlap, 1000-row pages), push via
-  the `push(lang, batch)` RPC (server keeps the newer `updated_at`). Card rows are last-write-wins on the server but
-  rebuilt from the unioned log on pull (2026-10-21); texts last-write-wins by `updated`, whatever device created them;
-  log keyed `<device>:<n>`; texts get `<device>:<id>` keys; deletes are tombstones (meta `_tomb`);
-  meta keys stamped in `_stamps`; the AI key and sync bookkeeping never leave the device or enter backups.
-- `src/lib/stats.js`: each device writes only its own `stats:<device>`; totals combine (sums, maxes, union of read
-  texts, streak from the union of run days). `records` has a `lang` column, so more languages share one table.
-- Settings → Account (`src/Account.svelte`), "I have an account" on the welcome screen. Hidden without
-  VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY.
-- Unit tests for the merge (sync.test.js, stats.test.js).
-Verification: on this machine Docker's published ports reset every host connection (the containers answer each other
-fine), so the account smoke runs in a container on `supabase_network_pluton` (image `pluton-smoke:local`: node 22 +
-Playwright Chromium + ffmpeg) with a TCP forwarder for 127.0.0.1:54321/54324.
-Left: hosted project needs the user's Supabase account (`npx supabase login`, link, `db push`, site URL
-https://vykosmolt.github.io/pluton/, real SMTP), then set the two VITE_ variables for `npm run deploy`.
+## Accounts / sync — removed (2026-11-03)
+
+Earlier builds had optional Supabase email-code accounts and multi-device sync. The final product decision is
+local-only: there is no Pluton account, server or sync. The web `src/Account.svelte`, `src/lib/sync.js`, sync
+tests, `supabase/` backend and `@supabase/supabase-js` dependency were removed. Device transfer uses **Download
+backup** (web format) or **Download for native app** (native backup v4), restored on the destination device.
+The shared Kotlin `Sync.kt` and its tests are removed as well; SQLite remains the local store.
 
 ## Done (2026-10-21) — comprehension, speaking, more input
 - [x] Comprehension: 3 hand-written questions per story chapter; the path's chapter goal needs a pass (the text stays open)
@@ -143,8 +131,7 @@ https://vykosmolt.github.io/pluton/, real SMTP), then set the two VITE_ variable
 
 Architecture: **one shared core, two native UIs.** Two independent Swift/Kotlin ports would duplicate the
 learning logic; Kotlin Multiplatform avoids that while keeping the UI native on both platforms.
-- `native/shared/` — Kotlin Multiplatform core: tokenizer, coverage, grading, run queue, FSRS, path, sync merge,
-  tutor prompts. Pure Kotlin; JVM tests run on this Linux machine, Android tests on the emulator/device, iOS
+- `native/shared/` — Kotlin Multiplatform core: tokenizer, coverage, grading, run queue, FSRS, path and tutor prompts. Pure Kotlin; JVM tests run on this Linux machine, Android tests on the emulator/device, iOS
   tests on a Mac/CI.
 - `native/androidApp/` — Jetpack Compose UI, Kotlin.
 - `native/iosApp/` — SwiftUI UI, Swift, consuming the KMP framework. **Not buildable on this machine** (no Xcode;
@@ -172,7 +159,7 @@ Phases:
    user texts, the Listen media-player tab, and iOS.
 4. iOS: Xcode project (XcodeGen spec), SwiftUI shell, KMP framework; build/test in macOS CI; device build with
    the Apple account.
-5. Sync (Supabase), AI (native HTTP/SSE), store packaging, privacy/account forms.
+5. AI (native HTTP/SSE), store packaging, privacy/store forms.
 
 Toolchain verified here: JDK 21 (`~/.local/opt/jdk-21.0.12.1+1`), Android SDK 36 (`~/Android`), Gradle 8.14.4,
 Kotlin 2.4.21, AGP 8.13.0, Compose BOM 2026.03.01, activity-compose 1.11.0. The September 2026 BOM needs AGP 9.1
@@ -355,7 +342,7 @@ emulator/device, so the APK is built but not launched.
   label (due now / later today / in N d / not started), tap to play the word clip; counts in the header. LazyColumn so
   a large deck stays cheap. Verified: 67 shared JVM tests, 0 failures; 19 Android JVM tests, 0 failures (14
   Robolectric incl. the Words browser; hub-card tests now scroll before tapping because the hub grew); APK builds.
-- 2026-10-21: native account sync. Shared `Sync.kt` ports the web merge rules (`plan`, `collect`, `replayPulled`,
+- 2026-10-21: native account sync (later removed 2026-11-03). Shared `Sync.kt` ports the web merge rules (`plan`, `collect`, `replayPulled`,
   deterministic `replayCard`) with tests ported from sync.test.js plus a two-device convergence test; Store gains
   CardState.updated, TextRecord.updated/remoteKey, sync state (`_sync` with a stable device id), tombstones, pulled
   review keys and a transactional `applySync`; SQLDelight schema v3 (`2.sqm`: remote_key columns, unique indexes,
@@ -397,8 +384,7 @@ emulator/device, so the APK is built but not launched.
   `bridgeTokens`, `bridgeNote`; `BridgeView.swift` renders the same modes with tappable linked spans and a word sheet.
   Verified: 83 shared JVM tests, 0 failures; Android compiles.
 - 2026-10-21: local only. Removed the Android Account screen, Supabase client/JSON mappers and their tests; the
-  native app has no sign-in, no sync and no server URL. Shared `Sync.kt` and the schema's sync columns/tombstones stay
-  (schema history and a possible future export path), but nothing in either app calls them. Settings now says
+  native app has no sign-in, no sync and no server URL. Shared `Sync.kt` and its tests were later removed too. Settings now says
   everything is saved on this device. Docs updated; native README reports 83 shared + 20 Android tests.
 - 2026-10-21: native design pass. Bottom navigation uses Material icons (core `Home`/`MoreVert` plus app-drawn
   `Book`, `Headphones`, `Mic` ImageVectors, so no 40 MB extended-icons dependency); emoji/symbol labels across Run,
@@ -601,9 +587,9 @@ emulator/device, so the APK is built but not launched.
   high-frequency Tatoeba examples (wrong translation or wrong sense); the data and 18 new sentence clips were
   rebuilt. The web Settings screen now offers “Download for native app”, converting the IndexedDB stores to native
   backup version 4 (cards, reviews, texts, rewritten read ids, writings/error drills, pace), with a JVM fixture
-  test importing the converted JSON through the shared `Store`. Verified: 66 web tests, 135 shared JVM tests,
+  test importing the converted JSON through the shared `Store`. Verified: 59 web tests, 123 shared JVM tests,
   33 Android JVM tests, `scripts/check-data.py` (20,000 words, 17,650 referenced clips), and the full 45-check
-  Chromium smoke (accounts skipped: no local Supabase). Swift files parse with tree-sitter; iOS compilation still
+  Chromium smoke. Swift files parse with tree-sitter; iOS compilation still
   needs macOS CI.
 - 2026-11-03: release and parity close-out. Web Le Chemin now has separate Talk and Speak bonus goals matching
   native; a Speak goal opens Talk directly in Speaking mode. Web reading uses the native 98% comfort/queue target.
@@ -612,5 +598,11 @@ emulator/device, so the APK is built but not launched.
   and the native CI Android SDK setup; the Web workflow now runs the full Chromium smoke against the deployed data
   bundle, and the Web, Native (shared + Android unit tests) and iOS workflows are green. Deployed
   `fac723fc` to gh-pages: live story data has 12 chapters, and Pages is serving the new bundle. Follow-up checks:
-  66 web tests, 135 shared JVM tests, 33 Android JVM tests, 45-check Chromium smoke, data check; iOS build and
+  59 web tests, 123 shared JVM tests, 33 Android JVM tests, 45-check Chromium smoke, data check; iOS build and
   simulator smoke green on macOS CI.
+- 2026-11-03: accounts removed. The final product decision is local-only. Removed the web Account UI, `sync.js`,
+  sync tests, `@supabase/supabase-js`, the Supabase CLI devDependency and the whole `supabase/` backend; simplified
+  IndexedDB writes and backups, and removed the shared Kotlin `Sync.kt`/`SyncEngine` plus their tests. `stats.js` now
+  reports this device only. The smoke account section and all `.env.smoke.local` dependencies are gone. Verified:
+  59 web tests, 123 shared JVM tests, 33 Android JVM tests, the 45-check Chromium smoke and the native backup
+  round-trip; the web build contains no Supabase client.

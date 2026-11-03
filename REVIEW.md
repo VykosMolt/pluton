@@ -90,11 +90,10 @@ and [asset validation](scripts/check-data.py).
 
 **Remaining technical limits**
 
-Native sync is deliberately disconnected. Before enabling it, address device-clock last-write-wins conflicts and
-review/text identity across backup imports; the current native export does not preserve all remote identities.
-Web backup transfer into a synced account also deserves explicit cross-device identity/deduplication tests.
-Supabase's caller-scoped RLS and account-deletion function showed no confirmed cross-account access defect in this
-source review; that is narrower than live integration verification.
+The accounts/sync design described in the original review was removed on 2026-11-03. There is no Pluton server,
+Supabase project, account UI or native sync engine. Device transfer is via the web backup or the web-to-native
+backup hand-off; those formats still differ, and older native backups without text IDs cannot reconstruct old
+user-text completion links.
 
 Old native backups lack text IDs, so their historical user-text completion links cannot reliably be reconstructed.
 Web and native backup formats remain different. Generated assets are ignored by Git: the corrected local
@@ -102,7 +101,7 @@ Web and native backup formats remain different. Generated assets are ignored by 
 
 **Validation completed**
 
-- `npm test`: all seven test files pass, including AI-stream, sync, worker, and asset-validator regressions.
+- `npm test`: all seven test files pass, including AI-stream, worker, native-backup and asset-validator regressions.
 - `npm run smoke`: production build plus 48 Chromium assertions pass; no browser errors. Includes runs, reading,
   quizzes, placement, mocked AI, recording, first-use offline Bridge, adjacent subtitle boundaries, rejected malformed
   backups with unchanged data, and a valid restore retaining private AI configuration.
@@ -110,12 +109,11 @@ Web and native backup formats remain different. Generated assets are ignored by 
 - `:androidApp:testDebugUnitTest`: 31 tests pass; `:androidApp:assembleDebug` succeeds (approximately 53 MB APK).
 - Asset validation: 20,000 words, 86,622 forms, 59 verbs, 15 grammar topics, 12 story chapters, 12 shelf texts,
   and 17,637 referenced audio clips checked. No full TTS rebuild was needed.
-- `git diff --check` passes. Live Supabase account checks were skipped because the local backend was unavailable.
-  AI network behavior used mocks; iOS compilation and real-phone audio behavior were not verified here.
+- `git diff --check` passes. AI network behavior used mocks; iOS compilation and real-phone audio behavior were not verified here.
 
 ## Follow-up — 2026-11-03
 
-The release-safety pass fixed the issues that could be fixed and verified locally without publishing:
+The release-safety pass fixed the issues that could be fixed and verified locally without publishing. Accounts were subsequently removed by product decision: there is no Supabase backend, account UI or sync client.
 
 - Native daily new-word accounting: Android writes each introduction immediately and reports on the system back
   action; iOS records `introduced` after a guarded finish and disables swipe dismissal.
@@ -123,8 +121,9 @@ The release-safety pass fixed the issues that could be fixed and verified locall
   clips are absent from the APK.
 - iOS parity: conjugation/grammar practice cards and run branches exist on iOS now, so Le Chemin is no longer
   blocked at La Cave on a fresh install.
-- Web/process: sync is deferred while a run is open; Svelte warnings are clean; a Web checks workflow runs the
-  unit suite and a Vite build; Anthropic effort flags are limited to models that support them.
+- Web/process: the Supabase account/sync layer is removed, so runs cannot race a pull; Svelte warnings are clean;
+  a Web checks workflow runs the unit suite and a Vite build; Anthropic effort flags are limited to models that
+  support them.
 - Content: the highest-frequency examples with wrong translations or the wrong sense are hand-curated in
   `data/fr/build.py`, and the data plus 18 new clips were rebuilt.
 - Migration: the web Settings screen now writes a native backup version 4, and a JVM round-trip test imports the
@@ -133,4 +132,4 @@ The release-safety pass fixed the issues that could be fixed and verified locall
 Released on 2026-11-03: the review work is committed and pushed, `gh-pages` serves the 12-chapter/current-data
 bundle, and the new Web (unit + Vite + Chromium smoke), Native (shared + Android unit tests) and iOS workflows are green. The iOS story
 generator/retell and conjugation/grammar run branches compiled and launched in the simulator. Remaining: real-device
-audio, permissions, TTS/ASR and interruption behavior, and live Supabase account integration.
+audio, permissions, TTS/ASR and interruption behavior.

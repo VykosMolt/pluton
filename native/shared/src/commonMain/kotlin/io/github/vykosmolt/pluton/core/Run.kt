@@ -27,7 +27,7 @@ data class CardState(
     val known: Boolean = false,
     val added: Long = 0,
     val mined: Mined? = null,
-    val updated: Long = 0, // last local write; sync's last-write-wins stamp
+    val updated: Long = 0, // last local write; retained in backups
 )
 
 data class RunItem(

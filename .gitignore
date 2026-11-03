@@ -6,7 +6,6 @@ data/*/raw/
 public/data/
 __pycache__/
 .env*.local
-supabase/.temp/
 
 # Generated Capacitor wrapper outputs
 android/.gradle/
