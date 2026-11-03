@@ -23,10 +23,20 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: android-actions/setup-android@v3
-
+      # Ubuntu runners ship the Android SDK but not necessarily SDK 36. Avoid setup-android v3:
+      # its fixed `sdkmanager tools` probe is no longer a valid package on current cmdline-tools.
       - name: Install the Android platform used by the library
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+        run: |
+          set -e
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK_ROOT" -name sdkmanager -type f | head -1)"
+          fi
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
 
       - name: Shared JVM tests
         working-directory: native
