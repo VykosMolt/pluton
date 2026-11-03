@@ -171,6 +171,10 @@ private struct VerbView: View {
                                 }
                             }
                             Text(tense.how).font(.caption).foregroundStyle(.secondary)
+                            let key = model.bridge.conjKey(verb: verb, tense: tense.id)
+                            if model.cards[key] == nil {
+                                Button("Practice this tense") { model.practice(key) }
+                            }
                         } header: {
                             Text(tense.name)
                         }
@@ -196,6 +200,10 @@ private struct GrammarView: View {
                             Text("\(parts.first ?? "") ____ \(parts.count > 1 ? parts[1] : "")")
                             Text(item.a.joined(separator: " / ")).font(.footnote.bold()).foregroundStyle(.green)
                         }
+                    }
+                    let key = model.bridge.gramKey(id: topic.id)
+                    if model.cards[key] == nil {
+                        Button("Practice this topic") { model.practice(key) }
                     }
                 } label: {
                     VStack(alignment: .leading) {
@@ -264,6 +272,12 @@ private struct SettingsView: View {
                         Text(provider.name).tag(provider.id)
                     }
                 }
+                .onChange(of: config.provider) { _, provider in
+                    key = ""
+                    config.model = AIClient.providers.first { $0.id == provider }?.model ?? ""
+                    config.base = ""
+                    note = ""
+                }
                 SecureField("API key", text: $key)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -274,9 +288,12 @@ private struct SettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                 Button("Save") {
-                    AIClient.key = key
-                    AIClient.save(config: config)
-                    note = "Saved. The key is in the Keychain."
+                    do {
+                        try AIClient.save(config: config, key: key)
+                        note = key.isEmpty ? "Saved without an API key." : "Saved. The key is in the Keychain."
+                    } catch {
+                        note = error.localizedDescription
+                    }
                 }
                 if !note.isEmpty { Text(note).font(.footnote).foregroundStyle(.secondary) }
                 Text("Talking practice uses your own API key. It is stored in the Keychain, sent only to the provider you pick, and never included in backups.")

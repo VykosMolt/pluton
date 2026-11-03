@@ -5,8 +5,9 @@ import PlutonCore
 /// Fluency development: shadowing a model line, then 4/3/2 with the same prompt.
 struct FluencyView: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var speaker = Speaker()
-    @StateObject private var practice = SpeechPractice()
+    @StateObject private var practice = SpeechPractice(transcribe: false)
     @SwiftUI.State private var sub = 0
     @SwiftUI.State private var pool: [String] = []
     @SwiftUI.State private var index = 0
@@ -52,26 +53,33 @@ struct FluencyView: View {
             .padding(20)
         }
         .onAppear(perform: load)
-        .task { await practice.requestPermission() }
+        .task { _ = await practice.requestPermission() }
         .onDisappear {
             timerTask?.cancel()
             timerTask = nil
             active = false
-            if practice.recording {
-                Task { _ = await practice.finishRecording() }
+            speaker.stop()
+            practice.cancel()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                timerTask?.cancel()
+                timerTask = nil
+                active = false
+                speaker.stop()
+                practice.cancel()
             }
         }
         .onChange(of: sub) { _, _ in
             timerTask?.cancel()
             timerTask = nil
             active = false
-            if practice.recording {
-                Task { _ = await practice.finishRecording() }
-            }
+            speaker.stop()
+            practice.cancel()
         }
         .task(id: practice.recording) {
             guard practice.recording && sub == 0 else { return }
-            try? await Task.sleep(nanoseconds: 20_000_000_000)
+            do { try await Task.sleep(nanoseconds: 20_000_000_000) } catch { return }
             if practice.recording && sub == 0 { finishClip() }
         }
     }

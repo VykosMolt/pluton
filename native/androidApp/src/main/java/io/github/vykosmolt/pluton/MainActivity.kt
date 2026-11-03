@@ -320,13 +320,20 @@ private fun MainScreen(loaded: Loaded, store: Store, aiStore: AiStore) {
         return
     }
 
-    BackHandler(enabled = running) { running = false }
     BackHandler(enabled = !running && tab != Tab.Home) { tab = Tab.Home }
     if (running) {
-        RunScreen(deck, cards, loaded.conj, loaded.grammar, newToday, pace, onSave = { card, entry -> store.saveAnswer(card, entry) }) { result ->
+        RunScreen(
+            deck,
+            cards,
+            loaded.conj,
+            loaded.grammar,
+            newToday,
+            pace,
+            onSave = { card, entry -> store.saveAnswer(card, entry) },
+            onIntroduced = { newToday = store.addIntroduced(day, 1).newCount },
+        ) { result ->
             running = false
-            summary = result
-            newToday = store.addIntroduced(day, result.introduced).newCount
+            if (result.done > 0 || result.introduced > 0) summary = result
             if (result.done > 0) markStep(PlanStep.Review.id)
             accuracy = store.recentAccuracy()
         }
@@ -743,10 +750,12 @@ private fun RunScreen(
     newToday: Int,
     pace: Pace,
     onSave: (CardState, ReviewEntry) -> Unit,
+    onIntroduced: () -> Unit,
     onExit: (Summary) -> Unit,
 ) {
     val scheduler = remember { Scheduler() }
     val clip = rememberClipPlayer()
+    val tts = rememberFrenchTts()
     val queue = remember {
         mutableStateListOf<RunItem>().also {
             it.addAll(
@@ -760,10 +769,20 @@ private fun RunScreen(
     var done by remember { mutableStateOf(0) }
     var introduced by remember { mutableStateOf(0) }
     var tally by remember { mutableStateOf(Tally()) }
+    var exited by remember { mutableStateOf(false) }
     val item = queue.firstOrNull()
 
+    fun exit() {
+        if (exited) return
+        exited = true
+        onExit(Summary(introduced, done, tally))
+    }
+
+    // Leaving with the system back must still report the run: the daily new-word budget is written
+    // as each word is introduced, but the plan/accuracy summary is only produced here.
+    BackHandler { exit() }
     if (item == null) {
-        LaunchedEffect(Unit) { onExit(Summary(introduced, done, tally)) }
+        LaunchedEffect(Unit) { exit() }
         return
     }
 
@@ -818,10 +837,28 @@ private fun RunScreen(
         else -> match
     }
 
-    // Hear it on arrival for listening exercises, and when a new word is introduced.
-    LaunchedEffect(lemma, item.phase, done) {
-        if (item.phase == "intro" && base != null) clip.play(base.audioWord)
-        else if (item.phase == "quiz" && (mode == "dictation" || mode == "dictee")) clip.play(base?.audioSentence)
+    val sentenceClip = base?.audioSentence?.takeIf { sentence == base.sentence }
+    fun hear(audio: String?, text: String) {
+        tts.stop()
+        // The APK bundles only story, shelf and conjugation clips. Deck word/sentence clips still carry
+        // ids in words.json, so a null check is not enough: fall back to the device voice when the asset is absent.
+        if (audio != null && clip.play(audio)) return
+        clip.release()
+        tts.speak(text)
+    }
+    val autoText = when {
+        item.phase == "intro" && base != null -> display
+        item.phase == "quiz" && (mode == "dictation" || mode == "dictee") -> sentence
+        else -> null
+    }
+    val autoClip = if (item.phase == "intro") base?.audioWord else sentenceClip
+    val autoReady = autoClip != null || tts.ready
+    // A mined sentence needs its own TTS; a dictionary clip would ask the learner a different question.
+    // tts.ready is a key because a missing bundled word clip may only be replaceable once the engine starts.
+    LaunchedEffect(lemma, item.phase, done, autoReady, tts.ready) {
+        clip.release()
+        tts.stop()
+        if (autoReady && autoText != null) hear(autoClip, autoText)
     }
 
     fun submit() {
@@ -941,6 +978,7 @@ private fun RunScreen(
                     queue.clear()
                     queue.addAll(next)
                     introduced++
+                    onIntroduced()
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Got it →", fontSize = 20.sp) }
@@ -1017,14 +1055,15 @@ private fun RunScreen(
                                 "produce" -> Text("Comment dit-on « ${gloss.ifBlank { display }} » ?", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                                 else -> Text("$before" + "______" + after, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                             }
-                            // The built-in clip only matches the built-in sentence, not a mined context.
-                            val builtIn = sentence == base?.sentence
-                            val hear = when {
+                            val audio = when {
                                 mode == "produce" -> if (feedback != null) base?.audioWord else null
-                                mode == "dictation" || mode == "dictee" -> if (builtIn) base?.audioSentence else null
-                                else -> if (builtIn) base?.audioSentence ?: base?.audioWord else null
+                                else -> sentenceClip
                             }
-                            if (hear != null) TextButton(onClick = { clip.play(hear) }) { Text("Hear it") }
+                            if (mode != "produce" || feedback != null) {
+                                val spoken = if (mode == "produce") display else sentence
+                                TextButton(onClick = { hear(audio, spoken) }, enabled = audio != null || tts.ready) { Text("Hear it") }
+                                if (audio == null && tts.error.isNotBlank()) Text(tts.error, color = scheme.error)
+                            }
                             if (feedback == null) {
                                 AnswerInput(typed, { typed = it }, ::submit)
                             } else {

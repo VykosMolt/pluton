@@ -114,6 +114,9 @@ SELECT * FROM texts ORDER BY added DESC;
 insertText:
 INSERT INTO texts(title, body, added, updated) VALUES (?, ?, ?, ?);
 
+insertBackupText:
+INSERT INTO texts(id, title, body, added, updated) VALUES (?, ?, ?, ?, ?);
+
 insertRemoteText:
 INSERT INTO texts(title, body, added, updated, remote_key) VALUES (?, ?, ?, ?, ?);
 

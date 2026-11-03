@@ -18,6 +18,7 @@
   import { setActive } from './lib/ai.js'
   import { combine, daysOf } from './lib/stats.js'
   import * as sync from './lib/sync.js'
+  import { toNativeBackup } from './lib/native-backup.js'
   import { Capacitor } from '@capacitor/core'
   import { Filesystem, Directory, Encoding } from '@capacitor/filesystem'
   import { Share } from '@capacitor/share'
@@ -230,6 +231,9 @@
   }
 
   function syncSoon() {
+    // A run keeps its own queue and card snapshots. Applying a pull mid-run could make the next answer
+    // overwrite a newer card state; finish() calls syncSoon again once the run has closed.
+    if (view === 'run') return
     if (sync.hasSession()) sync.sync().then((r) => r && reload()).catch((e) => console.warn('sync:', e.message))
   }
   onMount(() => {
@@ -238,9 +242,7 @@
     return () => document.removeEventListener('visibilitychange', hidden)
   })
 
-  async function backup() {
-    const json = JSON.stringify(await db.exportAll())
-    const name = `pluton-backup-${today}.json`
+  async function saveFile(json, name) {
     if (Capacitor.isNativePlatform()) {
       // WebView downloads of blob: URLs don't work in a Capacitor app: write the file, then hand it to the share sheet
       const { uri } = await Filesystem.writeFile({ path: name, data: json, directory: Directory.Cache, encoding: Encoding.UTF8 })
@@ -251,6 +253,15 @@
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name })
     a.click()
     URL.revokeObjectURL(a.href)
+  }
+
+  async function backup() {
+    await saveFile(JSON.stringify(await db.exportAll()), `pluton-backup-${today}.json`)
+  }
+
+  /** The native apps accept version 4; this converts the web stores without dropping cards or the review log. */
+  async function nativeBackup() {
+    await saveFile(JSON.stringify(toNativeBackup(await db.exportAll())), `pluton-native-${today}.json`)
   }
 
   async function restore(e) {
@@ -359,7 +370,7 @@
   {:else if view === 'talk'}
     <Talk {ai} {words} {forms} {cards} {statusOf} vocab={counts.known + counts.learning} onsettings={() => (view = 'settings')} oncount={count} />
   {:else if view === 'settings'}
-    <Settings bind:ai bind:pace onbackup={backup} onrestore={restore} onsynced={reload} />
+    <Settings bind:ai bind:pace onbackup={backup} onnative={nativeBackup} onrestore={restore} onsynced={reload} />
   {:else}
     <Words {words} {cards} {now} {conj} {grammar} bind:tab={wordsTab} />
   {/if}
@@ -442,8 +453,6 @@
   .due { color: var(--blue); }
   .go { width: 100%; flex-direction: column; gap: 2px; font-size: 22px; padding: 18px; margin-bottom: 16px; }
   .go small { font-weight: 600; font-size: 14px; opacity: 0.85; }
-  .bar { height: 12px; border-radius: 99px; background: var(--line); overflow: hidden; }
-  .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--orange)); border-radius: 99px; }
   .summary { animation: pop 0.4s; }
   .summary h2 { text-align: center; margin-bottom: 12px; }
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); text-align: center; gap: 8px; }

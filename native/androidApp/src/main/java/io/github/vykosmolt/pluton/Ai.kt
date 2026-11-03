@@ -61,7 +61,15 @@ data class ChatMessage(val role: String, val content: String)
 
 class AiError(message: String) : Exception(message)
 
+// Claude models that accept output_config.effort. Older models reject the field, so omit it there.
+private val EFFORT_MODEL = Regex("^claude-(fable|mythos|opus|sonnet|haiku)-[5-9]|^claude-opus-4-[5-8]|^claude-sonnet-4-6")
+
+internal fun supportsEffort(model: String): Boolean = EFFORT_MODEL.containsMatchIn(model)
+
 internal fun providerOf(id: String): AiProvider = AI_PROVIDERS.find { it.id == id } ?: AI_PROVIDERS.first()
+
+internal fun configForProvider(config: AiConfig, id: String): AiConfig =
+    if (config.provider == id) config else AiConfig(provider = id, model = providerOf(id).defaultModel)
 
 internal fun baseOf(config: AiConfig): String =
     (config.base.ifBlank { providerOf(config.provider).base }).trimEnd('/')
@@ -113,15 +121,26 @@ private fun anthropicChat(config: AiConfig, system: String, messages: List<ChatM
         }
         val builder = MessageCreateParams.builder()
             .model(config.model)
-            .maxTokens(1024L)
+            .maxTokens(4096L)
             .system(system)
-            .outputConfig(OutputConfig.builder().effort(thinking).build())
+        if (supportsEffort(config.model)) {
+            builder.outputConfig(OutputConfig.builder().effort(thinking).build())
+        }
         for (m in messages) {
             if (m.role == "assistant") builder.addAssistantMessage(m.content) else builder.addUserMessage(m.content)
         }
-        val response = client.messages().create(builder.build())
-        if (response.stopReason().orElse(null) == StopReason.REFUSAL) throw AiError("The model declined to answer that one.")
+        val response = try {
+            client.messages().create(builder.build())
+        } finally {
+            client.close()
+        }
+        when (response.stopReason().orElse(null)) {
+            StopReason.REFUSAL -> throw AiError("The model declined to answer that one.")
+            StopReason.MAX_TOKENS -> throw AiError("The model's reply was cut off. Try a shorter text.")
+            else -> Unit
+        }
         return response.content().mapNotNull { it.text().orElse(null)?.text() }.joinToString("").trim()
+            .ifBlank { throw AiError("The model returned an empty reply. Try again.") }
     } catch (e: AiError) {
         throw e
     } catch (e: UnauthorizedException) {
@@ -156,9 +175,15 @@ internal fun openAiBody(model: String, system: String, messages: List<ChatMessag
 }.toString()
 
 internal fun parseOpenAiContent(body: String): String {
-    val content = runCatching {
+    val choice = runCatching {
         Json.parseToJsonElement(body).jsonObject["choices"]?.jsonArray?.firstOrNull()
-            ?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
+            ?.jsonObject
+    }.getOrNull()
+    if (choice?.get("finish_reason")?.jsonPrimitive?.contentOrNull == "length") {
+        throw AiError("The model's reply was cut off. Try a shorter text.")
+    }
+    val content = runCatching {
+        choice?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
     }.getOrNull()
     if (content.isNullOrBlank()) throw AiError("The model returned an empty reply. Try again.")
     return content.trim()
@@ -187,7 +212,7 @@ private fun openAiChat(config: AiConfig, system: String, messages: List<ChatMess
     connection.readTimeout = 120_000
     connection.doOutput = true
     connection.setRequestProperty("Content-Type", "application/json")
-    if (config.key.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer ${config.key}")
+    if (config.provider != "ollama" && config.key.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer ${config.key}")
     try {
         connection.outputStream.use { it.write(body.toByteArray()) }
         val status = connection.responseCode

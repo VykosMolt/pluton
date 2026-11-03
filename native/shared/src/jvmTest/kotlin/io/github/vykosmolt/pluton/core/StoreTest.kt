@@ -89,6 +89,7 @@ class StoreTest {
         val undone = store.unmark("maison", 3000)
         assertNull(undone) // never reviewed -> deleted
         assertNull(store.card("maison"))
+        assertEquals(3000, store.syncTombstones()["cards\tmaison"])
         // The review log is append-only and independent of card deletion.
         store.addCard(word, "maison", null, 4000)
         val reviewedCard = store.card("maison")!!.copy(fsrs = store.card("maison")!!.fsrs.copy(state = State.Review, stability = 3.0))
@@ -151,6 +152,55 @@ class StoreTest {
         source.addText("New", "Nouveau", 2)
         store.import(source.export())
         assertEquals(listOf("New"), store.texts().map { it.title })
+    }
+
+    @Test
+    fun restoreRejectsUnrelatedUnsupportedAndInvalidProgressWithoutChangingTheStore() {
+        val store = store()
+        store.markKnown("chat", 1000)
+        store.addText("Keep", "Corps", 2000)
+        val before = store.export()
+        val invalidFiles = listOf(
+            "{}",
+            "{\"stats\":{}}",
+            "{\"cards\":[]}",
+            "{\"other\":\"application\"}",
+            "[]",
+            "{\"version\":999,\"cards\":[]}",
+            "{\"version\":0}",
+            "{\"version\":3,\"reviews\":[{\"lemma\":\"chat\",\"rating\":9,\"mode\":\"cloze\",\"at\":1000}]}",
+            "{\"version\":3,\"cards\":[{\"lemma\":\"chat\",\"fsrs\":{\"state\":\"Review\",\"difficulty\":0,\"stability\":0}}]}",
+        )
+        for (file in invalidFiles) {
+            assertTrue(runCatching { store.import(file) }.isFailure, file)
+            assertEquals(before, store.export(), file)
+        }
+    }
+
+    @Test
+    fun backupKeepsTextCompletionIdsPaceAndPracticeWhenReplacingAnExistingDatabase() {
+        val source = store()
+        val removed = source.addText("Removed", "Ancien texte", 1000)
+        source.deleteText(removed.id, 2000)
+        val kept = source.addText("Finished", "Bonjour", 3000)
+        source.addRead("2026-10-21", "text-${kept.id}")
+        source.savePace(Pace(3, 12))
+        source.markPlanDone("2026-10-21", "read")
+        val target = store()
+        repeat(5) { target.addText("Old", "Remplacé", 1000) }
+        target.markPractice("2026-10-20")
+        target.import(source.export())
+        assertEquals(listOf(kept), target.texts())
+        assertEquals(listOf("text-${target.texts().single().id}"), target.stats("2026-10-21").read)
+        assertEquals(Pace(3, 12), target.pace())
+        assertEquals(setOf("2026-10-21"), target.practiceDays())
+    }
+
+    @Test
+    fun aNonemptyVersion1BackupWithoutAnExplicitVersionStillImports() {
+        val store = store()
+        store.import("""{"texts":[{"title":"Legacy","body":"Bonjour","added":1000}]}""")
+        assertEquals("Legacy", store.texts().single().title)
     }
 
     @Test
@@ -508,7 +558,7 @@ class StoreTest {
         )
         store.saveWriting("Raconte", "je suis alle", result, 1000)
         store.setCanDo("A2-1", true)
-        val legacy = kotlinx.serialization.json.Json.encodeToString(Backup(version = 1))
+        val legacy = """{"version":1}"""
         store.import(legacy)
         assertEquals(1, store.writings().size)
         assertEquals(1, store.corrections().size)
@@ -547,6 +597,20 @@ class StoreTest {
         for (i in 1..25) store.addSpeechRate(60 + i)
         assertEquals((66..85).toList(), store.speechRates())
         assertEquals(76, store.medianSpeechRate())
+    }
+
+    @Test
+    fun webConvertedBackupImports() {
+        val json = checkNotNull(javaClass.getResource("/web-native-backup.json")).readText()
+        val store = store()
+        store.import(json)
+        assertEquals(listOf("chat"), store.cards().map { it.lemma })
+        assertEquals(4, store.stats("2026-11-03").newCount)
+        assertEquals(listOf("text-3", "text-4", "story-0"), store.stats("2026-11-03").read)
+        assertEquals(1, store.writings().size)
+        assertEquals("Je suis allé.", store.writings().single().corrected)
+        assertEquals(1, store.corrections().size)
+        assertEquals(Pace(8, 30), store.pace())
     }
 
     @Test

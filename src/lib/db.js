@@ -91,27 +91,84 @@ const STORES = ['cards', 'log', 'texts', 'meta']
 
 export async function exportAll() {
   const out = { version: 1, exported: new Date().toISOString() }
-  for (const s of STORES) out[s] = (await entries(s)).filter(([k]) => !(s === 'meta' && PRIVATE.has(k)))
+  const t = (await db()).transaction(STORES)
+  await Promise.all(STORES.map(async (s) => {
+    const os = t.objectStore(s)
+    const [keys, values] = await Promise.all([result(os.getAllKeys()), result(os.getAll())])
+    out[s] = keys.map((k, i) => [k, values[i]]).filter(([k]) => !(s === 'meta' && PRIVATE.has(k)))
+  }))
   return out
 }
 
 const reviveDates = (c) => {
-  for (const k of ['due', 'last_review']) if (c.fsrs?.[k]) c.fsrs[k] = new Date(c.fsrs[k])
+  for (const k of ['due', 'last_review']) if (c.fsrs?.[k] != null) {
+    c.fsrs[k] = new Date(c.fsrs[k])
+    if (!Number.isFinite(c.fsrs[k].getTime())) throw new Error('Invalid review date in backup')
+  }
   return c
+}
+
+// Validate and clone before opening a write transaction: malformed records must never partially replace progress.
+function prepareBackup(data) {
+  if (data?.version !== 1 || !STORES.every((s) => Array.isArray(data[s]))) throw new Error('Not a Pluton backup')
+  const out = {}
+  const validKey = (k) => (typeof k === 'string' && k.length > 0) || (typeof k === 'number' && Number.isFinite(k))
+  for (const s of STORES) {
+    const keys = new Set()
+    out[s] = data[s].map((entry) => {
+      if (!Array.isArray(entry) || entry.length !== 2 || !validKey(entry[0]) || keys.has(entry[0]))
+        throw new Error(`Invalid ${s} record in backup`)
+      const [k, value] = entry
+      keys.add(k)
+      const v = structuredClone(value)
+      if (s === 'cards') {
+        const memory = v?.fsrs
+        const counters = ['elapsed_days', 'scheduled_days', 'reps', 'lapses', 'learning_steps']
+        if (!v || typeof v.lemma !== 'string' || v.lemma !== k || !Number.isFinite(v.added) || v.added < 0 ||
+            !memory || memory.due == null || ![0, 1, 2, 3].includes(memory.state) ||
+            !counters.every((name) => Number.isSafeInteger(memory[name]) && memory[name] >= 0) ||
+            !Number.isFinite(memory.stability) || memory.stability < 0 ||
+            !Number.isFinite(memory.difficulty) || memory.difficulty < 0 || memory.difficulty > 10 ||
+            (memory.state !== 0 && (memory.stability < 0.001 || memory.difficulty < 1)))
+          throw new Error('Invalid card in backup')
+        reviveDates(v)
+      } else if (s === 'texts' && (!v || v.id !== k || typeof v.title !== 'string' || typeof v.body !== 'string')) {
+        throw new Error('Invalid text in backup')
+      } else if (s === 'log' && (!v || typeof v.lemma !== 'string' || !Number.isFinite(v.at) || ![1, 2, 3, 4].includes(v.rating))) {
+        throw new Error('Invalid review in backup')
+      }
+      return [k, v]
+    })
+  }
+  return out
 }
 
 /** Replaces everything with a backup from exportAll(). All-or-nothing. The AI key and sync identity stay; the
  *  restored records are marked for upload, so a signed-in account gets them too. */
 export async function importAll(data) {
-  if (data?.version !== 1 || !STORES.every((s) => Array.isArray(data[s]))) throw new Error('Not a Pluton backup')
+  const records = prepareBackup(data)
   const keep = Object.fromEntries((await entries('meta')).filter(([k]) => PRIVATE.has(k)))
   const t = (await db()).transaction(STORES, 'readwrite')
-  for (const s of STORES) {
-    const os = t.objectStore(s)
-    os.clear()
-    for (const [k, v] of data[s]) if (!(s === 'meta' && PRIVATE.has(k))) os.keyPath ? os.put(stamp(s, s === 'cards' ? reviveDates(v) : v)) : os.put(v, k)
+  const finished = done(t)
+  try {
+    for (const s of STORES) {
+      const os = t.objectStore(s)
+      os.clear()
+      for (const [k, v] of records[s]) if (!(s === 'meta' && PRIVATE.has(k))) os.keyPath ? os.put(stamp(s, v)) : os.put(v, k)
+    }
+    t.objectStore('meta').put(Object.fromEntries(records.meta.filter(([k]) => SYNCED_META.has(k)).map(([k]) => [k, Date.now()])), '_stamps')
+    for (const [k, v] of Object.entries(keep)) if (k !== '_stamps' && k !== '_tomb') t.objectStore('meta').put(k === '_sync' ? { ...v, pushedAt: 0, logPushed: 0 } : v, k)
+  } catch (e) {
+    t.abort()
+    await finished.catch(() => {})
+    throw e
   }
-  t.objectStore('meta').put(Object.fromEntries(data.meta.filter(([k]) => SYNCED_META.has(k)).map(([k]) => [k, Date.now()])), '_stamps')
-  for (const [k, v] of Object.entries(keep)) if (k !== '_stamps' && k !== '_tomb') t.objectStore('meta').put(k === '_sync' ? { ...v, pushedAt: 0, logPushed: 0 } : v, k)
+  return finished
+}
+
+/** Erase local data on the existing connection; deleting an open IndexedDB database would remain blocked. */
+export async function clearAll() {
+  const t = (await db()).transaction(STORES, 'readwrite')
+  for (const s of STORES) t.objectStore(s).clear()
   return done(t)
 }

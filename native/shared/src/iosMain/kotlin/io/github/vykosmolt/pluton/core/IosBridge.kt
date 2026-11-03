@@ -73,11 +73,19 @@ class IosBridge {
     fun isCorrect(question: StoryQuestion, answer: Int): Boolean = question.correct == answer
     fun quizPasses(right: Int, total: Int): Boolean = right * 3 >= total * 2
 
-    fun newRun(store: Store, words: Map<String, Word>, now: Long, newToday: Int, pace: Pace): IosRun =
-        IosRun(store, words, now, newToday, pace)
+    fun newRun(store: Store, words: Map<String, Word>, now: Long, newToday: Int, pace: Pace, conj: Map<String, ConjTable>, grammar: List<GrammarTopic>): IosRun =
+        IosRun(store, words, now, newToday, pace, conj, grammar)
 
-    fun previewRun(store: Store, words: Map<String, Word>, now: Long, newToday: Int, pace: Pace): List<RunItem> =
-        io.github.vykosmolt.pluton.core.buildRun(store.cards(), words, now, newToday, perRun = pace.perRun, perDay = pace.perDay)
+    fun previewRun(store: Store, words: Map<String, Word>, now: Long, newToday: Int, pace: Pace, conj: Map<String, ConjTable>, grammar: List<GrammarTopic>): List<RunItem> =
+        io.github.vykosmolt.pluton.core.buildRun(store.cards(), words, now, newToday, conj, grammar, perRun = pace.perRun, perDay = pace.perDay)
+
+    /** Queue a conjugation table or grammar topic from the reference screens. */
+    fun practiceCard(store: Store, key: String, now: Long): CardState {
+        store.card(key)?.let { return it }
+        val card = CardState(key, createEmptyCard(now), added = now)
+        store.saveCard(card, now)
+        return card
+    }
 
     fun tokenize(text: String, forms: Map<String, String>): List<Token> = io.github.vykosmolt.pluton.core.tokenize(text, forms, FRENCH_ELISION)
     fun bridgeReadId(title: String): String = io.github.vykosmolt.pluton.core.bridgeReadId(title)
@@ -243,16 +251,21 @@ class IosBridge {
     fun deleteText(store: Store, id: Long, now: Long) = store.deleteText(id, now)
 }
 
-/** A run queue driven from Swift: words only (conjugation/grammar drills stay Android-first for now). */
+/** A run queue driven from Swift: word cards plus conjugation and grammar drills. */
 class IosRun(
     private val store: Store,
     private val words: Map<String, Word>,
     now: Long,
     newToday: Int,
     pace: Pace,
+    conj: Map<String, ConjTable> = emptyMap(),
+    grammar: List<GrammarTopic> = emptyList(),
 ) {
     private val scheduler = Scheduler()
-    private val queue = buildRun(store.cards(), words, now, newToday, perRun = pace.perRun, perDay = pace.perDay).toMutableList()
+    private val queue = buildRun(
+        store.cards(), words, now, newToday, conj, grammar,
+        perRun = pace.perRun, perDay = pace.perDay,
+    ).toMutableList()
 
     var introduced: Int = 0
         private set

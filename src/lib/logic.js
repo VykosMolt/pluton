@@ -8,7 +8,7 @@ export const scheduler = fsrs({ enable_fuzz: true })
 const replayScheduler = fsrs({ enable_fuzz: false })
 
 export const KNOWN_DAYS = 21 // FSRS stability at which a word counts as "known"
-export const UNLOCK = 0.95 // share of known words at which a text is comfortable to read
+export const UNLOCK = 0.98 // share of known words at which a text is comfortable to read (native uses the same)
 export const LEARN_AHEAD_MS = 20 * 60_000 // cards due again within this come back in the same run (Anki's learn-ahead)
 export const NEW_PER_RUN = 5
 export const NEW_PER_DAY = 20

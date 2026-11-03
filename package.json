@@ -4,9 +4,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
+    "prebuild": "python3 scripts/check-data.py",
     "build": "vite build",
     "preview": "vite preview --host",
-    "test": "node --test src/",
+    "test": "node --test src/ scripts/*.test.mjs",
+    "presmoke": "python3 scripts/check-data.py",
     "smoke": "vite build --mode smoke && node scripts/smoke.mjs",
     "deploy": "bash scripts/deploy.sh",
     "native:sync": "npm run build && npx cap sync",

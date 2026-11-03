@@ -11,11 +11,12 @@ import androidx.compose.ui.platform.LocalContext
 internal class ClipPlayer(private val context: Context) {
     private var player: MediaPlayer? = null
 
-    fun play(id: String?) {
-        if (id == null) return
+    /** Starts a bundled clip. Returns false when the clip is absent, so callers can use TTS instead. */
+    fun play(id: String?): Boolean {
+        if (id == null) return false
         player?.release()
         player = null
-        runCatching {
+        return runCatching {
             val mp = MediaPlayer()
             try {
                 context.assets.openFd("fr/audio/$id.mp3").use { afd ->
@@ -28,7 +29,8 @@ internal class ClipPlayer(private val context: Context) {
                 throw e
             }
             player = mp
-        }
+            true
+        }.getOrDefault(false)
     }
 
     fun release() {
@@ -41,6 +43,7 @@ internal class ClipPlayer(private val context: Context) {
 internal fun rememberClipPlayer(): ClipPlayer {
     val context = LocalContext.current
     val player = remember { ClipPlayer(context) }
+    OnAppBackground { player.release() }
     DisposableEffect(Unit) { onDispose { player.release() } }
     return player
 }

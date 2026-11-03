@@ -4,8 +4,9 @@ import PlutonCore
 /// French sounds: perception with minimal pairs, phrase listening, and a recording to compare.
 struct SoundsView: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var speaker = Speaker()
-    @StateObject private var practice = SpeechPractice()
+    @StateObject private var practice = SpeechPractice(transcribe: false)
     @SwiftUI.State private var lesson: SoundLesson?
     @SwiftUI.State private var target: SoundPair?
     @SwiftUI.State private var spoken = ""
@@ -46,17 +47,25 @@ struct SoundsView: View {
             }
             .padding(20)
         }
-        .task { await practice.requestPermission() }
+        .task { _ = await practice.requestPermission() }
         .task(id: practice.recording) {
             guard practice.recording else { return }
-            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            do { try await Task.sleep(nanoseconds: 15_000_000_000) } catch { return }
             if practice.recording { finishClip() }
         }
         .onChange(of: lesson?.id) { _, _ in
-            if practice.recording { Task { _ = await practice.finishRecording() } }
+            speaker.stop()
+            practice.cancel()
         }
         .onDisappear {
-            if practice.recording { Task { _ = await practice.finishRecording() } }
+            speaker.stop()
+            practice.cancel()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                speaker.stop()
+                practice.cancel()
+            }
         }
     }
 

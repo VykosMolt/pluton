@@ -3,7 +3,7 @@
 # Appends a commit per deploy (never force-pushes); unchanged audio clips cost nothing to push again.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-test -f public/data/fr/words.json || { echo "Build the data first: uv run data/fr/build.py" >&2; exit 1; }
+python3 scripts/check-data.py
 npm run build
 rev=$(git rev-parse --short HEAD)
 wt=$(mktemp -d)
@@ -18,6 +18,10 @@ find "$wt" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
 cp -r dist/. "$wt"/
 touch "$wt/.nojekyll" # serve files as-is (no Jekyll processing)
 git -C "$wt" add -A
-git -C "$wt" commit -q -m "Deploy $rev" || { echo "Nothing changed since the last deploy."; exit 0; }
+if git -C "$wt" diff --cached --quiet; then
+  echo "Nothing changed since the last deploy."
+  exit 0
+fi
+git -C "$wt" commit -q -m "Deploy $rev"
 git -C "$wt" push -q origin gh-pages
 echo "Deployed $rev to gh-pages."

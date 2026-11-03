@@ -126,6 +126,12 @@ class AppLaunchTest {
             rule.onAllNodesWithText("Pluton needs a key first").fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithText("Open Settings").assertExists()
+        rule.onNodeWithText("Fluency").performScrollTo().performClick()
+        rule.onNodeWithText("Shadowing").assertExists()
+        rule.onNodeWithText("Talk").performScrollTo().performClick()
+        rule.onNodeWithText("Sounds").performScrollTo().performClick()
+        rule.onNodeWithText("Les nasales").assertExists()
+        rule.onNodeWithText("Talk").performScrollTo().performClick()
         rule.onNodeWithText("Practice").performClick()
         rule.onNodeWithText("Hear it").assertExists()
     }
@@ -161,6 +167,11 @@ class AppLaunchTest {
             rule.onAllNodesWithText("Writing correction uses an AI model", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithText("Open Settings").assertExists()
+        rule.onNodeWithText("Fluency").performScrollTo().performClick()
+        rule.onNodeWithText("Shadowing").assertExists()
+        rule.onNodeWithText("Write").performScrollTo().performClick()
+        rule.onNodeWithText("Sounds").performScrollTo().performClick()
+        rule.onNodeWithText("Les nasales").assertExists()
     }
 
     @Test

@@ -17,6 +17,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,8 +55,7 @@ internal fun WritingScreen(
     focus: String? = null,
     onSettings: () -> Unit,
     onWritten: () -> Unit,
-    onPractice: () -> Unit,
-    onTalk: () -> Unit,
+    onMode: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -85,19 +85,26 @@ internal fun WritingScreen(
     var error by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
 
-    // Keep unsent drafts across restarts. A revision is stored under its record id so reopening it never
-    // clobbers the separate new-writing draft.
-    LaunchedEffect(essay, promptIndex, revising, current?.id) {
-        delay(400)
+    fun saveDraft() {
         val editing = current
         if (revising && editing != null) {
             store.putMeta("revision_draft", essay)
             store.putMeta("revision_id", editing.id.toString())
-        } else if (!revising && editing == null && result == null) {
+        } else if (editing == null && result == null) {
             store.putMeta("writing_draft", essay)
             store.putMeta("writing_prompt", promptIndex.toString())
         }
     }
+
+    // Keep unsent drafts across restarts. A revision is stored under its record id so reopening it never
+    // clobbers the separate new-writing draft.
+    LaunchedEffect(essay, promptIndex, revising, current?.id) {
+        delay(400)
+        saveDraft()
+    }
+
+    // Leaving before the debounce fires must still preserve the last keystrokes.
+    DisposableEffect(Unit) { onDispose { saveDraft() } }
 
     LaunchedEffect(Unit) {
         if (restoredRevision == null) {
@@ -114,26 +121,27 @@ internal fun WritingScreen(
     fun check() {
         val config = ai ?: return
         if (essay.isBlank() || busy) return
+        val submitted = essay.trim()
+        val editing = current.takeIf { revising }
+        val asked = editing?.prompt ?: prompt.fr
         busy = true
         error = ""
         note = ""
         scope.launch {
             runCatching {
-                val asked = if (revising) (current?.prompt ?: prompt.fr) else prompt.fr
-                val reply = aiChat(config, writeSystem(level, asked, focus), listOf(ChatMessage("user", essay.trim())))
+                val reply = aiChat(config, writeSystem(level, asked, focus), listOf(ChatMessage("user", submitted)))
                 parseWriting(reply) ?: throw AiError("The model did not return the expected format. Try again.")
             }.onSuccess { parsed ->
                 val now = System.currentTimeMillis()
-                val editing = current
-                if (revising && editing != null) {
-                    store.updateWritingRevision(editing.id, essay.trim(), now)
+                if (editing != null) {
+                    store.updateWritingRevision(editing.id, submitted, now)
                     store.addCorrections("revision", parsed.errors, now)
                     store.putMeta("revision_draft", "")
                     store.putMeta("revision_id", "")
-                    current = editing.copy(revised = essay.trim(), updated = now)
+                    current = editing.copy(revised = submitted, updated = now)
                     note = "Revision saved on this device."
                 } else {
-                    current = store.saveWriting(prompt.fr, essay.trim(), parsed, now)
+                    current = store.saveWriting(asked, submitted, parsed, now)
                     store.addWritten()
                     store.putMeta("writing_draft", "")
                     store.putMeta("revision_draft", "")
@@ -209,7 +217,7 @@ internal fun WritingScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Speak", fontSize = 30.sp, fontWeight = FontWeight.Black)
-        SpeakTabs(mode = 2, onMode = { if (it == 0) onPractice() else if (it == 1) onTalk() })
+        SpeakTabs(mode = 2, onMode = onMode)
 
         if (!ready(ai)) {
             NoKeyCard(
@@ -229,7 +237,7 @@ internal fun WritingScreen(
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("WRITING PROMPT · ${prompt.level}", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = scheme.tertiary)
-                                TextButton(onClick = { promptIndex = (promptIndex + 1) % prompts.size }) { Text("Another prompt") }
+                                TextButton(onClick = { promptIndex = (promptIndex + 1) % prompts.size }, enabled = !busy) { Text("Another prompt") }
                             }
                             Text(prompt.fr, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                             Text(prompt.en, color = scheme.onSurfaceVariant, fontStyle = FontStyle.Italic)
@@ -243,6 +251,7 @@ internal fun WritingScreen(
                     onValueChange = { essay = it },
                     label = { Text(if (revising) "Ta révision…" else "Écris en français…") },
                     minLines = 6,
+                    enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Button(onClick = { check() }, enabled = essay.isNotBlank() && !busy, modifier = Modifier.fillMaxWidth()) {
@@ -269,7 +278,7 @@ internal fun WritingScreen(
         }
 
         if (history.isNotEmpty()) {
-            WritingHistory(history, onOpen = { open(it) }, onRevise = { revise(it) })
+            WritingHistory(history, onOpen = { if (!busy) open(it) }, onRevise = { if (!busy) revise(it) }, enabled = !busy)
         }
         if (corrections.isNotEmpty()) {
             ErrorSummary(corrections)
@@ -332,6 +341,7 @@ private fun WritingHistory(
     history: List<WritingRecord>,
     onOpen: (WritingRecord) -> Unit,
     onRevise: (WritingRecord) -> Unit,
+    enabled: Boolean = true,
 ) {
     val scheme = MaterialTheme.colorScheme
     Card(Modifier.fillMaxWidth()) {
@@ -351,8 +361,8 @@ private fun WritingHistory(
                     Text(record.prompt, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Text(record.corrected, color = scheme.onSurfaceVariant, fontSize = 13.sp, maxLines = 2)
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        TextButton(onClick = { onOpen(record) }) { Text("Open") }
-                        TextButton(onClick = { onRevise(record) }) { Text("Revise") }
+                        TextButton(onClick = { onOpen(record) }, enabled = enabled) { Text("Open") }
+                        TextButton(onClick = { onRevise(record) }, enabled = enabled) { Text("Revise") }
                     }
                 }
             }

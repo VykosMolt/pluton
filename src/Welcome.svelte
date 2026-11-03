@@ -13,7 +13,7 @@
   const PER_BAND = 5
   const KNOWN = 0.8 // a band counts as known when this share of its sample was known (and confirmed)
 
-  const deck = [...words.values()].filter((w) => w.sentence)
+  let deck = $derived([...words.values()].filter((w) => w.sentence))
   let step = $state('hello') // hello | quiz | result
   let band = $state(0)
   let sample = $state([])

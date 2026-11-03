@@ -15,7 +15,9 @@ struct HomeView: View {
             words: model.words,
             now: AppModel.now(),
             newToday: model.newToday,
-            pace: model.pace
+            pace: model.pace,
+            conj: model.conj,
+            grammar: model.grammar
         )
     }
 
@@ -74,7 +76,8 @@ struct HomeView: View {
         .fullScreenCover(isPresented: $running) {
             if let run {
                 RunView(run: run) { introduced, done in
-                    summary = "\(introduced) new words introduced · \(done) answers"
+                    model.addIntroduced(introduced)
+                    summary = "\(introduced) new cards introduced · \(done) answers"
                     if done > 0 { model.markPlan("review") }
                     model.refresh()
                     running = false

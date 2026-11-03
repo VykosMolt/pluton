@@ -17,7 +17,7 @@
     dictee: 'Écris tout ce que tu entends. (write everything you hear)', gram: 'Complète ! (fill it in)',
     fix: 'Corrige-toi ! (fix your own sentence)' }
 
-  let queue = $state(buildRun([...cards.values()], words, new Date(), newToday, { conj, grammar, tenses: LANG.tenses.map((t) => t.id), ...pace }))
+  let queue = $state([]) // filled on mount, so a run always starts from the current deck and pace
   let done = $state(0)
   let mode = $state('cloze') // fixed per card when shown; the card's reps change on answer
   let person = $state(0) // conjugation cell being asked
@@ -91,7 +91,11 @@
     await tick()
     ;(cur?.phase === 'intro' ? gotBtn : input)?.focus()
   }
-  onMount(show)
+  onMount(async () => {
+    queue = buildRun([...cards.values()], words, new Date(), newToday, { conj, grammar, tenses: LANG.tenses.map((t) => t.id), ...pace })
+    await tick()
+    show()
+  })
 
   function finish(completed) {
     commit()

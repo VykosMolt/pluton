@@ -4,6 +4,7 @@ import { DATA, LANG } from './lang.js'
 let ctx
 let token = 0
 let source
+let settlePlayback
 
 export function unlock() {
   // iOS mutes Web Audio with the ringer switch unless the page asks for media playback (Safari 16.4+).
@@ -15,6 +16,7 @@ export function unlock() {
 export function stop() {
   token++
   try { source?.stop() } catch {}
+  settlePlayback?.() // cancelled speech synthesis does not reliably emit an end/error event
   globalThis.speechSynthesis?.cancel()
 }
 
@@ -37,13 +39,21 @@ async function play(audioId, text, me) {
     source = ctx.createBufferSource()
     source.buffer = buffer
     source.connect(ctx.destination)
-    await new Promise((resolve) => { source.onended = resolve; source.start() })
+    await new Promise((resolve) => {
+      const finish = () => { if (settlePlayback === finish) settlePlayback = null; resolve() }
+      settlePlayback = source.onended = finish
+      source.start()
+    })
   } catch (err) {
     if (audioId) console.warn(`audio fallback for ${audioId}: ${err.message}`)
     if (me !== token || !text || !globalThis.speechSynthesis) return
     const u = new SpeechSynthesisUtterance(text)
     u.lang = LANG.speech
-    await new Promise((resolve) => { u.onend = u.onerror = resolve; speechSynthesis.speak(u) })
+    await new Promise((resolve) => {
+      const finish = () => { if (settlePlayback === finish) settlePlayback = null; resolve() }
+      settlePlayback = u.onend = u.onerror = finish
+      speechSynthesis.speak(u)
+    })
   }
 }
 

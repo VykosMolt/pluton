@@ -45,7 +45,8 @@ A simulator build needs no Apple account. A device build needs a signing team in
 - **More**: Progress (vocabulary estimate, seven-day activity, vocabulary growth, error log, can-do checkpoint,
   cabinet, milestones), Error
   review (spaced: type the fix for each due writing correction and read why), Le Chemin with goals, the deck browser, all
-  conjugation tables (tap a form to hear it), grammar topics, and Settings (pace; backup; AI provider/model/key).
+  conjugation tables (tap a form to hear it, or queue a tense for practice), grammar topics (with practice), and
+  Settings (pace; backup; AI provider/model/key).
 
 ## Status: built by CI, not on this machine
 
@@ -57,5 +58,6 @@ the Listen tab is the first change it did not compile.
 Everything is local: no account, no sync server. Progress is in the app's SQLite store and the AI key is in the
 Keychain, never in UserDefaults or a backup.
 
-Known gaps versus Android: no story generator/retell, runs are word cards only (no conjugation/grammar drills), and
-no bundled sentence audio (TTS stands in).
+Known gaps versus Android: no story generator/retell, and no bundled sentence audio (TTS stands in). Conjugation
+and grammar practice now use the same run queue as Android; the Swift sources for that path are awaiting the next
+macOS CI compile.

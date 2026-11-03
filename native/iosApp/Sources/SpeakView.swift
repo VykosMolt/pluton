@@ -39,6 +39,7 @@ struct SpeakView: View {
 
 private struct PracticeView: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var speaker = Speaker()
     @StateObject private var practice = SpeechPractice()
     @SwiftUI.State private var pool: [String] = []
@@ -100,13 +101,21 @@ private struct PracticeView: View {
                     transcript = ""
                     result = nil
                 }
+                .disabled(practice.recording || practice.finishing || busy)
             }
             .padding(20)
         }
         .onAppear(perform: loadPool)
-        .task { await practice.requestPermission() }
+        .task { _ = await practice.requestPermission() }
         .onDisappear {
-            if practice.recording { Task { _ = await practice.finishRecording() } }
+            speaker.stop()
+            practice.cancel()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                speaker.stop()
+                practice.cancel()
+            }
         }
     }
 
@@ -120,6 +129,7 @@ private struct PracticeView: View {
     }
 
     private func stop() async {
+        let expectedSentence = sentence
         busy = true
         guard let text = await practice.finishRecording() else {
             busy = false
@@ -127,7 +137,7 @@ private struct PracticeView: View {
         }
         transcript = text
         if !text.isEmpty {
-            result = model.bridge.gradeDictee(typed: text, sentence: sentence)
+            result = model.bridge.gradeDictee(typed: text, sentence: expectedSentence)
         }
         model.addSpoken()
         model.markPlan("speak")
@@ -138,10 +148,13 @@ private struct PracticeView: View {
 
 private struct TalkView: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
     @SwiftUI.State private var turns: [ChatTurn] = []
     @SwiftUI.State private var draft = ""
     @SwiftUI.State private var busy = false
     @SwiftUI.State private var error = ""
+    @SwiftUI.State private var requestTask: Task<Void, Never>?
+    @SwiftUI.State private var maySpeakReply = false
     @StateObject private var speaker = Speaker()
     @StateObject private var practice = SpeechPractice()
 
@@ -188,8 +201,7 @@ private struct TalkView: View {
                             } else {
                                 Task {
                                     speaker.stop()
-                                    await practice.requestPermission()
-                                    if practice.authorized { practice.start() }
+                                    if await practice.requestPermission() { practice.start() }
                                 }
                             }
                         } label: {
@@ -197,7 +209,7 @@ private struct TalkView: View {
                         }
                         .buttonStyle(.bordered)
                         .tint(practice.recording ? .red : .blue)
-                        .disabled(busy)
+                        .disabled(busy || practice.finishing)
                     }
                     if practice.recording {
                         Text("Listening… tap the stop button when you finish.")
@@ -217,8 +229,21 @@ private struct TalkView: View {
             }
             .padding(20)
         }
+        .onAppear { maySpeakReply = scenePhase == .active }
         .onDisappear {
-            if practice.recording { Task { _ = await practice.finishRecording() } }
+            maySpeakReply = false
+            requestTask?.cancel()
+            requestTask = nil
+            busy = false
+            speaker.stop()
+            practice.cancel()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            maySpeakReply = phase == .active
+            if phase == .background {
+                speaker.stop()
+                practice.cancel()
+            }
         }
     }
 
@@ -233,15 +258,17 @@ private struct TalkView: View {
         error = ""
         turns.append(ChatTurn(role: "user", content: text))
         busy = true
-        Task {
+        requestTask = Task {
             do {
                 let system = model.chatSystem(learning: model.learningWords(), focus: model.grammarFocusLabel())
                 let reply = try await AIClient.chat(system: system, turns: turns)
+                try Task.checkCancellation()
                 turns.append(ChatTurn(role: "assistant", content: reply))
                 model.addTalked()
                 model.markPlan("speak")
-                speaker.speak(model.bridge.splitCorrection(text: reply).body)
+                if maySpeakReply { speaker.speak(model.bridge.splitCorrection(text: reply).body) }
             } catch {
+                guard !Task.isCancelled else { return }
                 self.error = error.localizedDescription
                 if turns.last?.role == "user" { turns.removeLast() }
                 draft = text

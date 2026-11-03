@@ -14,6 +14,7 @@
   let i = $state(0)
   let showEn = $state(false)
   let recording = $state(false)
+  let requesting = $state(false)
   let listening = $state(false)
   let url = $state(null) // the last recording
   let error = $state('')
@@ -50,37 +51,46 @@
   const resetCheck = () => { check = null; transcript = '' }
 
   async function record() {
+    if (requesting) return
     if (recording) return stopRecord()
+    requesting = true
+    stop()
+    player?.pause()
     error = ''
     clearClip()
     resetCheck()
     const me = ++gen
+    let media
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      if (me !== gen) { stream.getTracks().forEach((t) => t.stop()); stream = null; return } // moved on while asking
-      const media = stream // this recording's stream, not whatever `stream` points at later
+      media = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if (me !== gen) { media.getTracks().forEach((t) => t.stop()); return } // moved on while asking
+      stream = media
       const chunks = []
-      recorder = new MediaRecorder(media)
-      recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data)
-      recorder.onstop = () => {
+      const rec = new MediaRecorder(media)
+      recorder = rec
+      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data)
+      rec.onstop = () => {
         media.getTracks().forEach((t) => t.stop())
         if (stream === media) stream = null
         if (me !== gen) return // moved on to another sentence: drop the late clip
         recording = false
         clearTimeout(timer)
-        if (chunks.length) url = URL.createObjectURL(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }))
+        if (chunks.length) url = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType || 'audio/webm' }))
         if (url) oncount?.('spoken')
       }
-      recorder.start()
+      rec.start()
       recording = true
       timer = setTimeout(stopRecord, 15000) // don't leave the mic on forever
     } catch (e) {
+      media?.getTracks().forEach((t) => t.stop())
+      if (me !== gen) return
       recording = false
-      stream?.getTracks().forEach((t) => t.stop())
       stream = null
       error = e.name === 'NotAllowedError'
         ? 'Microphone access was denied. Allow it in the browser or system settings.'
         : `Could not start the microphone (${e.message}).`
+    } finally {
+      if (me === gen) requesting = false
     }
   }
   function stopRecord() {
@@ -98,12 +108,13 @@
   }
   async function hearBoth() {
     if (!url) return hear()
+    const me = gen
     stop()
     player.currentTime = 0
     const played = await player.play().then(() => true, () => false)
     if (!played) return hear()
-    await new Promise((resolve) => { player.onended = resolve })
-    hear()
+    await new Promise((resolve) => { player.onended = player.onpause = player.onerror = resolve })
+    if (me === gen) hear()
   }
 
   /** The browser's speech recognition is the free ASR path; it is absent in Firefox/Zen and native WebViews. */
@@ -136,6 +147,8 @@
 
   function next() {
     gen++
+    requesting = false
+    player?.pause()
     if (recording) {
       clearTimeout(timer)
       try { recorder?.stop() } catch {}
@@ -156,6 +169,7 @@
 
   onDestroy(() => {
     gen++
+    player?.pause()
     clearTimeout(timer)
     try { if (recorder?.state !== 'inactive') recorder?.stop() } catch {}
     stream?.getTracks().forEach((t) => t.stop())
@@ -184,14 +198,14 @@
       {#if recording}
         <button class="btn rec" onclick={stopRecord}>⏹ Stop</button>
       {:else}
-        <button class="btn" onclick={record} disabled={!canRecord || listening}>🎤 Record</button>
+        <button class="btn" onclick={record} disabled={!canRecord || listening || requesting}>{requesting ? 'Opening microphone…' : '🎤 Record'}</button>
       {/if}
       <button class="btn ghost" onclick={playMine} disabled={!url}>▶ Yours</button>
       {#if url}<button class="btn ghost" onclick={hearBoth}>🔁 Hear both</button>{/if}
     </div>
     {#if !canRecord}<p class="muted small">This browser cannot record audio. You can still listen, and use the speech check if it is available.</p>{/if}
     {#if Recognition}
-      <button class="btn ghost wide" onclick={listen} disabled={listening || recording}>
+      <button class="btn ghost wide" onclick={listen} disabled={listening || recording || requesting}>
         {listening ? 'Listening…' : '👂 Check what I said'}
       </button>
     {:else}

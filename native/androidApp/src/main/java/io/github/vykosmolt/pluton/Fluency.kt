@@ -192,6 +192,8 @@ private fun FourThreeTwo(
         if (recorder.stop()) finishedClip()
     }
 
+    OnAppBackground { active = false }
+
     LaunchedEffect(active) {
         if (active) {
             while (active && seconds > 0) {

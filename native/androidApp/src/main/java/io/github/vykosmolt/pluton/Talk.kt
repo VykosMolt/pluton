@@ -92,8 +92,7 @@ internal fun TalkScreen(
     focus: String? = null,
     onSettings: () -> Unit,
     onTalked: () -> Unit,
-    onPractice: () -> Unit,
-    onWrite: () -> Unit,
+    onMode: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -199,7 +198,7 @@ internal fun TalkScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Speak", fontSize = 30.sp, fontWeight = FontWeight.Black)
-        SpeakTabs(mode = 1, onMode = { if (it == 0) onPractice() else if (it == 2) onWrite() })
+        SpeakTabs(mode = 1, onMode = onMode)
         if (!ready(ai)) {
             NoKeyCard(
                 "Talk with Pluton uses an AI model with your own API key. The key stays on this device and goes only to the provider you pick.",

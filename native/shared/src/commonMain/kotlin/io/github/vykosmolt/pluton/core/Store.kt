@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 // SQLite persistence. Cards are derived state; the review table is append-only and will be unioned for sync.
 // Writes are synchronous and tiny; move them to a writer coroutine if UI profiling ever shows jank.
@@ -87,9 +88,17 @@ private fun newDeviceId(): String = buildString {
     repeat(8) { append(DEVICE_ALPHABET[kotlin.random.Random.nextInt(DEVICE_ALPHABET.length)]) }
 }
 
-/** Backup file contents. No credentials are stored on this device, so none can leak into a backup. */
+private const val BACKUP_VERSION = 4
+
+/** Backup file contents. Credentials and sync bookkeeping are deliberately excluded. */
 @Serializable
-data class BackupText(val title: String, val body: String, val added: Long)
+data class BackupText(
+    val title: String,
+    val body: String,
+    val added: Long,
+    val id: Long? = null,
+    val updated: Long = added,
+)
 
 @Serializable
 data class BackupWriting(
@@ -127,7 +136,39 @@ data class Backup(
     val corrections: List<BackupCorrection> = emptyList(),
     val stats: Stats = Stats(),
     val canDo: List<String> = emptyList(),
+    val pace: Pace? = null,
+    val practiceDays: List<String> = emptyList(),
 )
+
+/** Reject malformed progress before the replacement transaction starts. */
+private fun validateBackup(backup: Backup) {
+    require(backup.version in 1..BACKUP_VERSION) { "Unsupported backup version: ${backup.version}" }
+    require(backup.cards.map { it.lemma }.distinct().size == backup.cards.size) { "Duplicate cards in backup" }
+    for (card in backup.cards) {
+        val memory = card.fsrs
+        require(card.lemma.isNotBlank() && card.added >= 0 && card.updated >= 0 && memory.due >= 0 &&
+            (memory.lastReview == null || memory.lastReview >= 0) &&
+            memory.stability.isFinite() && memory.stability >= 0 && memory.difficulty.isFinite() &&
+            memory.difficulty in 0.0..10.0 && memory.elapsedDays >= 0 && memory.scheduledDays >= 0 &&
+            memory.reps >= 0 && memory.lapses >= 0 && memory.learningSteps >= 0 &&
+            (memory.state == State.New || (memory.stability >= 0.001 && memory.difficulty >= 1.0))) {
+            "Invalid card in backup: ${card.lemma}"
+        }
+    }
+    require(backup.reviews.all { it.lemma.isNotBlank() && it.rating in 1..4 && it.at >= 0 }) {
+        "Invalid review in backup"
+    }
+    val textIds = backup.texts.mapNotNull { it.id }
+    require(textIds.distinct().size == textIds.size && textIds.all { it > 0 }) { "Invalid text IDs in backup" }
+    require(backup.texts.all { it.body.isNotBlank() && it.added >= 0 && it.updated >= 0 }) { "Invalid text in backup" }
+    require(backup.corrections.all { it.at >= 0 && it.nextDue >= 0 && it.reps >= 0 }) { "Invalid correction in backup" }
+    require(backup.writings.all { it.created >= 0 && it.updated >= 0 }) { "Invalid writing in backup" }
+    val stats = backup.stats
+    require(listOf(stats.newCount, stats.listened, stats.spoken, stats.talked, stats.written).all { it >= 0 }) {
+        "Invalid statistics in backup"
+    }
+    require(backup.pace == null || (backup.pace.perRun >= 0 && backup.pace.perDay >= 0)) { "Invalid pace in backup" }
+}
 
 class Store(private val db: PlutonDb) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -167,7 +208,7 @@ class Store(private val db: PlutonDb) {
     fun unmark(lemma: String, now: Long): CardState? {
         val card = card(lemma) ?: return null
         return if (card.fsrs.state == State.New) {
-            deleteCard(lemma)
+            deleteCard(lemma, now)
             null
         } else {
             val next = card.copy(known = false)
@@ -429,10 +470,10 @@ class Store(private val db: PlutonDb) {
     /** Everything that matters on this device, as JSON. */
     fun export(): String = json.encodeToString(
         Backup(
-            version = 3,
+            version = BACKUP_VERSION,
             cards = cards(),
             reviews = reviews(),
-            texts = texts().map { BackupText(it.title, it.body, it.added) },
+            texts = texts().map { BackupText(it.title, it.body, it.added, it.id, it.updated) },
             writings = writings().map {
                 BackupWriting(it.prompt, it.draft, it.corrected, it.feedback, it.level, it.errors, it.revised, it.created, it.updated)
             },
@@ -441,12 +482,25 @@ class Store(private val db: PlutonDb) {
             },
             stats = rawStats(),
             canDo = canDoDone().toList(),
+            pace = pace(),
+            practiceDays = practiceDays().toList(),
         ),
     )
 
     /** Replace all progress with a backup, in one transaction: a bad file leaves the store untouched. */
     fun import(data: String) {
+        val document = json.parseToJsonElement(data) as? JsonObject
+            ?: throw IllegalArgumentException("This is not a Pluton backup")
+        // Older nonempty v1 exports omitted the default version. An unrelated JSON object must never decode
+        // to an empty default Backup and erase progress.
+        require(document.keys.any { it in setOf("version", "cards", "reviews", "texts", "stats", "writings", "corrections") }) {
+            "This is not a Pluton backup"
+        }
         val backup = json.decodeFromString<Backup>(data)
+        require("version" in document || backup != Backup()) {
+            "This is not a Pluton backup"
+        }
+        validateBackup(backup)
         db.transaction {
             db.plutonQueries.deleteAllCards()
             db.plutonQueries.deleteAllReviews()
@@ -459,7 +513,10 @@ class Store(private val db: PlutonDb) {
             for (r in backup.reviews) {
                 db.plutonQueries.insertReview(r.lemma, r.rating.toLong(), r.mode, r.at, if (r.overridden) 1L else 0L)
             }
-            for (t in backup.texts) db.plutonQueries.insertText(t.title, t.body, t.added, t.added)
+            for (t in backup.texts) {
+                if (t.id == null) db.plutonQueries.insertText(t.title, t.body, t.added, t.updated)
+                else db.plutonQueries.insertBackupText(t.id, t.title, t.body, t.added, t.updated)
+            }
             if (backup.version >= 2) {
                 for (w in backup.writings) {
                     db.plutonQueries.insertWriting(
@@ -491,6 +548,10 @@ class Store(private val db: PlutonDb) {
             db.plutonQueries.putMeta("speech_wpm", "")
             // A v1/v2 file predates the can-do self-assessment, so it must not erase the local ticks.
             if (backup.version >= 3) db.plutonQueries.putMeta("cando", backup.canDo.joinToString(","))
+            if (backup.version >= 4) {
+                backup.pace?.let { savePace(it) }
+                db.plutonQueries.putMeta("practice", backup.practiceDays.joinToString(","))
+            }
             // A restored device starts from scratch: old deletions must not wipe the account, and pulled records
             // must be re-fetched. The device identity is kept.
             db.plutonQueries.deleteAllTombstones()

@@ -62,6 +62,7 @@ private fun due(card: CardState, now: Long): String {
 internal fun WordsScreen(words: Map<String, Word>, cards: Map<String, CardState>, onBack: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val clip = rememberClipPlayer()
+    val tts = rememberFrenchTts()
     var q by remember { mutableStateOf("") }
     var only by remember { mutableStateOf("all") }
     val now = System.currentTimeMillis()
@@ -119,7 +120,11 @@ internal fun WordsScreen(words: Map<String, Word>, cards: Map<String, CardState>
             val w = words[card.lemma]
             val st = status(card, w)
             Row(
-                Modifier.fillMaxWidth().clickable { clip.play(w?.audioWord) }.padding(vertical = 8.dp),
+                Modifier.fillMaxWidth().clickable {
+                    tts.stop()
+                    // Deck word clips are not bundled in the APK; use the device voice when the asset is missing.
+                    if (!clip.play(w?.audioWord)) tts.speak(w?.display ?: card.lemma)
+                }.padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {

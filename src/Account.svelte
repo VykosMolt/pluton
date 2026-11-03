@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import * as sync from './lib/sync.js'
-  import { LANG } from './lib/lang.js'
+  import { clearAll } from './lib/db.js'
 
   /** Sign in with an emailed code, sync, sign out, delete the account. onsynced: reload after a sync brought changes. */
   let { onsynced } = $props()
@@ -62,7 +62,7 @@
     await sync.deleteAccount()
     user = null
     if (wipe) {
-      indexedDB.deleteDatabase(`pluton-${LANG.code}`)
+      await clearAll()
       location.reload()
     }
     note = 'Account deleted. This device keeps its progress.'

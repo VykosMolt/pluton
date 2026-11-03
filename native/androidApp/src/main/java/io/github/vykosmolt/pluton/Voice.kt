@@ -15,10 +15,28 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import java.io.File
 import java.util.Locale
+
+/** Compose screens stay mounted when the app backgrounds; stop microphone/playback work explicitly. */
+@Composable
+internal fun OnAppBackground(onBackground: () -> Unit) {
+    val lifecycle = (LocalContext.current as? LifecycleOwner)?.lifecycle
+    val callback by rememberUpdatedState(onBackground)
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) callback()
+        }
+        lifecycle?.addObserver(observer)
+        onDispose { lifecycle?.removeObserver(observer) }
+    }
+}
 
 /** One French TTS engine for the extra speaking screens. */
 internal class FrenchTts(context: Context) {
@@ -51,6 +69,7 @@ internal class FrenchTts(context: Context) {
     fun stop() = engine?.stop()
 
     fun release() {
+        ready = false
         engine?.stop()
         engine?.shutdown()
         engine = null
@@ -61,6 +80,7 @@ internal class FrenchTts(context: Context) {
 internal fun rememberFrenchTts(): FrenchTts {
     val context = LocalContext.current
     val tts = remember { FrenchTts(context) }
+    OnAppBackground { tts.stop() }
     DisposableEffect(Unit) { onDispose { tts.release() } }
     return tts
 }
@@ -104,6 +124,7 @@ internal class ClipRecorder(private val context: Context) {
             recorder = null
             recording = false
             pendingPath = null
+            file.delete()
             error = "Could not start recording: ${e.message}"
         }
     }
@@ -118,6 +139,7 @@ internal class ClipRecorder(private val context: Context) {
             path = null
             error = "Recording failed: ${e.message}"
         }
+        if (path == null) pendingPath?.let { File(it).delete() }
         recorder?.release()
         recorder = null
         recording = false
@@ -129,8 +151,8 @@ internal class ClipRecorder(private val context: Context) {
         if (recording) return
         val file = path ?: return
         stopPlayback()
+        val mp = MediaPlayer()
         try {
-            val mp = MediaPlayer()
             mp.setDataSource(file)
             mp.prepare()
             mp.start()
@@ -144,6 +166,7 @@ internal class ClipRecorder(private val context: Context) {
                 }
             }
         } catch (_: Exception) {
+            mp.release()
             error = "Could not play the recording."
         }
     }
@@ -157,7 +180,12 @@ internal class ClipRecorder(private val context: Context) {
     fun release() {
         recorder?.release()
         recorder = null
+        recording = false
         stopPlayback()
+        pendingPath?.let { File(it).delete() }
+        path?.let { File(it).delete() }
+        pendingPath = null
+        path = null
     }
 }
 
@@ -165,6 +193,7 @@ internal class ClipRecorder(private val context: Context) {
 internal fun rememberClipRecorder(): ClipRecorder {
     val context = LocalContext.current
     val recorder = remember { ClipRecorder(context) }
+    OnAppBackground { recorder.stop(); recorder.stopPlayback() }
     DisposableEffect(Unit) { onDispose { recorder.release() } }
     return recorder
 }
@@ -193,14 +222,17 @@ internal class VoiceInput(private val context: Context) {
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
             override fun onBeginningOfSpeech() {
+                if (recognizer !== r) return
                 if (speechStartedAt == 0L) speechStartedAt = SystemClock.elapsedRealtime()
             }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {
+                if (recognizer !== r) return
                 if (speechEndedAt == 0L) speechEndedAt = SystemClock.elapsedRealtime()
             }
             override fun onError(errorCode: Int) {
+                if (recognizer !== r) return
                 listening = false
                 error = "Speech recognition failed ($errorCode)."
                 r.destroy()
@@ -208,6 +240,7 @@ internal class VoiceInput(private val context: Context) {
             }
 
             override fun onResults(results: Bundle?) {
+                if (recognizer !== r) return
                 val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                 listening = false
                 r.destroy()
@@ -236,14 +269,16 @@ internal class VoiceInput(private val context: Context) {
 
     /** Ask the recognizer to finish; onResults still delivers the transcript. */
     fun stop() {
+        if (speechStartedAt > 0 && speechEndedAt == 0L) speechEndedAt = SystemClock.elapsedRealtime()
         recognizer?.stopListening()
     }
 
     fun release() {
-        recognizer?.cancel()
-        recognizer?.destroy()
+        val previous = recognizer
         recognizer = null
         listening = false
+        previous?.cancel()
+        previous?.destroy()
     }
 }
 
@@ -251,6 +286,7 @@ internal class VoiceInput(private val context: Context) {
 internal fun rememberVoiceInput(): VoiceInput {
     val context = LocalContext.current
     val input = remember { VoiceInput(context) }
+    OnAppBackground { input.release() }
     DisposableEffect(Unit) { onDispose { input.release() } }
     return input
 }

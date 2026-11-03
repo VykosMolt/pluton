@@ -1,5 +1,5 @@
 <script>
-  import { onMount, tick } from 'svelte'
+  import { onMount, onDestroy, tick } from 'svelte'
   import * as db from './lib/db.js'
   import { chat, ready, parseJSON, AIError, PROVIDERS } from './lib/ai.js'
   import { chatSystem, writeSystem, splitCorrection, levelOf, PROMPTS } from './lib/tutor.js'
@@ -34,6 +34,15 @@
   let result = $state(null)
   let essayBox = $state()
   let controller = null
+  let recognition = null
+  let generation = 0
+
+  onDestroy(() => {
+    generation++
+    controller?.abort()
+    recognition?.abort()
+    globalThis.speechSynthesis?.cancel()
+  })
 
   const level = $derived(levelOf(vocab))
   const suggested = $derived(PROMPTS.filter(([l]) => Math.abs(ORDER.indexOf(l) - ORDER.indexOf(level.code)) <= 1))
@@ -70,17 +79,20 @@
     busy = true
     log = [...log, { role: 'user', content: text }, { role: 'assistant', content: '' }]
     const i = log.length - 1
+    const me = ++generation
     scroll()
     controller = new AbortController()
     try {
       const history = $state.snapshot(log).slice(0, -1).slice(-20)
       while (history[0]?.role === 'assistant') history.shift() // the conversation must open with the learner
       const out = await chat(ai, { system: chatSystem(level, learning()), messages: history, signal: controller.signal,
-        onText: (d) => { log[i].content += d; scroll() } })
+        onText: (d) => { if (me === generation) { log[i].content += d; scroll() } } })
+      if (me !== generation) return
       log[i].content = out
       oncount('talked')
       if (speak) say(splitCorrection(out).body)
     } catch (e) {
+      if (me !== generation) return
       log = log.slice(0, i - 1) // drop the exchange, give the text back
       draft = text
       if (e.name !== 'AbortError') error = e.message
@@ -97,18 +109,22 @@
   }
 
   function listen() {
+    if (listening) return
     const r = new Recognition()
+    recognition = r
     r.lang = LANG.speech
     r.interimResults = true
-    r.onresult = (e) => (draft = [...e.results].map((x) => x[0].transcript).join(' '))
-    r.onend = r.onerror = () => (listening = false)
+    r.onresult = (e) => { if (recognition === r) draft = [...e.results].map((x) => x[0].transcript).join(' ') }
+    r.onend = r.onerror = () => { if (recognition === r) { listening = false; recognition = null } }
     listening = true
-    r.start()
+    try { r.start() } catch (e) { listening = false; recognition = null; error = e.message }
   }
 
   async function clear() {
     if (!confirm('Start a new conversation?')) return
+    generation++
     controller?.abort()
+    busy = false
     log = []
     await db.put('meta', [], 'talk')
   }
@@ -116,17 +132,23 @@
   async function correct() {
     const topic = prompt?.[1] ?? own.trim()
     if (!essay.trim() || !topic || busy) return
+    const original = essay
+    const me = ++generation
+    controller = new AbortController()
     busy = true
     error = ''
     result = null
     try {
-      const r = parseJSON(await chat(ai, { system: writeSystem(level, topic), messages: [{ role: 'user', content: essay }], effort: 'medium' }))
+      const r = parseJSON(await chat(ai, { system: writeSystem(level, topic), messages: [{ role: 'user', content: original }],
+        effort: 'medium', signal: controller.signal }))
+      if (me !== generation) return
       if (typeof r.corrected !== 'string' || !Array.isArray(r.errors)) throw new AIError('The model returned an unexpected format. Try again.')
-      result = { ...r, original: essay, topic }
-      writings = [{ at: Date.now(), topic, text: essay, result: r }, ...writings].slice(0, 50)
+      result = { ...r, original, topic }
+      writings = [{ at: Date.now(), topic, text: original, result: r }, ...writings].slice(0, 50)
       await db.put('meta', $state.snapshot(writings), 'writings')
       oncount('written')
     } catch (e) {
+      if (me !== generation) return
       error = e.message
     }
     busy = false

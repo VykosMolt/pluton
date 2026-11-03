@@ -30,6 +30,7 @@ final class Speaker: ObservableObject {
 final class SpeechPractice: ObservableObject {
     @Published var transcript = ""
     @Published var recording = false
+    @Published var finishing = false
     @Published var error = ""
     @Published var authorized = false
 
@@ -43,6 +44,7 @@ final class SpeechPractice: ObservableObject {
     private var generation = 0
     private var player: AVAudioPlayer?
     private var speechStartedAt: Date?
+    private let transcribe: Bool
 
     /// Seconds from the first recognized word until now; 0 when nothing was heard.
     var speechSeconds: TimeInterval {
@@ -50,26 +52,38 @@ final class SpeechPractice: ObservableObject {
         return Date().timeIntervalSince(speechStartedAt)
     }
 
-    init() {
+    init(transcribe: Bool = true) {
+        self.transcribe = transcribe
         recognition = SFSpeechRecognizer(locale: Locale(identifier: "fr-FR"))
     }
 
-    func requestPermission() async {
-        let speech = await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { status in continuation.resume(returning: status == .authorized) }
+    @discardableResult
+    func requestPermission() async -> Bool {
+        let current = generation
+        var speech = true
+        if transcribe {
+            speech = await withCheckedContinuation { continuation in
+                SFSpeechRecognizer.requestAuthorization { status in continuation.resume(returning: status == .authorized) }
+            }
         }
         let mic = await AVAudioApplication.requestRecordPermission()
+        guard generation == current, !Task.isCancelled else { return false }
         authorized = speech && mic
-        if !authorized { error = "Microphone and speech recognition permissions are needed." }
+        if !authorized {
+            error = transcribe ? "Microphone and speech recognition permissions are needed." : "Microphone permission is needed to record yourself."
+        }
+        return authorized
     }
 
     func start() {
-        guard authorized else { return }
-        guard let recognition, recognition.isAvailable else {
+        guard authorized, !recording, !finishing else { return }
+        if transcribe && recognition?.isAvailable != true {
             error = "French speech recognition isn't available on this device."
             return
         }
         reset()
+        if let file { try? FileManager.default.removeItem(at: file) }
+        file = nil
         transcript = ""
         error = ""
         let inputFormat = engine.inputNode.outputFormat(forBus: 0)
@@ -77,20 +91,21 @@ final class SpeechPractice: ObservableObject {
             error = "No usable microphone input on this device."
             return
         }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("pluton-speak.caf")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("pluton-speak-\(UUID().uuidString).caf")
         file = url
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .measurement, options: .duckOthers)
+            try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
             try session.setActive(true)
             let file = try AVAudioFile(forWriting: url, settings: inputFormat.settings)
             audioFile = file
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
             self.request = request
+            let transcribe = self.transcribe
             engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { buffer, _ in
                 try? file.write(from: buffer)
-                request.append(buffer)
+                if transcribe { request.append(buffer) }
             }
             tapInstalled = true
             engine.prepare()
@@ -98,7 +113,7 @@ final class SpeechPractice: ObservableObject {
             recording = true
             generation += 1
             let current = generation
-            task = recognition.recognitionTask(with: request) { [weak self] result, error in
+            if transcribe { task = recognition?.recognitionTask(with: request) { [weak self] result, error in
                 guard let self else { return }
                 Task { @MainActor in
                     guard self.generation == current else { return }
@@ -108,18 +123,34 @@ final class SpeechPractice: ObservableObject {
                             self.speechStartedAt = Date()
                         }
                     }
-                    if let error, result == nil {
+                    if let error, result == nil, self.recording {
                         self.error = "Speech recognition failed: \(error.localizedDescription)"
                         self.recording = false
+                        self.generation += 1
                         self.reset()
+                        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
                     }
                 }
-            }
+            } }
         } catch {
             self.error = "Recording failed: \(error.localizedDescription)"
             recording = false
             reset()
+            try? FileManager.default.removeItem(at: url)
+            file = nil
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
+    }
+
+    /// End all audio work synchronously when a view leaves or the app backgrounds.
+    func cancel() {
+        generation += 1
+        recording = false
+        finishing = false
+        reset()
+        if let file { try? FileManager.default.removeItem(at: file) }
+        file = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     private func reset() {
@@ -144,7 +175,9 @@ final class SpeechPractice: ObservableObject {
     func finishRecording() async -> String? {
         guard recording else { return nil }
         recording = false
+        finishing = true
         let current = generation
+        defer { if generation == current { finishing = false } }
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             tapInstalled = false
@@ -155,8 +188,10 @@ final class SpeechPractice: ObservableObject {
         request?.endAudio()
         let myRequest = request
         let myTask = task
-        try? await Task.sleep(nanoseconds: 700_000_000)
-        guard generation == current else { return "" }
+        if transcribe { try? await Task.sleep(nanoseconds: 700_000_000) }
+        guard generation == current else { return nil }
+        generation += 1
+        finishing = false
         myTask?.cancel()
         myRequest?.endAudio()
         task = nil
@@ -169,7 +204,7 @@ final class SpeechPractice: ObservableObject {
     }
 
     func play() {
-        guard !recording, let file else { return }
+        guard !recording, !finishing, let file else { return }
         do {
             let player = try AVAudioPlayer(contentsOf: file)
             player.play()

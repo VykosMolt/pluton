@@ -26,7 +26,8 @@ export const setActive = (cfg) => (active = cfg)
 export const activeConfig = () => (ready(active) ? active : null)
 
 const baseOf = (cfg) => (cfg.base || PROVIDERS[cfg.provider]?.base || '').replace(/\/+$/, '')
-export const ready = (cfg) => !!(cfg?.provider && cfg.model && (cfg.key || PROVIDERS[cfg.provider]?.noKey || cfg.provider === 'custom'))
+export const ready = (cfg) => !!(PROVIDERS[cfg?.provider] && cfg.model?.trim() &&
+  (cfg.provider !== 'custom' || cfg.base?.trim()) && (cfg.key || PROVIDERS[cfg.provider]?.noKey || cfg.provider === 'custom'))
 
 async function anthropic(cfg) {
   const Anthropic = await sdk()
@@ -63,7 +64,10 @@ export async function chat(cfg, { system, messages, effort = 'low', onText, sign
       if (onText) stream.on('text', onText)
       const msg = await stream.finalMessage()
       if (msg.stop_reason === 'refusal') throw new AIError('The model declined to answer that one.')
-      return msg.content.filter((b) => b.type === 'text').map((b) => b.text).join('')
+      if (msg.stop_reason === 'max_tokens') throw new AIError('The model reached its reply limit. Try a shorter text.')
+      const text = msg.content.filter((b) => b.type === 'text').map((b) => b.text).join('')
+      if (!text.trim()) throw new AIError('The model returned an empty reply. Try again.')
+      return text
     }
     const res = await fetch(`${baseOf(cfg)}/chat/completions`, {
       method: 'POST', signal,
@@ -72,21 +76,33 @@ export async function chat(cfg, { system, messages, effort = 'low', onText, sign
     })
     if (!res.ok) throw Object.assign(new Error(await res.text().catch(() => res.statusText)), { status: res.status })
     let text = '', buf = ''
-    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader() // Safari can't `for await` a stream
-    for (let r = await reader.read(); !r.done; r = await reader.read()) {
-      buf += r.value
-      const lines = buf.split('\n')
-      buf = lines.pop()
-      for (const line of lines) {
-        const data = line.replace(/^data:\s*/, '').trim()
-        if (!line.startsWith('data:') || !data || data === '[DONE]') continue
-        const delta = JSON.parse(data).choices?.[0]?.delta?.content
-        if (delta) {
-          text += delta
-          onText?.(delta)
-        }
+    const consume = (line) => {
+      const data = line.replace(/^data:\s*/, '').trim()
+      if (data === '[DONE]' && line.startsWith('data:')) return true
+      if (!line.startsWith('data:') || !data) return false
+      const event = JSON.parse(data)
+      if (event.error) throw new AIError(event.error.message || 'The provider could not complete the reply.')
+      if (event.choices?.[0]?.finish_reason === 'length') throw new AIError('The model reached its reply limit. Try a shorter text.')
+      const delta = event.choices?.[0]?.delta?.content
+      if (delta) {
+        text += delta
+        onText?.(delta)
       }
     }
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader() // Safari can't `for await` a stream
+    try {
+      read: for (let r = await reader.read(); !r.done; r = await reader.read()) {
+        buf += r.value
+        const lines = buf.split('\n')
+        buf = lines.pop()
+        for (const line of lines) if (consume(line)) { buf = ''; break read }
+      }
+      if (buf) consume(buf)
+    } finally {
+      await reader.cancel().catch(() => {})
+      reader.releaseLock()
+    }
+    if (!text.trim()) throw new AIError('The model returned an empty reply. Try again.')
     return text
   } catch (err) {
     throw explain(err, cfg)

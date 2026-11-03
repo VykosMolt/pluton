@@ -201,7 +201,27 @@ final class AppModel: ObservableObject {
     }
 
     func newRun() -> IosRun {
-        bridge.doNewRun(store: store, words: words, now: Self.now(), newToday: newToday, pace: pace)
+        bridge.doNewRun(
+            store: store,
+            words: words,
+            now: Self.now(),
+            newToday: newToday,
+            pace: pace,
+            conj: conj,
+            grammar: grammar
+        )
+    }
+
+    /// Queue a conjugation table or grammar topic from the reference screens.
+    func practice(_ key: String) {
+        _ = bridge.practiceCard(store: store, key: key, now: Self.now())
+        refresh()
+    }
+
+    /// Persist introduced cards so the per-day budget survives multiple runs and app restarts.
+    func addIntroduced(_ n: Int) {
+        guard n > 0 else { return }
+        _ = bridge.addIntroduced(store: store, today: Self.today(), n: Int32(n))
     }
 
     func addWord(token: Token, word: Word?, sentence: String) {

@@ -260,10 +260,16 @@ const dark = await open('dark')
 await dark.page.screenshot({ path: `${OUT}/5-home-dark.png` })
 // Offline right after a first visit: the service worker precaches the shell and the word data on install.
 await dark.page.evaluate(() => navigator.serviceWorker.ready)
-await dark.page.waitForFunction(() => caches.open('pluton-v2').then((c) => c.match('data/fr/words.json')).then(Boolean))
+await dark.page.waitForFunction(async () => {
+  const keys = (await caches.keys()).filter((key) => key.startsWith('pluton:'))
+  return (await Promise.all(keys.map(async (key) => (await caches.open(key)).match('data/fr/cognates.json')))).some(Boolean)
+})
 await dark.ctx.setOffline(true)
 await dark.page.reload()
 const offlineOk = await dark.page.locator('.tiles').waitFor({ timeout: 15000 }).then(() => true, () => false)
+await dark.page.locator('nav').getByRole('button', { name: /Library/ }).click()
+await dark.page.getByRole('button', { name: /The Black Cat/ }).click()
+const offlineBridge = await dark.page.locator('.intro').waitFor({ timeout: 15000 }).then(() => true, () => false)
 await dark.ctx.setOffline(false)
 await dark.page.reload()
 await dark.page.locator('.tiles').waitFor()
@@ -322,6 +328,20 @@ const listenedSec = await ear.page.evaluate(() => new Promise((ok) => {
   const r = indexedDB.open('pluton-fr')
   r.onsuccess = () => { const g = r.result.transaction('meta').objectStore('meta').get('stats'); g.onsuccess = () => ok(g.result?.listened ?? 0) }
 }))
+// Adjacent subtitle cues share a boundary: pause the previous cue before arming the next one.
+await ear.page.getByRole('button', { name: 'Close' }).click()
+await ear.page.getByLabel('Pause after each line').check()
+await ear.page.getByRole('button', { name: 'Replay line' }).click()
+await ear.page.locator('video').evaluate((v) => {
+  v.currentTime = 0
+  v.dispatchEvent(new Event('timeupdate'))
+})
+const boundary = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', clips[0].file]))
+await ear.page.locator('video').evaluate((v, boundary) => {
+  v.currentTime = boundary + 0.02
+  v.dispatchEvent(new Event('timeupdate'))
+}, boundary)
+const pausedAtBoundary = await ear.page.locator('video').evaluate((v) => v.paused)
 await ear.ctx.close()
 
 // Finishing a stage: a learner with stage 1's words and listening done reads chapter 1 and is celebrated.
@@ -445,6 +465,56 @@ await tp.screenshot({ path: `${OUT}/8-settings.png`, fullPage: true })
 const claude = mock.requests.findLast((r) => r.path.startsWith('/anthropic/v1/messages'))
 const [download] = await Promise.all([tp.waitForEvent('download'), tp.getByRole('button', { name: 'Download backup' }).click()])
 const backup = readFileSync(await download.path(), 'utf8')
+const [nativeDownload] = await Promise.all([tp.waitForEvent('download'), tp.getByRole('button', { name: 'Download for native app' }).click()])
+const nativeBackup = JSON.parse(readFileSync(await nativeDownload.path(), 'utf8'))
+// A late malformed entry used to throw after clear()/put() had already been queued, committing partial data.
+const restoreBefore = await tp.evaluate(() => new Promise((ok) => {
+  const r = indexedDB.open('pluton-fr')
+  r.onsuccess = () => {
+    const t = r.result.transaction(['cards', 'log', 'texts', 'meta'])
+    const records = ['cards', 'log', 'texts', 'meta'].map((s) => t.objectStore(s).getAll())
+    t.oncomplete = () => { ok(JSON.stringify(records.map((r) => r.result))); r.result.close() }
+  }
+}))
+const broken = JSON.parse(backup)
+broken.cards.push([null, { lemma: 'invalid', fsrs: { due: 'not-a-date' } }])
+let rejectedRestore = false
+tp.on('dialog', async (d) => {
+  if (d.type() === 'confirm') await d.accept()
+  else { rejectedRestore = d.message().includes('Restore failed'); await d.dismiss() }
+})
+const restoreRejected = tp.waitForEvent('dialog', { predicate: (d) => d.type() === 'alert' })
+await tp.locator('input[type="file"][accept="application/json"]').setInputFiles({
+  name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(broken)),
+})
+await restoreRejected
+const restoreAfter = await tp.evaluate(() => new Promise((ok) => {
+  const r = indexedDB.open('pluton-fr')
+  r.onsuccess = () => {
+    const t = r.result.transaction(['cards', 'log', 'texts', 'meta'])
+    const records = ['cards', 'log', 'texts', 'meta'].map((s) => t.objectStore(s).getAll())
+    t.oncomplete = () => { ok(JSON.stringify(records.map((r) => r.result))); r.result.close() }
+  }
+}))
+let restoreAtomic = rejectedRestore && restoreBefore === restoreAfter
+const brokenMemory = JSON.parse(backup)
+brokenMemory.cards[0][1].fsrs.state = 99
+const memoryRejected = tp.waitForEvent('dialog', { predicate: (d) => d.type() === 'alert' })
+await tp.locator('input[type="file"][accept="application/json"]').setInputFiles({
+  name: 'broken-memory.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(brokenMemory)),
+})
+await memoryRejected
+const [unchangedDownload] = await Promise.all([tp.waitForEvent('download'), tp.getByRole('button', { name: 'Download backup' }).click()])
+const unchanged = JSON.parse(readFileSync(await unchangedDownload.path(), 'utf8'))
+const original = JSON.parse(backup)
+restoreAtomic &&= ['cards', 'log', 'texts', 'meta'].every((s) => JSON.stringify(unchanged[s]) === JSON.stringify(original[s]))
+// A valid backup still restores, revives FSRS dates, and preserves this device's private provider configuration.
+await tp.locator('input[type="file"][accept="application/json"]').setInputFiles({
+  name: 'valid.json', mimeType: 'application/json', buffer: Buffer.from(backup),
+})
+await tp.locator('.tiles').waitFor()
+await tp.getByRole('button', { name: 'Settings' }).click()
+const restoredConnected = await tp.getByText('Connected: Claude (Anthropic)').isVisible()
 await tutor.ctx.close()
 mock.close()
 
@@ -529,6 +599,7 @@ const checks = {
   'levelled up': !level.includes('Niv. 1'),
   'service worker': sw,
   'works offline right after the first visit': offlineOk,
+  'Norman Bridge works offline on first use': offlineBridge,
   'audio loads': audio.ok > 0 && !audio.bad,
   'queuing does not fake coverage': unlockBefore === unlockAfter,
   'reviews due after 3 days': Number(due) > 0,
@@ -559,12 +630,17 @@ const checks = {
   'dictée for a well-known word, graded word by word': dicteeMarks === [...etre.sentence.matchAll(/[\p{L}\p{N}'’-]+/gu)].length,
   'listen shows the playing line, tappable': lineWords > 0,
   'listening time saved': listenedSec > 2,
+  'listen pauses at adjacent cue boundaries': pausedAtBoundary,
   'talk: streamed reply with its correction line': talkFix.includes('Je suis allée au marché'),
   'writing: correction shown as a diff': writeAdds.includes('à'),
   'claude: SDK call from the browser with key, default model, effort, fallbacks': claudeSent.model === 'claude-opus-5-5'
     && claudeSent.fallbacks === 'default' && claudeSent.effort === 'low' && claudeSent.browser === 'true'
     && (claudeSent.beta ?? '').includes('server-side-fallback-2026-07-01'),
   'backup never contains the API key': !backup.includes('sk-test') && backup.includes('"talk"'),
+  'native hand-off exports version 4 without the API key': nativeBackup.version === 4
+    && nativeBackup.cards.length > 0 && !JSON.stringify(nativeBackup).includes('sk-test'),
+  'invalid restore leaves all records unchanged': restoreAtomic,
+  'valid restore preserves private AI configuration': restoredConnected,
 }
 if (accounts) Object.assign(checks, {
   'accounts: sign in with an emailed code uploads progress': accounts.syncA.includes('✓ Synced') && accounts.rowsA > 10,

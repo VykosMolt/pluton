@@ -68,7 +68,7 @@ val syncData = tasks.register<Copy>("syncData") {
     from(dataDir) { include("words.json", "forms.json", "story.json", "shelf.json", "conj.json", "grammar.json", "cognates.json") }
     into(layout.buildDirectory.dir("generated/assets/fr"))
     doFirst {
-        for (name in listOf("words.json", "conj.json", "grammar.json")) {
+        for (name in listOf("words.json", "forms.json", "story.json", "shelf.json", "conj.json", "grammar.json", "cognates.json")) {
             check(dataDir.resolve(name).exists()) {
                 "Missing ${dataDir.resolve(name)}; run `uv run data/fr/build.py` first."
             }
@@ -107,6 +107,10 @@ val syncAudio = tasks.register<Sync>("syncAudio") {
     doFirst {
         check(audioIds.isNotEmpty()) {
             "No read-along sentences found; run `uv run data/fr/build.py` first."
+        }
+        val missing = audioIds.filterNot { dataDir.resolve("audio/$it.mp3").isFile }
+        check(missing.isEmpty()) {
+            "Missing ${missing.size} bundled audio clips (first: ${missing.firstOrNull()}); run `uv run data/fr/build.py` first."
         }
     }
 }

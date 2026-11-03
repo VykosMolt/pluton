@@ -62,6 +62,12 @@ test('pull: a card is rebuilt from both devices reviews, without double-counting
   const replayed = replayPulled([], mine, rows, 'dev1', cards)
   assert.equal(replayed.length, 1)
   assert.equal(replayed[0][2].fsrs.reps, 2)
+  // A newer remote card must not be followed by a stale local copy for the same lemma.
+  const updated = replayPulled([op], mine, rows, 'dev1', cards)
+  assert.equal(updated.length, 1)
+  assert.equal(updated[0][2].updated, 3000)
+  assert.equal(updated[0][2].fsrs.reps, 2)
+  assert.deepEqual(replayPulled([known], mine, rows, 'dev1', cards), [known])
   // ...but a pulled deletion must not be resurrected by an old review.
   assert.deepEqual(replayPulled([['del', 'cards', 'chat']], mine, rows, 'dev1', cards), [['del', 'cards', 'chat']])
 })
@@ -91,4 +97,18 @@ test('push: only what changed here since the last push', () => {
   assert.equal(rows.find((r) => r.key === 'dev1:7').data.id, 'dev1:7') // texts get a device-unique id
   assert.deepEqual(rows.at(-1).data, { deleted: true })
   assert.equal(maxLog, 3)
+})
+
+test('push: delete and re-add send only the newest operation for each record', () => {
+  const { rows } = collect({ device: 'dev1', since: 0, logPushed: 0 }, {
+    cards: [card('chat', 5000), card('chien', 2000)], texts: [], log: [], meta: [], stamps: {},
+    tomb: { 'cards\tchat': 3000, 'cards\tchien': 4000 },
+  })
+  assert.equal(rows.length, 2)
+  assert.equal(rows.find((r) => r.key === 'chat').data.lemma, 'chat')
+  assert.deepEqual(rows.find((r) => r.key === 'chien').data, { deleted: true })
+  const tied = collect({ device: 'dev1', since: 0, logPushed: 0 }, {
+    cards: [card('chat', 5000)], texts: [], log: [], meta: [], stamps: {}, tomb: { 'cards\tchat': 5000 },
+  })
+  assert.equal(tied.rows[0].data.lemma, 'chat') // same-millisecond re-add: the live local record wins
 })

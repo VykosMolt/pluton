@@ -590,3 +590,18 @@ emulator/device, so the APK is built but not launched.
   gh-pages still carries the 10-chapter bundle fetched by the iOS workflow; run `npm run deploy` so the web app
   and iOS CI artifact get story-10/11 and the 28 new clips. CI for 40e651d7 (39864608317) is green for build
   and simulator smoke; the final web-only tweak c49cb8fc passed 46 web tests and the 44-check smoke locally.
+- 2026-11-03: release-safety pass. Android now persists each introduced card immediately, so backing out of a
+  run no longer loses the daily new-word budget; its `ClipPlayer` returns whether a bundled clip exists and the
+  run/Words screens fall back to device TTS, fixing silent word audio in the Android APK (word clips are not
+  bundled). iOS records `introduced` through `addIntroduced`, disables swipe dismissal, and now supports
+  conjugation/grammar practice cards in its run queue, so Le Chemin can progress past La Cave on a fresh
+  install. Native Anthropic requests send `output_config.effort` only to models that support it. The web sync
+  skips while a run is open, the Svelte state-capture and unused-CSS warnings are gone, and a Web checks
+  workflow runs the unit suite plus a Vite build, and a native workflow runs the shared JVM suite. `data/fr/build.py` gained a small hand-curation table for
+  high-frequency Tatoeba examples (wrong translation or wrong sense); the data and 18 new sentence clips were
+  rebuilt. The web Settings screen now offers “Download for native app”, converting the IndexedDB stores to native
+  backup version 4 (cards, reviews, texts, rewritten read ids, writings/error drills, pace), with a JVM fixture
+  test importing the converted JSON through the shared `Store`. Verified: 66 web tests, 135 shared JVM tests,
+  33 Android JVM tests, `scripts/check-data.py` (20,000 words, 17,650 referenced clips), and the full 45-check
+  Chromium smoke (accounts skipped: no local Supabase). Swift files parse with tree-sitter; iOS compilation still
+  needs macOS CI.

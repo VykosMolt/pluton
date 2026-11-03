@@ -1,0 +1,41 @@
+name: Web checks
+
+on:
+  push:
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.js"
+      - "public/**"
+      - ".github/workflows/web.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.js"
+      - "public/**"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+      # The generated French data is gitignored, and Vite bundles it at runtime rather than importing it.
+      # Invoking vite directly checks that the Svelte sources compile without requiring the 188 MB data build;
+      # `npm run build` remains the full asset-validating build used before deployment.
+      - run: npx vite build

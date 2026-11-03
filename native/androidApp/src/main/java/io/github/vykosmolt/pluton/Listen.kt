@@ -3,6 +3,7 @@ package io.github.vykosmolt.pluton
 import android.content.Context
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -99,7 +100,7 @@ internal fun ListenScreen(
     // Real seconds while playing, so seeking and speed changes don't inflate listening time.
     fun countListen() {
         if (listenStarted > 0) {
-            val seconds = ((System.currentTimeMillis() - listenStarted) / 1000).toInt()
+            val seconds = ((SystemClock.elapsedRealtime() - listenStarted) / 1000).toInt()
             if (seconds > 0) store.addListened(seconds)
             listenStarted = 0
         }
@@ -149,7 +150,7 @@ internal fun ListenScreen(
             }
             v.start()
             if (!sought) positionMs = maxOf(v.currentPosition, 0).toLong()
-            if (listenStarted == 0L) listenStarted = System.currentTimeMillis()
+            if (listenStarted == 0L) listenStarted = SystemClock.elapsedRealtime()
             lastTick = positionMs / 1000.0
             playing = true
             return
@@ -180,7 +181,7 @@ internal fun ListenScreen(
         runCatching { mp.setPlaybackParams(mp.playbackParams.setSpeed(rate)) }
         mp.start()
         if (!sought) positionMs = maxOf(mp.currentPosition, 0).toLong()
-        if (listenStarted == 0L) listenStarted = System.currentTimeMillis()
+        if (listenStarted == 0L) listenStarted = SystemClock.elapsedRealtime()
         lastTick = positionMs / 1000.0
         playing = true
     }
@@ -202,6 +203,7 @@ internal fun ListenScreen(
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching {
+                countListen()
                 media?.release()
                 media = null
                 video?.stopPlayback()
@@ -260,6 +262,8 @@ internal fun ListenScreen(
             countListen()
         }
     }
+
+    OnAppBackground { pause() }
 
     LaunchedEffect(autoPause) {
         if (!autoPause) pausedBoundary = null

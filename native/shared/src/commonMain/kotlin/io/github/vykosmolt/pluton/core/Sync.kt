@@ -259,5 +259,17 @@ fun collect(
         val remoteKey = if (store == "texts" && key.toLongOrNull() != null) "$device:$key" else key
         rows += PushRow(store, remoteKey, at, deleted = true)
     }
-    return PushRows(rows, maxLog)
+    // A deletion can be followed by a re-add before the next sync. Retained tombstones then share a key with a
+    // live row; PostgreSQL cannot upsert that key twice in one batch. Send only the newest operation. A live row
+    // at the same timestamp was necessarily recreated after deletion, so it wins that local tie.
+    val newest = linkedMapOf<Pair<String, String>, PushRow>()
+    for (row in rows) {
+        val key = row.store to row.key
+        val previous = newest[key]
+        if (previous == null || row.updatedAt > previous.updatedAt ||
+            (row.updatedAt == previous.updatedAt && previous.deleted && !row.deleted)) {
+            newest[key] = row
+        }
+    }
+    return PushRows(newest.values.toList(), maxLog)
 }

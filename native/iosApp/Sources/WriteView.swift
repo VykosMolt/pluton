@@ -14,6 +14,7 @@ struct WriteView: View {
     @SwiftUI.State private var error = ""
     @SwiftUI.State private var note = ""
     @SwiftUI.State private var loadedDraft = false
+    @SwiftUI.State private var requestTask: Task<Void, Never>?
 
     private var prompts: [WritingPrompt] {
         model.bridge.writingPrompts(words: Int32(model.vocab()))
@@ -49,6 +50,7 @@ struct WriteView: View {
                                 .foregroundStyle(.secondary)
                         }
                         TextEditor(text: $essay)
+                            .disabled(busy)
                             .frame(minHeight: 170)
                             .padding(8)
                             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
@@ -95,6 +97,7 @@ struct WriteView: View {
 
                 if !model.writings.isEmpty {
                     historyCard
+                        .disabled(busy)
                 }
                 if !model.corrections.isEmpty {
                     errorCard
@@ -117,15 +120,16 @@ struct WriteView: View {
                 model.setMeta("revision_draft", "")
             }
         }
+        .onDisappear {
+            requestTask?.cancel()
+            requestTask = nil
+            busy = false
+            saveDraft()
+        }
         .task(id: "\(essay)|\(revising)|\(current?.id ?? 0)|\(result == nil)") {
             try? await Task.sleep(nanoseconds: 400_000_000)
             guard !Task.isCancelled else { return }
-            if revising, let current {
-                model.setMeta("revision_draft", essay)
-                model.setMeta("revision_id", String(current.id))
-            } else if current == nil && result == nil {
-                model.saveDraft(essay, prompt: promptIndex)
-            }
+            saveDraft()
         }
     }
 
@@ -138,6 +142,7 @@ struct WriteView: View {
                 Spacer()
                 Button("Another prompt") { promptIndex = (promptIndex + 1) % max(prompts.count, 1) }
                     .font(.caption)
+                    .disabled(busy)
             }
             Text(prompt.fr).font(.title3.bold())
             Text(prompt.en).font(.footnote.italic()).foregroundStyle(.secondary)
@@ -259,25 +264,27 @@ struct WriteView: View {
         guard let prompt, !busy else { return }
         let text = essay.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let editing = revising ? current : nil
+        let asked = editing?.prompt ?? prompt.fr
         busy = true
         error = ""
         note = ""
-        Task {
+        requestTask = Task {
             do {
-                let asked = revising ? (current?.prompt ?? prompt.fr) : prompt.fr
                 let system = model.writeSystem(prompt: asked, focus: model.grammarFocusLabel())
                 let reply = try await AIClient.chat(system: system, turns: [ChatTurn(role: "user", content: text)])
+                try Task.checkCancellation()
                 guard let parsed = model.bridge.parseWriting(reply: reply) else {
                     throw AIError.message("The model did not return the expected format. Try again.")
                 }
-                if revising, let editing = current {
+                if let editing {
                     model.reviseWriting(id: editing.id, revised: text, result: parsed)
                     model.setMeta("revision_draft", "")
                     model.setMeta("revision_id", "")
                     current = model.writings.first { $0.id == editing.id }
                     note = "Revision saved on this device."
                 } else {
-                    current = model.saveWriting(prompt: prompt.fr, draft: text, result: parsed)
+                    current = model.saveWriting(prompt: asked, draft: text, result: parsed)
                     model.saveDraft("", prompt: promptIndex)
                     model.setMeta("revision_draft", "")
                     model.setMeta("revision_id", "")
@@ -288,9 +295,19 @@ struct WriteView: View {
                 essay = ""
                 model.markPlan("write")
             } catch {
+                guard !Task.isCancelled else { return }
                 self.error = error.localizedDescription
             }
             busy = false
+        }
+    }
+
+    private func saveDraft() {
+        if revising, let current {
+            model.setMeta("revision_draft", essay)
+            model.setMeta("revision_id", String(current.id))
+        } else if current == nil && result == nil {
+            model.saveDraft(essay, prompt: promptIndex)
         }
     }
 

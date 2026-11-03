@@ -87,6 +87,11 @@ internal fun MoreScreen(
 ) {
     var section by remember { mutableStateOf(Section.Hub) }
     fun practice(key: String) {
+        val existing = store.card(key)
+        if (existing != null) {
+            cards[key] = existing
+            return
+        }
         val now = System.currentTimeMillis()
         val card = CardState(key, createEmptyCard(now), added = now)
         store.saveCard(card, now)
@@ -235,17 +240,18 @@ private fun SettingsScreen(
     var aiBusy by remember { mutableStateOf(false) }
     val provider = providerOf(draft.provider)
     fun testAndSave() {
+        val tested = draft
         aiBusy = true
         aiNote = "…"
         scope.launch {
             aiNote = try {
                 val reply = aiChat(
-                    draft,
+                    tested,
                     "Reply in French in one short, friendly sentence.",
                     listOf(ChatMessage("user", "Dis bonjour !")),
                 )
-                aiStore.save(draft)
-                onAi(draft)
+                aiStore.save(tested)
+                onAi(tested)
                 "Saved. $reply"
             } catch (e: Exception) {
                 "Couldn't connect: ${e.message}"
@@ -292,10 +298,9 @@ private fun SettingsScreen(
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (p in AI_PROVIDERS) {
                         TextButton(onClick = {
-                            if (p.id != draft.provider) {
-                                draft = AiConfig(provider = p.id, key = draft.key, model = p.defaultModel, base = "")
-                            }
-                        }) {
+                            draft = configForProvider(draft, p.id)
+                            aiNote = ""
+                        }, enabled = !aiBusy) {
                             Text(
                                 p.name.substringBefore(" ("),
                                 color = if (draft.provider == p.id) scheme.primary else scheme.onSurfaceVariant,
@@ -310,6 +315,7 @@ private fun SettingsScreen(
                         onValueChange = { draft = draft.copy(key = it) },
                         label = { Text("API key") },
                         singleLine = true,
+                        enabled = !aiBusy,
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -319,6 +325,7 @@ private fun SettingsScreen(
                     onValueChange = { draft = draft.copy(model = it) },
                     label = { Text("Model") },
                     singleLine = true,
+                    enabled = !aiBusy,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -327,6 +334,7 @@ private fun SettingsScreen(
                     label = { Text("Server URL (optional)") },
                     placeholder = { Text(provider.base.ifBlank { "https://…/v1" }) },
                     singleLine = true,
+                    enabled = !aiBusy,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -337,7 +345,7 @@ private fun SettingsScreen(
                             onAi(null)
                             draft = AiConfig()
                             aiNote = "Disconnected. The key is deleted from this device."
-                        }) { Text("Disconnect") }
+                        }, enabled = !aiBusy) { Text("Disconnect") }
                     }
                 }
                 if (aiNote.isNotBlank()) {

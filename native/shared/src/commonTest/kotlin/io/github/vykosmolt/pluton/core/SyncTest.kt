@@ -113,4 +113,28 @@ class SyncTest {
         assertTrue(result.rows.last().deleted)
         assertEquals("dev1:7", result.rows[2].key)
     }
+
+    @Test
+    fun aDeleteAndReaddBeforeSyncPushesOnlyTheNewestOperationForEachKey() {
+        val result = collect(
+            device = "dev1",
+            since = 0,
+            logPushed = 0,
+            cards = listOf(card("readded", 5000), card("deleted", 2000), card("same-millisecond", 3000)),
+            texts = listOf(SyncText(7, null, "t", "b", 1000, 5000)),
+            log = emptyList(),
+            tombstones = mapOf(
+                "cards\treadded" to 3000L,
+                "cards\tdeleted" to 4000L,
+                "cards\tsame-millisecond" to 3000L,
+                "texts\t7" to 3000L,
+            ),
+        )
+        assertEquals(4, result.rows.size)
+        assertEquals(4, result.rows.map { it.store to it.key }.distinct().size)
+        assertTrue(!result.rows.first { it.key == "readded" }.deleted)
+        assertTrue(result.rows.first { it.key == "deleted" }.deleted)
+        assertTrue(!result.rows.first { it.key == "same-millisecond" }.deleted)
+        assertTrue(!result.rows.first { it.key == "dev1:7" }.deleted)
+    }
 }

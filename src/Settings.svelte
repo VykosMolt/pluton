@@ -5,7 +5,7 @@
   import Account from './Account.svelte'
 
   /** ai: the saved AI config (or null); pace: {perRun, perDay}. Both saved here. */
-  let { ai = $bindable(), pace = $bindable(), onbackup, onrestore, onsynced } = $props()
+  let { ai = $bindable(), pace = $bindable(), onbackup, onnative, onrestore, onsynced } = $props()
 
   const blank = (provider) => ({ provider, key: '', model: PROVIDERS[provider].model ?? '', base: '' })
   let draft = $state(ai ? { ...ai } : blank('anthropic'))
@@ -24,9 +24,10 @@
   async function load() {
     busy = true
     note = ''
+    const cfg = $state.snapshot(draft)
     try {
-      models = await listModels(draft)
-      if (!draft.model || !models.includes(draft.model)) draft.model = models.includes(p.model) ? p.model : models[0] ?? ''
+      models = await listModels(cfg)
+      if (!draft.model || !models.includes(draft.model)) draft.model = models.includes(PROVIDERS[cfg.provider].model) ? PROVIDERS[cfg.provider].model : models[0] ?? ''
       if (!models.length) note = 'No models returned. Type a model name instead.'
     } catch (e) {
       note = `⚠️ ${e.message}`
@@ -38,21 +39,17 @@
     busy = true
     note = '…'
     let out = ''
+    const cfg = $state.snapshot(draft)
     try {
-      await chat(draft, { system: 'Reply in French in one short, friendly sentence.', messages: [{ role: 'user', content: 'Dis bonjour !' }],
+      await chat(cfg, { system: 'Reply in French in one short, friendly sentence.', messages: [{ role: 'user', content: 'Dis bonjour !' }],
         onText: (d) => (note = out += d) })
-      await save()
+      await db.put('meta', cfg, 'ai')
+      ai = cfg
       note = `✓ ${out}`
     } catch (e) {
       note = `⚠️ ${e.message}`
     }
     busy = false
-  }
-
-  async function save() {
-    const plain = $state.snapshot(draft) // `ai` reads back as a reactive proxy, which IndexedDB can't store
-    ai = plain
-    await db.put('meta', plain, 'ai')
   }
 
   async function disconnect() {
@@ -80,7 +77,7 @@
     The key stays on this device, goes only to the provider you pick, and is never included in backups.
   </p>
   <label class="field-label">Provider
-    <select class="field" value={draft.provider} onchange={(e) => pick(e.currentTarget.value)}>
+    <select class="field" value={draft.provider} onchange={(e) => pick(e.currentTarget.value)} disabled={busy}>
       {#each Object.entries(PROVIDERS) as [id, x]}<option value={id}>{x.name}</option>{/each}
     </select>
   </label>
@@ -120,7 +117,7 @@
   {/if}
   <div class="row">
     <button class="btn" onclick={test} disabled={busy || !ready(draft)}>Test & save</button>
-    {#if ai}<button class="btn ghost" onclick={disconnect}>Disconnect</button>{/if}
+    {#if ai}<button class="btn ghost" onclick={disconnect} disabled={busy}>Disconnect</button>{/if}
   </div>
   {#if note}<p class="note" class:bad={note.startsWith('⚠️')}>{note}</p>{/if}
   {#if ai}<p class="small muted">Connected: {PROVIDERS[ai.provider]?.name} · {ai.model}</p>{/if}
@@ -146,8 +143,10 @@
   <p class="muted">Progress lives on this device. Back it up to move it to another one.</p>
   <div class="row">
     <button class="btn ghost" onclick={onbackup}>Download backup</button>
+    <button class="btn ghost" onclick={onnative}>Download for native app</button>
     <label class="btn ghost">Restore…<input type="file" accept="application/json" onchange={onrestore} hidden /></label>
   </div>
+  <p class="small muted">The native hand-off is a version-4 native backup: cards, review history, your texts, read history and writings. Import it in the Android/iOS app under Settings → Backup. Web-only points, levels and streak are not part of the native store.</p>
 </section>
 
 <section class="panel about">

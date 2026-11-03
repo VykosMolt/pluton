@@ -38,6 +38,10 @@ class AiTest {
             val e = runCatching { parseOpenAiContent(body) }.exceptionOrNull()
             assertTrue("expected AiError for $body, got $e", e is AiError)
         }
+        val truncated = """{"choices":[{"finish_reason":"length","message":{"content":"A partial correction"}}]}"""
+        val error = runCatching { parseOpenAiContent(truncated) }.exceptionOrNull()
+        assertTrue(error is AiError)
+        assertTrue(error?.message.orEmpty().contains("cut off"))
     }
 
     @Test
@@ -62,5 +66,26 @@ class AiTest {
         val providerMessage = """{"error":{"message":"context length exceeded"}}"""
         assertEquals("context length exceeded", httpError(400, providerMessage, config))
         assertEquals("The AI request failed (HTTP 500).", httpError(500, "oops", config))
+    }
+
+    @Test
+    fun effortIsOnlySentToModelsThatSupportIt() {
+        assertTrue(supportsEffort("claude-opus-5-5"))
+        assertTrue(supportsEffort("claude-sonnet-4-6"))
+        assertFalse(supportsEffort("claude-3-5-sonnet-latest"))
+        assertFalse(supportsEffort("gpt-4.1"))
+    }
+
+    @Test
+    fun changingProvidersClearsCredentialsAndEndpoint() {
+        val previous = AiConfig(key = "secret-for-anthropic", base = "https://old.example.test", model = "old-model")
+        for (provider in AI_PROVIDERS.filter { it.id != previous.provider }) {
+            val switched = configForProvider(previous, provider.id)
+            assertEquals(provider.id, switched.provider)
+            assertEquals("", switched.key)
+            assertEquals("", switched.base)
+            assertEquals(provider.defaultModel, switched.model)
+        }
+        assertEquals(previous, configForProvider(previous, previous.provider))
     }
 }

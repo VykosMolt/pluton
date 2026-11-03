@@ -118,7 +118,14 @@ export function collect({ device, since, logPushed }, { cards, texts, log, meta,
     const [store, key] = k.split('\t')
     rows.push({ store, key: store === 'texts' && /^\d+$/.test(key) ? textKey(Number(key)) : key, data: { deleted: true }, updated_at: iso(at) })
   }
-  return { rows, maxLog }
+  // A delete followed by a re-add leaves a tombstone. Send just the newest operation: a single Postgres upsert
+  // cannot update the same record twice in one batch, and an older delete must not remove the re-added card.
+  const latest = new Map()
+  for (const row of rows) {
+    const key = `${row.store}\t${row.key}`
+    if (!latest.has(key) || row.updated_at > latest.get(key).updated_at) latest.set(key, row)
+  }
+  return { rows: [...latest.values()], maxLog }
 }
 
 /**
@@ -157,7 +164,7 @@ export function replayPulled(ops, localLog, rows, device, cards = new Map()) {
   for (const lemma of fresh) {
     const entries = byLemma.get(lemma)
     if (!entries?.size) continue
-    if (out.some((op) => op[0] === 'put' && op[1] === 'cards' && op[2] === lemma)) continue
+    if (out.some((op) => op[0] === 'put' && op[1] === 'cards' && op[2].lemma === lemma)) continue
     if (out.some((op) => op[0] === 'del' && op[1] === 'cards' && op[2] === lemma)) continue
     const card = cards.get(lemma)
     if (!card?.fsrs || card.known) continue

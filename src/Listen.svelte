@@ -25,6 +25,9 @@
     const f = e.currentTarget.files[0]
     if (!f) return
     if (src) URL.revokeObjectURL(src)
+    armed = -1
+    time = 0
+    sel = null
     src = URL.createObjectURL(f)
     name = f.name
   }
@@ -33,6 +36,8 @@
     const f = e.currentTarget.files[0]
     if (!f) return
     cues = parseCues(await f.text())
+    armed = -1
+    sel = null
     subsName = `${f.name} · ${cues.length} lines`
   }
 
@@ -64,10 +69,11 @@
     const t = media.currentTime // not the bound `time`: it may update after this handler
     const k = cueAt(cues, t)
     const inside = k >= 0 && t < cues[k].end ? k : -1
-    if (inside >= 0 && inside !== armed && !media.paused) armed = inside
     if (autoPause && armed >= 0 && t >= cues[armed].end) {
       media.pause()
       armed = -2 // spent; re-arms when the next line starts
+    } else if (inside >= 0 && inside !== armed && !media.paused) {
+      armed = inside
     }
   }
 
@@ -96,6 +102,7 @@
 </div>
 
 {#if src}
+  <!-- svelte-ignore a11y_media_has_caption -- subtitles are rendered as accessible text in the .line panel below -->
   <video bind:this={media} {src} controls playsinline preload="metadata" bind:currentTime={time}
     bind:playbackRate={rate} ontimeupdate={update} onplay={clock} onpause={clock} onended={clock}></video>
 

@@ -82,8 +82,7 @@ internal fun SpeakScreen(
             focus = focus,
             onSettings = onSettings,
             onTalked = onTalked,
-            onPractice = { mode = 0 },
-            onWrite = { mode = 2 },
+            onMode = { mode = it },
             modifier = modifier,
         )
         return
@@ -97,8 +96,7 @@ internal fun SpeakScreen(
             focus = focus,
             onSettings = onSettings,
             onWritten = onWritten,
-            onPractice = { mode = 0 },
-            onTalk = { mode = 1 },
+            onMode = { mode = it },
             modifier = modifier,
         )
         return
@@ -225,6 +223,7 @@ internal fun SpeakScreen(
             recorder = null
             recording = false
             pendingPath = null
+            file.delete()
             error = "Could not start recording: ${e.message}"
         }
     }
@@ -241,6 +240,8 @@ internal fun SpeakScreen(
         recorder?.release()
         recorder = null
         recording = false
+        if (clipPath == null) pendingPath?.let { File(it).delete() }
+        pendingPath = null
         if (clipPath != null) {
             store.addSpoken(1)
             onSpoken()
@@ -254,8 +255,8 @@ internal fun SpeakScreen(
     fun playClip() {
         val path = clipPath ?: return
         stopPlayer()
+        val mp = MediaPlayer()
         try {
-            val mp = MediaPlayer()
             mp.setDataSource(path)
             mp.prepare()
             mp.start()
@@ -265,15 +266,17 @@ internal fun SpeakScreen(
                 if (player === it) player = null
             }
         } catch (_: Exception) {
+            mp.release()
             error = "Could not play the recording."
         }
     }
 
     fun stopRecognition() {
         listening = false
-        recognizer?.cancel()
-        recognizer?.destroy()
+        val previous = recognizer
         recognizer = null
+        previous?.cancel()
+        previous?.destroy()
     }
 
     fun checkSpeech() {
@@ -293,6 +296,7 @@ internal fun SpeakScreen(
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {}
                 override fun onError(errorCode: Int) {
+                    if (recognizer !== r) return
                     listening = false
                     error = "Speech recognition failed ($errorCode)."
                     r.destroy()
@@ -300,6 +304,7 @@ internal fun SpeakScreen(
                 }
 
                 override fun onResults(results: Bundle?) {
+                    if (recognizer !== r) return
                     val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                     transcript = text
                     if (text.isNotBlank()) {
@@ -357,9 +362,17 @@ internal fun SpeakScreen(
         onDispose {
             recorder?.release()
             player?.release()
-            recognizer?.cancel()
-            recognizer?.destroy()
+            stopRecognition()
+            clipPath?.let { File(it).delete() }
+            pendingPath?.let { File(it).delete() }
         }
+    }
+
+    OnAppBackground {
+        if (recording) stopRecording()
+        stopRecognition()
+        stopPlayer()
+        tts?.stop()
     }
 
     val scheme = MaterialTheme.colorScheme

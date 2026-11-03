@@ -31,7 +31,7 @@ TTS_WORKERS, TTS_THREADS = 12, 2  # ONNX Runtime defaults to a thread per core i
 POS = {"NOM": "noun", "VER": "verb", "AUX": "verb", "ADJ": "adj", "ADV": "adv", "PRE": "prep",
        "CON": "conj", "ONO": "interj", "ADJ:num": "num"}
 KAIKKI_POS = {"interj": "intj"}
-SKIP_TAGS = {"obsolete", "archaic", "rare", "dated", "historical"}
+SKIP_TAGS = {"obsolete", "archaic", "rare", "dated", "historical", "form-of", "alt-of"}
 
 # Hand-written glosses for the first cards a learner meets. Wiktionary's first senses for function words are often
 # explanations ("du: Forms the partitive article."), and English->French recall needs ne/pas to be distinguishable.
@@ -60,6 +60,32 @@ GLOSS = {
     "accord": "agreement (d'accord: OK)", "monsieur": "sir; Mr.; gentleman", "enfant": "child", "seul": "alone; only",
 }
 POS_OVERRIDES = {"peu": "adv"}
+
+# High-frequency examples where the automatic Tatoeba choice is wrong or teaches another sense.
+# These are applied after the deck is built; a new sentence also gets a fresh read-along clip.
+CURATION = {
+    "son": {"translation": "I still remember his name."},
+    "nom": {"translation": "I still remember his name."},
+    "être": {"sentence": "Je veux être heureux.", "translation": "I want to be happy.", "form": "être"},
+    "nouveau": {"sentence": "Le nouveau est arrivé hier.", "translation": "The new one arrived yesterday.", "form": "nouveau",
+                "gloss": "new person, new thing"},
+    "petit": {"sentence": "Il habite une petite maison.", "translation": "He lives in a small house.", "form": "petite"},
+    "de": {"sentence": "Je viens de Paris.", "translation": "I come from Paris.", "form": "de"},
+    "en": {"sentence": "Je vais en France.", "translation": "I am going to France.", "form": "en"},
+    "le": {"sentence": "Le chat dort.", "translation": "The cat is sleeping.", "form": "le"},
+    "la": {"sentence": "La porte est ouverte.", "translation": "The door is open.", "form": "la"},
+    "les": {"sentence": "Les enfants jouent dehors.", "translation": "The children are playing outside.", "form": "les"},
+    "un": {"sentence": "Un homme attend devant la porte.", "translation": "A man is waiting in front of the door.", "form": "un"},
+    "une": {"sentence": "Une femme lit un livre.", "translation": "A woman is reading a book.", "form": "une"},
+    "des": {"sentence": "Des oiseaux chantent dans le jardin.", "translation": "Birds are singing in the garden.", "form": "des"},
+    "du": {"sentence": "Je bois du café le matin.", "translation": "I drink coffee in the morning.", "form": "du"},
+    "au": {"sentence": "Nous allons au marché.", "translation": "We are going to the market.", "form": "au"},
+    "aux": {"sentence": "Je parle aux enfants.", "translation": "I am talking to the children.", "form": "aux"},
+    "ce": {"sentence": "Ce livre est intéressant.", "translation": "This book is interesting.", "form": "ce"},
+    "cette": {"sentence": "Cette maison est vieille.", "translation": "This house is old.", "form": "cette"},
+    "ces": {"sentence": "Ces fleurs sont belles.", "translation": "These flowers are beautiful.", "form": "ces"},
+    "question": {"sentence": "La question est difficile.", "translation": "The question is difficult.", "form": "question"},
+}
 
 # --- conjugation drills ---
 N_CONJ = 60  # most frequent verbs that get conjugation tables
@@ -182,6 +208,13 @@ def load_lexique():
     return ranked, forms, pos, gender, common
 
 
+def meaning_words(gloss):
+    """English meanings, excluding usage annotations such as 'muffled (sound)'."""
+    while re.search(r"\([^()]*\)", gloss):
+        gloss = re.sub(r"\([^()]*\)", "", gloss)
+    return {word.lower() for word in re.findall(r"[A-Za-z]{4,}", gloss)}
+
+
 def load_glosses(wanted):
     """(lemma -> short English gloss, preferring the kaikki entry whose POS matches Lexique's;
         lemma -> English words in its first glosses, for cognates; lemmas French borrowed from English)."""
@@ -192,7 +225,8 @@ def load_glosses(wanted):
             w = (d.get("word") or "").replace("œ", "oe")
             if w not in wanted:
                 continue
-            senses = [s for s in d.get("senses", []) if s.get("glosses") and not SKIP_TAGS & set(s.get("tags", []))]
+            senses = [s for s in d.get("senses", []) if s.get("glosses") and not SKIP_TAGS & set(s.get("tags", []))
+                      and not s.get("form_of") and not s.get("alt_of")]
             if not senses:
                 continue
             ety = d.get("etymology_text") or ""
@@ -201,7 +235,7 @@ def load_glosses(wanted):
                     for t in d.get("etymology_templates", [])):
                 from_english.add(w)  # came from English: the wrong direction for the Norman Bridge
             for s in senses[:6]:
-                gloss_words[w].update(x.lower() for x in re.findall(r"[A-Za-z]{4,}", s["glosses"][0]))
+                gloss_words[w].update(meaning_words(s["glosses"][0]))
             gloss = "; ".join(dict.fromkeys(s["glosses"][0] for s in senses[:2]))
             if len(gloss) > 80:
                 gloss = gloss[:80].rsplit(" ", 1)[0] + "…"
@@ -267,10 +301,13 @@ def cognates(rank, gloss_words, from_english, deck):
     """english -> [french, clue]: English words found in a French word's definition that look like it. Identical
     spellings must be common French (in the deck): rare ones are mostly unflagged English loans ("house")."""
     best = {}
+    # The Bridge has no English sense/POS disambiguation: sound is usually the Germanic noun (not nautical
+    # "to sound" = sonder), and longer is a comparative (not "to lengthen" = allonger).
+    ambiguous = {"sound", "longer"}
     for fr, ens in gloss_words.items():
         if len(fr) < 4 or fr in from_english or fr not in rank:
             continue
-        for en in ens - FALSE_FRIENDS.keys():
+        for en in ens - FALSE_FRIENDS.keys() - ambiguous:
             if en == plain(fr) and fr not in deck:
                 continue
             for v, clue in spellings(fr):
@@ -456,6 +493,22 @@ def synth_all(texts):
                 print(f"  {i}/{len(jobs)}", flush=True)
 
 
+def apply_curation(words, tts):
+    """Apply the hand-curated high-frequency examples, and queue their new sentence clips for TTS."""
+    by = {w["lemma"]: w for w in words}
+    for lemma, patch in CURATION.items():
+        w = by.get(lemma)
+        assert w is not None, f"curation lemma missing: {lemma}"
+        if "sentence" in patch:
+            assert "sentence" in w, f"curation lemma has no deck sentence: {lemma}"
+            w.update(patch)
+            w["audio_sentence"] = audio_id(w["sentence"])
+            tts.append(w["sentence"])
+            assert occurrences(w["form"], w["sentence"]) == 1, (lemma, patch)
+        else:
+            w.update(patch)
+
+
 def main():
     ranked, forms, pos, gender, common = load_lexique()
     forms["parce"] = "parce que"  # only ever the first half of "parce que"
@@ -476,6 +529,7 @@ def main():
             w["audio_word"], w["audio_sentence"] = audio_id(w["display"]), audio_id(w["sentence"])
             tts += [w["display"], w["sentence"]]
         words.append(w)
+    apply_curation(words, tts)
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "words.json").write_text(json.dumps(words, ensure_ascii=False, separators=(",", ":")))
     # Only forms of shipped lemmas: unknown forms fall back to "unknown word" in the reader anyway.
@@ -538,6 +592,8 @@ def check(words, forms, conj, cog, story):
     by = {w["lemma"]: w for w in words}
     assert by["vous"]["gloss"] == GLOSS["vous"] and by["peu"]["display"] == "peu", "overrides applied"
     assert all(l in by for l in GLOSS), [l for l in GLOSS if l not in by]
+    for lemma, patch in CURATION.items():
+        assert all(by[lemma].get(k) == v for k, v in patch.items()), (lemma, patch, by[lemma])
     # conjugation spot checks: irregulars from Lexique, the two fills, passé composé agreement, spoken phrases
     assert conj["aller"]["t"]["ind:fut"][3] == "irons" and conj["être"]["t"]["sub:pre"][3] == "soyons"
     assert conj["faire"]["t"]["sub:pre"][3] == "fassions" and conj["prendre"]["t"]["sub:pre"][5] == "prennent"

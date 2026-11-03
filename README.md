@@ -13,13 +13,14 @@ Aimed at C1: see the Road to C1 in [PLAN.md](PLAN.md) for what's covered and wha
   the current stage and today's next step. **The path guides; it never locks**: every text, chapter, verb table and
   feature is open from day one.
 
-- **Runs**: ~10-minute sessions over an 8,000-word deck (spoken + written frequency). New words are introduced in
+- **Runs**: ~10-minute sessions over 7,334 sentence-backed cards and a 20,000-word lookup dictionary (spoken + written
+  frequency). New words are introduced in
   a real sentence, then you *type* them back: fill the gap, listen and type, recall from English (nouns with the
   right gender), and full-sentence dictées once a word is solid. Conjugation tables for 59 verbs unlock tense by
   tense. FSRS schedules every review. Combos, points, levels, a streak, and a cat with opinions.
 - **Library**: Pluton's story (12 chapters, A1 to C1), your own texts (lyrics, articles, subtitles), and a shelf of
   public-domain classics (La Fontaine, Perrault, Daudet, Maupassant, Verne). Every word is coloured by whether you know
-  it; the story and classics read themselves aloud with the sentence highlighted. A text gets comfortable at 95% of
+  it; the story and classics read themselves aloud with the sentence highlighted. A text gets comfortable at 98% of
   words known, and one tap queues exactly the words that get you there. Each chapter ends with a short comprehension
   quiz — a pass is what counts it as read — and imported/classic texts can be checked by telling Pluton what they were
   about. ✨ Story asks the AI for a new graded story at your level, built from the words you know.
@@ -77,7 +78,7 @@ Checks:
 
 ```bash
 npm test                     # logic: tokenizer, grading, scheduling, coverage, conjugation, cognates, comprehension
-                             # quizzes, log replay, tutor prompts
+                             # quizzes, log replay, tutor prompts, asset validation and offline-cache regressions
 npm run smoke                # builds, then drives the real app in headless Chromium: runs over several days,
                              # library + chapter quizzes, generated story + retelling, speaking record/playback,
                              # bridge, listening, placement, and the AI features against a mock provider
@@ -88,6 +89,8 @@ npm run smoke                # builds, then drives the real app in headless Chro
 
 `data/fr/build.py` also asserts on its own output (deck size, unambiguous gaps, every audio clip exists, known
 conjugations, cognate and false-friend spot checks).
+`npm run build`, `npm run smoke`, and deployment also validate the generated JSON, read-along offsets and every
+referenced audio file with `python3 scripts/check-data.py`; incomplete assets fail before packaging.
 
 Deploy: `npm run deploy` publishes `dist/` (with the generated data) to the `gh-pages` branch.
 
@@ -97,8 +100,10 @@ Deploy: `npm run deploy` publishes `dist/` (with the generated data) to the `gh-
 Kotlin Multiplatform shared core + Jetpack Compose on Android + SwiftUI on iOS, in [`native/`](native/README.md).
 The Capacitor projects below remain the shipped stopgap until the native apps reach parity; new features go native.
 
-The same web build is wrapped as a native app with [Capacitor](https://capacitorjs.com); `android/` and `ios/` are
-real native projects (the copied web assets in them are gitignored). One codebase, no rewrite.
+The stopgap wraps the web build with [Capacitor](https://capacitorjs.com); `android/` and `ios/` contain those wrapper
+projects (the copied web assets in them are gitignored). The SwiftUI/Compose implementation lives separately in `native/`.
+When moving from the PWA to a native build, Settings → **Download for native app** writes a version-4 native backup
+(cards, review log, texts, read history, writings and pace) that the native apps import directly.
 
 ```bash
 npm run native:sync    # build dist/ and copy it + the plugins into both projects
@@ -142,7 +147,8 @@ Download into `data/fr/raw/`:
 
 Frequencies, lemmas and verb forms: Lexique 3 (New, Pallier et al.). Sentences: Tatoeba contributors.
 Glosses and cognates: English Wiktionary via kaikki.org. Voice: Piper TTS. Shelf: Wikisource (public-domain texts).
-Attribution is required if you publish this.
+Attribution is required if you publish this. The highest-frequency examples are hand-curated where Tatoeba's
+sentence or translation would teach a different sense.
 
 ## Layout
 
@@ -156,6 +162,7 @@ src/lib/path.js       the ten stages, their goals, and today's next step (tested
 data/fr/story.json    Pluton's story, hand-written, one chapter per stage
 src/lib/ai.js         bring-your-own-key client (Anthropic SDK + OpenAI-compatible)
 src/lib/db.js         IndexedDB: cards, append-only review log, texts, meta (+ change stamps for sync)
+src/lib/native-backup.js  web export → native backup version 4 (cards, reviews, texts, writings, pace)
 src/lib/sync.js       accounts: email-code sign-in, pull/push against supabase/ (merge rules tested)
 src/lib/stats.js      per-device stats combined into the totals the app shows (tested)
 supabase/             the account backend: config, the records table + push/delete_account functions
@@ -164,8 +171,10 @@ src/lib/deck.js       card changes outside runs (add, mark known)
 src/*.svelte          App, Welcome, Run, Reader, Speak, Bridge, Listen, Talk, Words, Settings, Cat + small shared pieces
 public/sw.js          offline cache
 scripts/              smoke test, mock AI provider, deploy
-native/               Kotlin Multiplatform shared core + Compose Android app (SwiftUI iOS next)
+native/               Kotlin Multiplatform shared core + Compose Android + SwiftUI iOS apps
 ```
+
+The [2026-10-23 review](REVIEW.md) records verified fixes, current validation limits, and the next product priorities.
 
 ## Adding a language
 

@@ -22,8 +22,11 @@ JAVA_HOME=/home/moloch/.local/opt/jdk-21.0.12.1+1 ANDROID_HOME=/home/moloch/Andr
 ```
 
 The native app uses the same `applicationId` as the Capacitor app, so installing it over the old debug APK replaces
-it; the native app starts with empty storage (IndexedDB data does not migrate). Uninstall the old app first if you
-want to keep both sides' data around for comparison.
+it; the native app starts with empty storage (IndexedDB data does not migrate). Before replacing it, use Settings →
+“Download for native app” in the web/PWA build: that writes a native backup version 4 containing cards, reviews,
+texts, read history, writing history and pace. Import it in the native app under Settings → Backup. The ordinary web
+backup remains web-only. Keeping both Android apps installed requires different application IDs; uninstalling the
+old app removes its local data.
 
 ## Run on an emulator
 
@@ -95,7 +98,7 @@ A simulator build needs Xcode, not a paid account; device/store builds need the 
 **The Swift sources cannot be compiled on this Linux machine.** The GitHub Actions workflow builds the unsigned IPA
 and installs/launches it in a simulator on macOS; the run for `cc6dda09` was green. The Listen tab is the first
 change that run did not compile. See `iosApp/README.md` for the feature list, build prerequisites and known gaps
-(no story generator/retell, word-only runs).
+(story generator/retell and the writing live-tools remain Android-first).
 
 ## Status
 
@@ -150,7 +153,7 @@ live in the app's SQLite database; the AI key lives in private prefs (Android ba
 and is excluded from the JSON backup. Speech recognition and text-to-speech are platform services (on-device or
 system-provided, depending on the device); only the recognized transcript is sent to the AI. The only network calls are the AI requests you trigger (and the media files
 you pick in Listen are read locally). The shared `Sync.kt` merge rules remain for reference but nothing in either
-app wires them up. 130 shared JVM tests and 30 Android JVM tests pass (5 AI, 25 Robolectric UI). The APK is 53 MB with 3,081 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
+app wires them up. As of the 2026-11-03 pass, 135 shared JVM tests and 33 Android JVM tests pass. The APK is 54 MB with 3,081 bundled clips (story, classics and conjugation); the Claude SDK adds ~9 MB and needs
 core-library desugaring for `java.time` on minSdk 24.
 `AppLaunchTest` launches the real Activity under Robolectric on the JVM and verifies the deck/shelf assets, SQLite,
 Home (with the path stage), all five tabs, the story + classics list, the Your texts section, the Listen pickers, the
@@ -170,7 +173,9 @@ answers in the last 30 reviews; the last tab returns on launch; reading cards la
 stretch (95–98%) or challenge (<95%) and the queue action targets 98%; Le Chemin has separate Talk and Speak bonus goals;
 writing is saved locally with its errors, a revision flow and an error summary; both platforms have a Write tab (iOS
 previously had none). SQLDelight schema v4 adds `writing` and `corrections`; backups include both (version 3 also carries can-do
-ticks and correction schedules), and both platforms now have an export/import UI.
+ticks and correction schedules), and both platforms now have an export/import UI. Backup version 4 additionally
+preserves user-text IDs and update times (so completion history still points to the right text), pace, and practice days.
+Versions 1–3 remain importable; their missing text IDs cannot reliably preserve old user-text completion links.
 
 P1 adds the speaking loop: Talk has a microphone (Android SpeechRecognizer / iOS SFSpeechRecognizer), sends the transcript to the AI and can speak the reply with French TTS; Speak also has a **Fluency** mode (shadowing, plus 4/3/2 with a countdown and recording) and a **Sounds** mode (nine curated lessons: nasals, /y/–/u/, /ʁ/, /s/–/z/, /ʃ/–/ʒ/, final consonants, liaison, silent letters, e caduc) with a minimal-pair quiz, phrase playback and recording. The Android manifest already had RECORD_AUDIO; iOS already had the microphone/speech usage strings. No new server, no new account, no new permission beyond the existing microphone.
 
