@@ -609,7 +609,8 @@ emulator/device, so the APK is built but not launched.
   native; a Speak goal opens Talk directly in Speaking mode. Web reading uses the native 98% comfort/queue target.
   iOS gained the graded story generator and retell check for classics/user texts, plus conjugation/grammar
   practice cards. The web-to-native backup hand-off is unit-tested and smoke-tested. Fixed the Node 22 test glob
-  and the native CI Android SDK setup; all three new workflows (Web, Native shared, iOS) are green. Deployed
+  and the native CI Android SDK setup; the Web workflow now runs the full Chromium smoke against the deployed data
+  bundle, and the Web, Native shared and iOS workflows are green. Deployed
   `fac723fc` to gh-pages: live story data has 12 chapters, and Pages is serving the new bundle. Follow-up checks:
   66 web tests, 135 shared JVM tests, 33 Android JVM tests, 45-check Chromium smoke, data check; iOS build and
   simulator smoke green on macOS CI.

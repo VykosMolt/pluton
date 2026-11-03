@@ -131,7 +131,6 @@ The release-safety pass fixed the issues that could be fixed and verified locall
   generated fixture into the shared store. The PWA-to-native hand-off no longer requires a separate script.
 
 Released on 2026-11-03: the review work is committed and pushed, `gh-pages` serves the 12-chapter/current-data
-bundle, and the new Web, Native shared and iOS workflows are green. The iOS story generator/retell and
-conjugation/grammar run branches compiled and launched in the simulator. Remaining: real-device audio, permissions,
-TTS/ASR and interruption behavior; live Supabase account integration; and making the Chromium smoke a required CI
-check (it passes locally).
+bundle, and the new Web (unit + Vite + Chromium smoke), Native shared and iOS workflows are green. The iOS story
+generator/retell and conjugation/grammar run branches compiled and launched in the simulator. Remaining: real-device
+audio, permissions, TTS/ASR and interruption behavior, and live Supabase account integration.
