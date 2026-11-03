@@ -276,10 +276,10 @@ struct RunView: View {
 
     @ViewBuilder
     private func quizCard(item: RunItem, word: Word, sentence: String, parts: [String]) -> some View {
-        let mode = mode(for: item)
-        return VStack(alignment: .leading, spacing: 12) {
-            Text(tag(mode)).font(.caption.bold()).foregroundStyle(.secondary)
-            switch mode {
+        let wordMode = mode(for: item)
+        VStack(alignment: .leading, spacing: 12) {
+            Text(tag(wordMode)).font(.caption.bold()).foregroundStyle(.secondary)
+            switch wordMode {
             case "produce":
                 Text("Comment dit-on « \(word.gloss.isEmpty ? word.display : word.gloss) » ?").font(.title3)
             case "dictee":
@@ -287,7 +287,7 @@ struct RunView: View {
             default:
                 Text(parts.count == 3 ? "\(parts[0])______\(parts[2])" : sentence).font(.title3)
             }
-            if mode == "dictation" || mode == "dictee" || mode == "cloze" {
+            if wordMode == "dictation" || wordMode == "dictee" || wordMode == "cloze" {
                 Button {
                     speaker.speak(sentence.isEmpty ? word.display : sentence)
                 } label: {
@@ -311,7 +311,7 @@ struct RunView: View {
                     .font(.headline)
                     .foregroundStyle(detail.result == "right" ? .green : detail.result == "almost" ? .orange : .red)
                 Text("→ \(detail.correct)").font(.headline)
-                if mode == "produce" { Text("\(word.display) — \(word.gloss)").font(.subheadline) }
+                if wordMode == "produce" { Text("\(word.display) — \(word.gloss)").font(.subheadline) }
                 Button { next() } label: {
                     Text("Next →").font(.headline).frame(maxWidth: .infinity)
                 }
@@ -349,22 +349,22 @@ struct RunView: View {
         let word = word(for: item)
         let result: String
         let correct: String
-        let mode: String
+        let detailMode: String
         if let pair = conjPair(item), let table = model.conj[pair.0] {
             let forms = model.bridge.conjForms(table: table, tense: pair.1)
             let expected = forms.indices.contains(person) ? forms[person] : ""
             let graded = model.bridge.gradeConj(typed: trimmed, expected: expected, agrees: pair.1 == "pc" && table.aux == "être")
             result = graded.result
             correct = expected
-            mode = "conj"
+            detailMode = "conj"
         } else if let topic = grammarTopic(item) {
             let exercise: GrammarItem? = topic.items.isEmpty ? nil : topic.items[min(grammarPick, topic.items.count - 1)]
             let graded = model.bridge.gradeGram(typed: trimmed, answers: exercise?.a ?? [])
             result = graded.result
             correct = exercise?.a.joined(separator: " / ") ?? ""
-            mode = "gram"
+            detailMode = "gram"
         } else {
-            let wordMode = mode(for: item)
+            let wordMode = self.mode(for: item)
             switch wordMode {
             case "produce":
                 let graded = model.bridge.gradeProduce(typed: trimmed, word: word, forms: model.forms)
@@ -379,11 +379,11 @@ struct RunView: View {
                 result = graded.result
                 correct = parts.count == 3 ? parts[1] : ""
             }
-            mode = wordMode
+            detailMode = wordMode
         }
         let rating: Int32 = result == "right" ? 3 : result == "almost" ? 2 : 1
-        detail = Detail(mode: mode, rating: rating, result: result, correct: correct)
-        speaker.speak(mode == "dictee" ? sentence(for: item) : correct)
+        detail = Detail(mode: detailMode, rating: rating, result: result, correct: correct)
+        speaker.speak(detailMode == "dictee" ? sentence(for: item) : correct)
     }
 
     private func next() {
