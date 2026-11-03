@@ -74,6 +74,7 @@ Apple ID with iloader/SideStore, or a paid account with TestFlight.
 
 ## Current iOS status
 
-The Swift sources have **never been compiled** (no Mac was available while writing them). The workflow exists to
-close that gap: its first runs may need interop fixes. Until a green run produces `Pluton-unsigned.ipa`, there is no
-installable app to sign.
+The workflow is green: the shared Kotlin framework links, the SwiftUI app builds, the unsigned IPA is packaged, and
+the simulator job installs and launches it. The latest artifact for the account-free build is from the
+`Remove accounts and Supabase: make Pluton local-only` run (`8643c334`); download `pluton-ios-unsigned` from that
+run's Artifacts section. The IPA is unsigned — sign it with TrollStore, iloader/SideStore or Xcode before installing.
