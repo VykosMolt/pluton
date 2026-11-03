@@ -607,7 +607,7 @@ private struct StoryGeneratorView: View {
                 model.addText(title: story.title, body: story.body)
                 dismiss()
             } catch {
-                error = error.localizedDescription
+                self.error = error.localizedDescription
             }
             busy = false
         }

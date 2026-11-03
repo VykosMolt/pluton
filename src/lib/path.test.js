@@ -26,7 +26,7 @@ test('a new learner is on stage 1; core goals advance it, bonus goals never bloc
 
 test('goals report progress and labels', () => {
   const g = goalsOf(STAGES[6], { ...fresh, learned: 1150, tables: { 'cnd:pre': 2 }, listenMin: 60.7 }, { 'story-6': 'Paris' })
-  assert.deepEqual(g.map((x) => x.kind), ['words', 'verbs', 'grammar', 'read', 'read', 'listen', 'talk', 'write'])
+  assert.deepEqual(g.map((x) => x.kind), ['words', 'verbs', 'grammar', 'read', 'read', 'listen', 'talk', 'speak', 'write'])
   assert.equal(g[0].pct, 0.5)
   assert.equal(g[2].label, '10 grammar topics in review')
   assert.equal(g[3].label, 'Read “Paris”')
@@ -42,11 +42,14 @@ test('focus: reading first, then listening, then speaking (or writing with an AI
   const s3 = pathState({ ...fresh, read: new Set(['story-2']), listenMin: 999, grammar: 9 }).stages[2]
   assert.equal(focus(s3, false).kind, 'talk') // speaking needs no AI
   const talked = pathState({ ...fresh, talked: 999, read: new Set(['story-2']), listenMin: 999, grammar: 9 }).stages[2]
-  assert.equal(focus(talked, false), null) // only writing is left, and it needs an AI
-  assert.equal(focus(talked, true).kind, 'write')
+  assert.equal(focus(talked, false).kind, 'speak') // speaking stays free after Talk is done
+  const spoke = pathState({ ...fresh, talked: 999, spoken: 999, read: new Set(['story-2']), listenMin: 999, grammar: 9 }).stages[2]
+  assert.equal(focus(spoke, false), null) // only writing is left, and it needs an AI
+  assert.equal(focus(spoke, true).kind, 'write')
 })
 
-test('speaking counts toward the talk bonus', () => {
-  const g = goalsOf(STAGES[2], { ...fresh, spoken: 3 })
-  assert.equal(g.find((x) => x.kind === 'talk').have, 3)
+test('speaking counts toward the separate Speak bonus, not Talk', () => {
+  const g = goalsOf(STAGES[2], { ...fresh, talked: 2, spoken: 3 })
+  assert.equal(g.find((x) => x.kind === 'talk').have, 2)
+  assert.equal(g.find((x) => x.kind === 'speak').have, 3)
 })

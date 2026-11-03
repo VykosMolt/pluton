@@ -13,22 +13,22 @@ export const STAGES = [
   { place: 'La Cave', grammar: 0, en: 'The Cellar', level: 'A1', words: 200, verbs: ['ind:pre', 5], read: ['story-1'], listen: 10,
     fr: 'Une cave froide, une porte fermée… et une petite fenêtre.', say: 'A cold cellar, a locked door… and a small window.' },
   { place: 'La Maison', grammar: 1, en: 'The House', level: 'A2', words: 400, verbs: ['ind:pre', 12], read: ['story-2'], listen: 20,
-    talk: 5, write: 1, fr: 'Une vieille maison, du lait, et une petite fille qui n\'a pas peur.', say: 'An old house, some milk, and a girl who isn\'t afraid.' },
+    talk: 5, speak: 3, write: 1, fr: 'Une vieille maison, du lait, et une petite fille qui n\'a pas peur.', say: 'An old house, some milk, and a girl who isn\'t afraid.' },
   { place: 'Le Village', grammar: 4, en: 'The Village', level: 'A2', words: 700, verbs: ['pc', 8], read: ['story-3'], listen: 40,
-    talk: 10, write: 2, fr: 'Le marché du village. Un chat noir, ça porte malheur ?', say: 'Market day. Are black cats really bad luck?' },
+    talk: 10, speak: 5, write: 2, fr: 'Le marché du village. Un chat noir, ça porte malheur ?', say: 'Market day. Are black cats really bad luck?' },
   { place: 'La Route', grammar: 6, en: 'The Road', level: 'B1', words: 1100, verbs: ['ind:imp', 8], read: ['story-4'], listen: 75,
-    talk: 20, write: 3, fr: 'La route de Paris est longue. Heureusement, il y a Brutus.', say: 'The road to Paris is long. Luckily there\'s Brutus.' },
+    talk: 20, speak: 10, write: 3, fr: 'La route de Paris est longue. Heureusement, il y a Brutus.', say: 'The road to Paris is long. Luckily there\'s Brutus.' },
   { place: 'Le Fleuve', grammar: 8, en: 'The River', level: 'B1', words: 1600, verbs: ['ind:fut', 8], read: ['story-5'], listen: 120,
-    talk: 30, write: 5, fr: 'Remonter la Seine à bord d\'un vieux bateau.', say: 'Up the Seine on an old boat.' },
+    talk: 30, speak: 15, write: 5, fr: 'Remonter la Seine à bord d\'un vieux bateau.', say: 'Up the Seine on an old boat.' },
   { place: 'Paris', grammar: 10, en: 'Paris', level: 'B2', words: 2300, verbs: ['cnd:pre', 8], read: ['story-6', 'Les Étoiles'], listen: 240,
-    talk: 50, write: 8, fr: 'Les toits de Montmartre, et une chatte qui connaît les règles.', say: 'The roofs of Montmartre, and a cat who knows the rules.' },
+    talk: 50, speak: 25, write: 8, fr: 'Les toits de Montmartre, et une chatte qui connaît les règles.', say: 'The roofs of Montmartre, and a cat who knows the rules.' },
   { place: 'Les Catacombes', grammar: 12, en: 'The Catacombs', level: 'B2', words: 3200, verbs: ['sub:pre', 8], read: ['story-7', 'La Parure'],
-    listen: 420, talk: 80, write: 12, fr: 'Sous Paris, une ville de morts. Il ne fallait pas descendre.', say: 'Under Paris, a city of the dead. He shouldn\'t have gone down.' },
+    listen: 420, talk: 80, speak: 40, write: 12, fr: 'Sous Paris, une ville de morts. Il ne fallait pas descendre.', say: 'Under Paris, a city of the dead. He shouldn\'t have gone down.' },
   { place: 'La Bibliothèque', grammar: 13, en: 'The Library', level: 'C1', words: 4500, verbs: [null, 150],
-    read: ['story-8', 'Le Tour du monde en quatre-vingts jours, chapitre 1'], listen: 720, talk: 120, write: 16,
+    read: ['story-8', 'Le Tour du monde en quatre-vingts jours, chapitre 1'], listen: 720, talk: 120, speak: 60, write: 16,
     fr: 'Les notes de Baudelaire, et une lettre sans signature.', say: 'Baudelaire\'s notes, and an unsigned letter.' },
   { place: 'L\'Opéra', grammar: 15, en: 'The Opéra', level: 'C1', words: 6000, verbs: [null, 300], read: ['story-9', 'story-10', 'story-11', 'La Chèvre de monsieur Seguin'],
-    listen: 1200, talk: 200, write: 20, fr: 'Un bal masqué, un lac sous la scène, et quelqu\'un qui attend.', say: 'A masked ball, a lake under the stage, and someone waiting.' },
+    listen: 1200, talk: 200, speak: 100, write: 20, fr: 'Un bal masqué, un lac sous la scène, et quelqu\'un qui attend.', say: 'A masked ball, a lake under the stage, and someone waiting.' },
 ]
 
 /**
@@ -46,8 +46,10 @@ export function goalsOf(stage, m, titles = {}) {
     have: m.grammar ?? 0, need: stage.grammar })
   for (const id of stage.read) goals.push({ kind: 'read', id, label: `Read “${titles[id] ?? id}”`, have: m.read.has(id) ? 1 : 0, need: 1 })
   goals.push({ kind: 'listen', label: `Listen for ${stage.listen} minutes in all`, have: Math.floor(m.listenMin), need: stage.listen })
-  if (stage.talk) goals.push({ kind: 'talk', bonus: true, label: `Talk or speak ${stage.talk} times`,
-    have: (m.talked ?? 0) + (m.spoken ?? 0), need: stage.talk })
+  if (stage.talk) goals.push({ kind: 'talk', bonus: true, label: `Talk with Pluton ${stage.talk} times`,
+    have: m.talked ?? 0, need: stage.talk })
+  if (stage.speak) goals.push({ kind: 'speak', bonus: true, label: `Speak French aloud ${stage.speak} times`,
+    have: m.spoken ?? 0, need: stage.speak })
   if (stage.write) goals.push({ kind: 'write', bonus: true, label: `Have ${stage.write} texts corrected`, have: m.written, need: stage.write })
   return goals.map((g) => ({ ...g, done: g.have >= g.need, pct: Math.min(1, g.have / g.need) }))
 }
@@ -72,7 +74,7 @@ export function pathState(m, titles) {
 export function focus(stage, hasAI) {
   if (!stage) return null
   const open = stage.goals.filter((g) => !g.done)
-  const bonus = open.find((g) => g.bonus && (g.kind === 'talk' || hasAI))
+  const bonus = open.find((g) => g.bonus && (g.kind === 'talk' || g.kind === 'speak' || hasAI))
   return open.find((g) => g.kind === 'read') ?? open.find((g) => g.kind === 'listen') ?? open.find((g) => g.kind === 'grammar')
     ?? bonus ?? null
 }

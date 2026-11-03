@@ -12,7 +12,7 @@
   import AccentBar from './AccentBar.svelte'
 
   /** vocab: words known or being learned (sets Pluton's level); oncount('talked'|'written') feeds the Road to C1. */
-  let { ai, words, forms, cards, statusOf, vocab, onsettings, oncount } = $props()
+  let { ai, words, forms, cards, statusOf, vocab, onsettings, oncount, initialMode = 'chat' } = $props()
 
   const Recognition = globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition
   const ORDER = ['A1', 'A2', 'B1', 'B2', 'C1']
@@ -36,6 +36,9 @@
   let controller = null
   let recognition = null
   let generation = 0
+
+  // A Le Chemin goal can ask for Speaking or Writing; the nav itself opens Conversation.
+  $effect(() => { void initialMode; mode = initialMode })
 
   onDestroy(() => {
     generation++

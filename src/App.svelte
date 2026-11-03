@@ -33,6 +33,7 @@
   let grammar = $state.raw([]) // grammar topics, A2 to C1
   let wordsTab = $state('words')
   let openText = $state(null) // text the Library shows (set from home goals too)
+  let talkMode = $state('chat') // Talk opens on the goal that sent the learner there
   let listenNow = $state(false)
   let celebrate = $state(null) // index of the stage just reached
   let stats = $state({ points: 0, bestCombo: 0, newDay: null, newCount: 0, days: [] }) // this device's record
@@ -148,7 +149,9 @@
       wordsTab = 'grammar'
       return (view = 'words')
     }
-    if (g.kind === 'talk' || g.kind === 'write') return (view = 'talk')
+    if (g.kind === 'talk') { talkMode = 'chat'; return (view = 'talk') }
+    if (g.kind === 'speak') { talkMode = 'speak'; return (view = 'talk') }
+    if (g.kind === 'write') { talkMode = 'write'; return (view = 'talk') }
     if (g.kind === 'read') openText = g.id
     if (g.kind === 'listen') {
       openText = `story-${Math.min(reached, STAGES.length - 1)}`
@@ -368,7 +371,7 @@
   {:else if view === 'listen'}
     <Listen {words} {forms} {cards} {statusOf} onlisten={listened} />
   {:else if view === 'talk'}
-    <Talk {ai} {words} {forms} {cards} {statusOf} vocab={counts.known + counts.learning} onsettings={() => (view = 'settings')} oncount={count} />
+    <Talk {ai} {words} {forms} {cards} {statusOf} vocab={counts.known + counts.learning} onsettings={() => (view = 'settings')} oncount={count} initialMode={talkMode} />
   {:else if view === 'settings'}
     <Settings bind:ai bind:pace onbackup={backup} onnative={nativeBackup} onrestore={restore} onsynced={reload} />
   {:else}
@@ -396,7 +399,7 @@
     <button class:on={view === 'home' || view === 'path'} onclick={() => { view = 'home'; now = new Date() }}><i>🏠</i>Home</button>
     <button class:on={view === 'read'} onclick={() => { view = 'read'; openText = null }}><i>📖</i>Library</button>
     <button class:on={view === 'listen'} onclick={() => (view = 'listen')}><i>🎧</i>Listen</button>
-    <button class:on={view === 'talk'} onclick={() => (view = 'talk')}><i>💬</i>Talk</button>
+    <button class:on={view === 'talk'} onclick={() => { view = 'talk'; talkMode = 'chat' }}><i>💬</i>Talk</button>
     <button class:on={view === 'words'} onclick={() => { view = 'words'; now = new Date() }}><i>📚</i>Words</button>
   </nav>
 {/if}
